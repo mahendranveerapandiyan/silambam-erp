@@ -9,7 +9,13 @@ import { act, backOf, formObj } from '@/lib/util';
 export async function login(fd: FormData) {
   const username = String(fd.get('username') || '').trim().toLowerCase();
   const password = String(fd.get('password') || '');
-  const [u] = await sql`select id, password_hash from user_account where lower(username) = ${username} and active_flag = 'Y'`;
+  let u: { id: string; password_hash: string } | undefined;
+  try {
+    [u] = (await sql`select id, password_hash from user_account where lower(username) = ${username} and active_flag = 'Y'`) as any;
+  } catch (e) {
+    console.error('Login failed - database error:', e);
+    redirect('/login?err=' + encodeURIComponent('Cannot reach the database. Check that PostgreSQL is running and migrated – open /api/health for details.'));
+  }
   if (!u || !(await bcrypt.compare(password, u.password_hash))) redirect('/login?err=Invalid%20username%20or%20password');
   await sql`update user_account set last_login = now() where id = ${u.id}`;
   await createSession(u.id);

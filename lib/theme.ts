@@ -15,6 +15,14 @@ export const THEME_KEYS: [string, string, 'color' | 'number' | 'text'][] = [
 ];
 
 export async function getTheme(enterpriseId?: string | null) {
+  try {
+    return await loadTheme(enterpriseId);
+  } catch {
+    return {} as Record<string, string>; // database unreachable: fall back to the CSS defaults
+  }
+}
+
+async function loadTheme(enterpriseId?: string | null) {
   const rows = enterpriseId
     ? await sql`select setting_key, setting_value from ui_setting where enterprise_id = ${enterpriseId}`
     : await sql`select setting_key, setting_value from ui_setting where enterprise_id = (select min(id) from enterprise)`;
@@ -32,6 +40,14 @@ export function themeStyle(t: Record<string, string>): string {
 }
 
 export async function enterpriseInfo(enterpriseId?: string | null) {
+  try {
+    return await loadEnterprise(enterpriseId);
+  } catch {
+    return null;
+  }
+}
+
+async function loadEnterprise(enterpriseId?: string | null) {
   const [e] = enterpriseId
     ? await sql`select id, name, short_name, currency_code, logo_data is not null as has_logo from enterprise where id = ${enterpriseId}`
     : await sql`select id, name, short_name, currency_code, logo_data is not null as has_logo from enterprise order by id limit 1`;
