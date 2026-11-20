@@ -1,0 +1,61 @@
+import Link from 'next/link';
+import type { SessionUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/auth';
+import { peopleList, type PersonKind } from '@/lib/people';
+import { refOptions } from '@/lib/dt';
+import { lk } from '@/lib/lookups';
+import { fmtDate } from '@/lib/util';
+import { PageHeader, Flash, Badge, Empty, Select, STATUS_COLOR, s } from '../ui';
+import { AutoSubmit } from '../client';
+
+export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: PersonKind; asOf: string; sp: Record<string, any> }) {
+  const f = { q: s(sp.q), bu: s(sp.bu), cls: s(sp.cls), grade: s(sp.grade), status: s(sp.status) };
+  const rows = await peopleList(u, kind, asOf, f);
+  const [bus, classes, grades, L] = [await refOptions('business-units', u.enterpriseId, asOf), await refOptions('classes', u.enterpriseId, asOf), await refOptions('student-grades', u.enterpriseId, asOf), await lk()];
+  const stu = kind === 'STUDENT';
+  const base = stu ? '/students' : '/staff';
+  return (
+    <div>
+      <PageHeader title={stu ? 'Student Directory' : 'Staff Directory'} subtitle={`${rows.length} record(s) as of ${fmtDate(asOf)}${stu && !isAdmin(u) && !u.roles.includes('ACCOUNTANT') ? ' · your classes only' : ''}`}
+        actions={<><Link href={`${base}/new`} className="btn btn-primary">{stu ? '+ New Admission' : '+ Hire Staff'}</Link></>} />
+      <Flash sp={sp} />
+      <div className="card">
+        <form className="mb-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <input name="q" defaultValue={f.q ?? ''} placeholder="Name, number or phone" className="input lg:col-span-2" />
+          <Select name="bu" options={bus} value={f.bu} empty="All branches" />
+          {stu && <Select name="cls" options={classes} value={f.cls} empty="All classes" />}
+          {stu && <Select name="grade" options={grades} value={f.grade} empty="All grades" />}
+          <select name="status" defaultValue={f.status ?? 'ACTIVE'} className="input">
+            <option value="ACTIVE">Active</option><option value="SUSPENDED">Suspended</option><option value="INACTIVE">Inactive</option><option value="ALL">All statuses</option>
+          </select>
+          <AutoSubmit />
+        </form>
+        <div className="overflow-x-auto">
+          <table className="tbl">
+            <thead>
+              <tr><th></th><th>{stu ? 'Student No.' : 'Staff No.'}</th><th>Name</th><th>Phone</th><th>Branch</th>
+                {stu ? <><th>Class › Section</th><th>Grade</th><th>Fee Freq.</th></> : <><th>Job</th><th>Department</th><th>Type</th></>}
+                <th>Status</th><th>Since</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.assignment_id}>
+                  <td className="w-10">{r.has_photo ? <img src={`/api/photo/${r.person_id}`} alt="" className="h-8 w-8 rounded-full object-cover" /> : <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/10 text-xs font-bold">{r.full_name?.[0]}</div>}</td>
+                  <td><Link className="link" href={`${base}/${r.person_id}`}>{r.assignment_number}</Link></td>
+                  <td>{r.full_name}</td>
+                  <td>{r.phone}</td>
+                  <td>{r.bu_name}</td>
+                  {stu ? <><td>{r.class_name}{r.section_name && ` › ${r.section_name}`}</td><td>{r.grade_name}</td><td>{L('FEE_FREQUENCY', r.fee_frequency_code)}</td></>
+                    : <><td>{r.job_name}</td><td>{r.department_name}</td><td>{L('EMPLOYMENT_TYPE', r.employment_type_code)}</td></>}
+                  <td><Badge color={STATUS_COLOR[r.system_status_code]}>{r.status_name}</Badge></td>
+                  <td className="whitespace-nowrap">{fmtDate(r.original_start_date)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!rows.length && <Empty />}
+        </div>
+      </div>
+    </div>
+  );
+}

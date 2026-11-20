@@ -1,0 +1,49 @@
+import Link from 'next/link';
+import { requireUser, isAdmin } from '@/lib/auth';
+import { getAsOf } from '@/lib/asof';
+import { sql } from '@/lib/db';
+import { lk } from '@/lib/lookups';
+import { academicYearOn } from '@/lib/people';
+import { examOptions } from '@/lib/examOptions';
+import { fmtDate } from '@/lib/util';
+import { PageHeader, Flash, Select, Badge, Empty, type SP, s } from '@/components/ui';
+import { AutoSubmit } from '@/components/client';
+import { ExamForm } from '@/components/ExamForm';
+import { saveExam } from './actions';
+
+export default async function Exams({ searchParams }: { searchParams: SP }) {
+  const u = await requireUser('INCHARGE');
+  const sp = await searchParams;
+  const asOf = await getAsOf();
+  const o = await examOptions(u.enterpriseId, asOf);
+  const ay = s(sp.ay) ?? String((await academicYearOn(u.enterpriseId, asOf))?.id ?? o.years[0]?.value ?? '');
+  const type = s(sp.type);
+  const L = await lk();
+  const rows = await sql`select e.*, (select count(*) from exam_candidate c where c.exam_id = e.id)::int candidates,
+      (select count(*) from exam_candidate c where c.exam_id = e.id and c.result_code = 'PASS')::int passed,
+      (select name from student_grade_f g where g.id = e.from_grade_id order by effective_start_date desc limit 1) from_grade,
+      (select name from student_grade_f g where g.id = e.target_grade_id order by effective_start_date desc limit 1) target_grade,
+      (select name from business_unit_f b where b.id = e.business_unit_id order by effective_start_date desc limit 1) bu_name
+    from exam e where e.enterprise_id = ${u.enterpriseId} and e.academic_year_id = ${ay || null} ${type ? sql`and e.exam_type_code = ${type}` : sql``}
+    order by e.exam_date desc`;
+  return (
+    <div className="max-w-7xl">
+      <PageHeader title="Exams" subtitle="Grade Exams (one per student per academic year, with promotion), Assessments (any number) and Term Exams." />
+      <Flash sp={sp} />
+      <form className="card mb-4 flex flex-wrap gap-2">
+        <Select name="ay" options={o.years} value={ay} empty={false} className="input max-w-xs" />
+        <Select name="type" options={o.types} value={type} empty="All types" className="input max-w-xs" />
+        <AutoSubmit />
+      </form>
+      <div className="card mb-4 overflow-x-auto">
+        <table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Branch</th><th>Grade</th><th>Candidates</th><th>Passed</th><th>Status</th></tr></thead>
+          <tbody>{rows.map((r) => (
+            <tr key={r.id}><td>{fmtDate(r.exam_date)}</td><td><Link className="link" href={`/exams/${r.id}`}>{r.name}</Link></td><td>{L('EXAM_TYPE', r.exam_type_code)}</td>
+              <td>{r.bu_name ?? 'All'}</td><td>{r.from_grade ?? 'Any'}{r.target_grade && <> → <b>{r.target_grade}</b></>}</td><td>{r.candidates}</td><td>{r.passed}</td>
+              <td><Badge color={r.status_code === 'PUBLISHED' ? 'green' : r.status_code === 'CANCELLED' ? 'red' : 'blue'}>{L('EXAM_STATUS', r.status_code)}</Badge></td></tr>))}</tbody></table>
+        {!rows.length && <Empty>No exams for this academic year.</Empty>}
+      </div>
+      {isAdmin(u) && (<><h2 className="h2">Create Exam</h2><ExamForm action={saveExam.bind(null, null)} back="/exams" o={o} defaultAy={ay} /></>)}
+    </div>
+  );
+}

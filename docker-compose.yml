@@ -1,0 +1,27 @@
+# Local / small-server deployment: PostgreSQL + the app.
+#   docker compose up -d --build
+#   docker compose exec app npm run db:migrate
+#   docker compose exec app node scripts/seed.mjs          # base config only
+#   (or: node scripts/seed.mjs --demo for demo branches/students)
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: silambam
+      POSTGRES_USER: silambam
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      DATABASE_URL: postgres://silambam:${DB_PASSWORD:-change-me}@db:5432/silambam
+      SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET to a long random string}
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+volumes:
+  pgdata:
