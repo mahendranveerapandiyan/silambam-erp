@@ -1,5 +1,7 @@
 /** @type {import('next').NextConfig} */
 export default {
+  // dev server uses its own folder so it never wipes the production build
+  distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
   // self-contained server bundle: small Docker image, low memory use
   output: 'standalone',
   serverExternalPackages: ['postgres'],
