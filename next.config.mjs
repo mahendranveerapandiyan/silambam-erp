@@ -11,7 +11,12 @@ export default {
   experimental: {
     serverActions: {
       bodySizeLimit: '5mb',
-      allowedOrigins: ['localhost:3000', '*.app.github.dev', '*.githubpreview.dev', '*.gitpod.io'],
+      // Codespaces forwards requests with Origin "localhost:<port>"; allow the usual local ports
+      allowedOrigins: [
+        ...Array.from({ length: 11 }, (_, i) => `localhost:${3000 + i}`),
+        ...Array.from({ length: 11 }, (_, i) => `127.0.0.1:${3000 + i}`),
+        '*.app.github.dev', '*.githubpreview.dev', '*.gitpod.io',
+      ],
     },
   },
 };
