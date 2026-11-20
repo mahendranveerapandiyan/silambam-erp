@@ -25,7 +25,7 @@ npm run dev                       # http://localhost:3000
 
 Demo logins: `admin / admin123` · `incharge1 … incharge10 / pass123` · `parent1 / pass123`.
 
-For a real installation run `npm run db:migrate` then `node scripts/seed.mjs` (base configuration only, no demo data) and log in as `admin / admin123` – you are asked to change the password.
+To remove all demo data and start empty run `npm run db:clean` (wipes everything; keeps only base configuration). For a real installation run `npm run db:migrate` then `node scripts/seed.mjs` (base configuration only, no demo data) and log in as `admin / admin123` – you are asked to change the password.
 
 ## Design principles
 
