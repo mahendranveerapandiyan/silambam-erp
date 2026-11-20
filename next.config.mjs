@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
 export default {
   serverExternalPackages: ['postgres'],
-  experimental: { serverActions: { bodySizeLimit: '5mb' } },
+  // GitHub Codespaces / Gitpod serve the app from a forwarded domain;
+  // allow it for dev assets and for form submissions (server actions).
+  allowedDevOrigins: ['*.app.github.dev', '*.githubpreview.dev', '*.gitpod.io'],
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '5mb',
+      allowedOrigins: ['localhost:3000', '*.app.github.dev', '*.githubpreview.dev', '*.gitpod.io'],
+    },
+  },
 };
