@@ -34,7 +34,7 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
         </div>
         <div className="card">
           <h2 className="h2">Assignment</h2>
-          <div className="grid-form"><AssignmentFields u={u} kind={kind} asOf={asOf} /></div>
+          <div className="grid-form"><AssignmentFields u={u} kind={kind} dateField="hire_date" /></div>
         </div>
         <div className="card">
           <h2 className="h2">Personal Details</h2>

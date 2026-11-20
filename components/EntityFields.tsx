@@ -1,16 +1,19 @@
 import type { Entity } from '@/lib/entities';
-import { lookupOptions } from '@/lib/lookups';
-import { refOptions } from '@/lib/dt';
-import { Field, Select } from './ui';
-import { Cascade } from './client';
+import { datedLookupOptions, datedRefOptions, type DatedOpt } from '@/lib/dt';
+import { Field } from './ui';
+import { DatedSelect } from './DatedSelect';
 
-/** Renders the configurable fields of a registry entity. */
-export async function EntityFields({ e, values, asOf, enterpriseId }: { e: Entity; values: Record<string, any>; asOf: string; enterpriseId: string }) {
-  const yesNo = await lookupOptions('YES_NO', asOf);
-  const opts: Record<string, Awaited<ReturnType<typeof lookupOptions>>> = {};
+/**
+ * Renders the configurable fields of a registry entity. Lookup and reference
+ * drop-downs are date-aware: they follow the date input named `dateField`, so
+ * only values effective on that date are offered, with their names on that date.
+ */
+export async function EntityFields({ e, values, enterpriseId, dateField }: { e: Entity; values: Record<string, any>; asOf?: string; enterpriseId: string; dateField: string }) {
+  const yesNo = await datedLookupOptions('YES_NO');
+  const opts: Record<string, DatedOpt[]> = {};
   for (const f of e.fields) {
-    if (f.type === 'lookup') opts[f.name] = await lookupOptions(f.lookup!, asOf);
-    if (f.type === 'ref') opts[f.name] = (await refOptions(f.ref!, enterpriseId, asOf)).filter((o) => !(f.ref === e.key && o.value === String(values.id)));
+    if (f.type === 'lookup' || f.type === 'multilookup') opts[f.name] = await datedLookupOptions(f.lookup!);
+    if (f.type === 'ref') opts[f.name] = (await datedRefOptions(f.ref!, enterpriseId)).filter((o) => !(f.ref === e.key && o.value === String(values.id)));
   }
   return (
     <>
@@ -21,10 +24,23 @@ export async function EntityFields({ e, values, asOf, enterpriseId }: { e: Entit
         switch (f.type) {
           case 'lookup':
           case 'ref':
-            input = <Select name={f.name} options={opts[f.name]} value={val} required={f.required} />;
+            input = <DatedSelect name={f.name} options={opts[f.name]} dateField={dateField} value={val} required={f.required} parentField={f.parentField} />;
             break;
+          case 'multilookup': {
+            const chosen = new Set(val.split(',').filter(Boolean));
+            input = (
+              <div className="flex flex-wrap gap-x-3 gap-y-1 rounded-md border border-black/20 bg-white px-2.5 py-1.5">
+                {opts[f.name].map((o) => (
+                  <label key={o.value} className="flex items-center gap-1 text-sm">
+                    <input type="checkbox" name={f.name} value={o.value} defaultChecked={chosen.has(o.value)} /> {o.label}
+                  </label>
+                ))}
+              </div>
+            );
+            break;
+          }
           case 'yesno':
-            input = <Select name={f.name} options={yesNo} value={val || 'Y'} empty={false} />;
+            input = <DatedSelect name={f.name} options={yesNo} dateField={dateField} value={val || 'Y'} empty={false} />;
             break;
           case 'textarea':
             input = <textarea name={f.name} defaultValue={val} className="input" rows={3} />;
@@ -39,9 +55,8 @@ export async function EntityFields({ e, values, asOf, enterpriseId }: { e: Entit
             input = <input name={f.name} defaultValue={val} required={f.required} className="input" />;
         }
         return (
-          <Field key={f.name} label={f.label + (f.required ? ' *' : '')} help={f.help}>
+          <Field key={f.name} label={f.label + (f.required ? ' *' : '')} help={f.help} className={f.type === 'multilookup' ? 'sm:col-span-2' : ''}>
             {input}
-            {f.parentField && <Cascade parent={f.parentField} child={f.name} />}
           </Field>
         );
       })}

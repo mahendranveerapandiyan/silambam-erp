@@ -74,11 +74,25 @@ export async function saveEnterprise(fd: FormData) {
     const o = formObj(fd);
     if (!o.name) throw new Error('Name is required');
     const logo = await fileToBytes(fd.get('logo'));
-    await sql`update enterprise set name = ${o.name}, short_name = ${o.short_name}, country_code = ${o.country_code}, currency_code = ${o.currency_code},
-      timezone = ${o.timezone ?? 'Asia/Kolkata'}, address = ${o.address}, phone = ${o.phone}, email = ${o.email}, website = ${o.website},
+    const [cur] = await sql`select code, code_locked_flag from enterprise where id = ${u.enterpriseId}`;
+    let code = cur.code;
+    if (cur.code_locked_flag !== 'Y') {
+      if (!o.code) throw new Error('Enterprise code is required');
+      code = o.code.toUpperCase();
+      if (!/^[A-Z0-9_-]{2,20}$/.test(code)) throw new Error('Code: 2-20 letters, numbers, - or _');
+    }
+    if (o.timezone) {
+      const [tz] = await sql`select 1 from lookup_value where lookup_type = 'TIMEZONE' and lookup_code = ${o.timezone} and enabled_flag = 'Y'`;
+      if (!tz) throw new Error('Choose a time zone from the list');
+    }
+    await sql`update enterprise set code = ${code}, code_locked_flag = 'Y', name = ${o.name}, short_name = ${o.short_name},
+      registration_number = ${o.registration_number}, tax_number = ${o.tax_number},
+      country_code = ${o.country_code}, currency_code = ${o.currency_code}, timezone = ${o.timezone ?? 'Asia/Kolkata'},
+      address = ${o.address}, phone = ${o.phone}, email = ${o.email}, website = ${o.website},
       last_updated_by = ${u.username}, last_update_date = now(), object_version_number = object_version_number + 1 where id = ${u.enterpriseId}`;
     if (logo) await sql`update enterprise set logo_mime = ${logo.mime}, logo_data = ${logo.data} where id = ${u.enterpriseId}`;
     if (o.remove_logo === 'Y') await sql`update enterprise set logo_mime = null, logo_data = null where id = ${u.enterpriseId}`;
+    return { msg: cur.code_locked_flag === 'Y' ? 'Enterprise saved' : `Enterprise saved – code ${code} is now locked` };
   });
 }
 

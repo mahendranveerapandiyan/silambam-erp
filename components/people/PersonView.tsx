@@ -4,7 +4,7 @@ import type { SessionUser } from '@/lib/auth';
 import { isAdmin } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { assignmentBase, assignmentFor, personDetail, type PersonKind } from '@/lib/people';
-import { refNames } from '@/lib/dt';
+import { datedRefOptions, nameOn } from '@/lib/dt';
 import { lk, lookupOptions } from '@/lib/lookups';
 import { fmtDate, fmtDateTime, money, ageOn } from '@/lib/util';
 import { totals } from '@/lib/fees';
@@ -156,12 +156,14 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   async function AssignmentHistory() {
     const rows = await sql`select * from assignment_f where id = ${ab!.id} order by effective_start_date desc`;
     const E = u.enterpriseId;
-    const n = {
-      action: await refNames(stu ? 'student-actions' : 'staff-actions', E, asOf), status: await refNames(stu ? 'student-statuses' : 'staff-statuses', E, asOf),
-      bu: await refNames('business-units', E, asOf), cls: await refNames('classes', E, asOf), sec: await refNames('sections', E, asOf),
-      grade: await refNames('student-grades', E, asOf), job: await refNames('jobs', E, asOf), dept: await refNames('departments', E, asOf),
-      sgrade: await refNames('staff-grades', E, asOf), pos: await refNames('positions', E, asOf),
+    const V = async (k: string) => datedRefOptions(k, E);
+    const o = {
+      action: await V(stu ? 'student-actions' : 'staff-actions'), status: await V(stu ? 'student-statuses' : 'staff-statuses'),
+      bu: await V('business-units'), cls: await V('classes'), sec: await V('sections'), grade: await V('student-grades'),
+      job: await V('jobs'), dept: await V('departments'), sgrade: await V('staff-grades'), pos: await V('positions'),
     };
+    // names as they were on each row's start date
+    const at = (k: keyof typeof o, id: any, d: string) => (id ? nameOn(o[k], id, d).split(' › ').at(-1) : '');
     return (
       <div className="card overflow-x-auto">
         <div className="mb-3 flex items-center justify-between">
@@ -174,14 +176,17 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
           <thead><tr><th>From</th><th>To</th><th>Action</th><th>Reason</th><th>Status</th><th>Branch</th>
             {stu ? <><th>Class › Section</th><th>Grade</th><th>Fee Freq.</th></> : <><th>Job</th><th>Position</th><th>Department</th><th>Grade</th><th>Payroll</th></>}
             <th>Comments</th><th>By</th></tr></thead>
-          <tbody>{rows.map((r) => (
-            <tr key={r.effective_start_date} className={asOf >= r.effective_start_date && asOf <= r.effective_end_date ? 'bg-amber-50' : ''}>
+          <tbody>{rows.map((r) => {
+            const d = r.effective_start_date;
+            return (
+            <tr key={d} className={asOf >= r.effective_start_date && asOf <= r.effective_end_date ? 'bg-amber-50' : ''}>
               <td className="whitespace-nowrap">{fmtDate(r.effective_start_date)}</td><td className="whitespace-nowrap">{fmtDate(r.effective_end_date)}</td>
-              <td>{n.action[r.action_id]}</td><td>{L('ACTION_REASON', r.action_reason_code)}</td><td>{n.status[r.assignment_status_id]}</td><td>{n.bu[r.business_unit_id]}</td>
-              {stu ? <><td>{n.cls[r.class_id]}{r.section_id && ` › ${n.sec[r.section_id]}`}</td><td>{n.grade[r.student_grade_id]}</td><td>{L('FEE_FREQUENCY', r.fee_frequency_code)}</td></>
-                : <><td>{n.job[r.job_id]}</td><td>{n.pos[r.position_id]}</td><td>{n.dept[r.department_id]}</td><td>{n.sgrade[r.staff_grade_id]}</td><td>{L('PAYROLL_STATUS', r.payroll_status_code)}</td></>}
+              <td>{at('action', r.action_id, d)}</td><td>{L('ACTION_REASON', r.action_reason_code)}</td><td>{at('status', r.assignment_status_id, d)}</td><td>{at('bu', r.business_unit_id, d)}</td>
+              {stu ? <><td>{at('cls', r.class_id, d)}{r.section_id && ` › ${at('sec', r.section_id, d)}`}</td><td>{at('grade', r.student_grade_id, d)}</td><td>{L('FEE_FREQUENCY', r.fee_frequency_code)}</td></>
+                : <><td>{at('job', r.job_id, d)}</td><td>{at('pos', r.position_id, d)}</td><td>{at('dept', r.department_id, d)}</td><td>{at('sgrade', r.staff_grade_id, d)}</td><td>{L('PAYROLL_STATUS', r.payroll_status_code)}</td></>}
               <td>{r.comments}</td><td className="text-xs text-gray-500">{r.last_updated_by}<br />{fmtDateTime(r.last_update_date)}</td>
-            </tr>))}
+            </tr>);
+          })}
           </tbody>
         </table>
       </div>

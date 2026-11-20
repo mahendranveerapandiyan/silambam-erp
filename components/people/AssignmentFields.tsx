@@ -1,42 +1,56 @@
 import type { SessionUser } from '@/lib/auth';
 import type { Row } from '@/lib/db';
-import { assignmentFormOptions, type PersonKind } from '@/lib/people';
-import { Field, Select } from '../ui';
+import type { PersonKind } from '@/lib/people';
+import { datedLookupOptions, datedRefOptions } from '@/lib/dt';
+import { myClassesDated } from '@/lib/scope';
+import { sql } from '@/lib/db';
+import { Field } from '../ui';
+import { DatedSelect } from '../DatedSelect';
 
-/** Student or staff assignment attributes. `a` holds current values. */
-export async function AssignmentFields({ u, kind, asOf, a = {}, showStatus = false }: { u: SessionUser; kind: PersonKind; asOf: string; a?: Row; showStatus?: boolean }) {
-  const o: any = await assignmentFormOptions(u, kind, asOf);
+/**
+ * Student or staff assignment attributes. Every drop-down follows the date
+ * input named `dateField` (admission/hire date or action effective date).
+ */
+export async function AssignmentFields({ u, kind, a = {}, showStatus = false, dateField }: { u: SessionUser; kind: PersonKind; asOf?: string; a?: Row; showStatus?: boolean; dateField: string }) {
+  const E = u.enterpriseId;
+  const D = (name: string, options: any[], value: any, extra: { required?: boolean; empty?: string | false } = {}) => (
+    <DatedSelect name={name} options={options} dateField={dateField} value={value == null ? '' : String(value)} {...extra} />
+  );
+  const statuses = await datedRefOptions(kind === 'STUDENT' ? 'student-statuses' : 'staff-statuses', E);
+  const personTypes = await datedRefOptions(kind === 'STUDENT' ? 'student-person-types' : 'staff-person-types', E);
   const status = showStatus && (
-    <Field label="Status Override" help="Empty = status defined on the action"><Select name="assignment_status_id" options={o.statuses} value={null} empty="— From action —" /></Field>
+    <Field label="Status Override" help="Empty = status defined on the action">{D('assignment_status_id', statuses, null, { empty: '— From action —' })}</Field>
   );
   if (kind === 'STUDENT') {
+    const years = (await sql`select id, name, start_date, end_date from academic_year where enterprise_id = ${E} order by start_date desc`)
+      .map((y) => ({ value: String(y.id), label: y.name, start: y.start_date, end: y.end_date }));
     const cs = a.class_id ? `${a.class_id}:${a.section_id ?? ''}` : '';
     return (
       <>
-        <Field label="Branch › Class › Section *" className="sm:col-span-2"><Select name="class_section" options={o.classSections} value={cs} required /></Field>
-        <Field label="Academic Year"><Select name="academic_year_id" options={o.years} value={a.academic_year_id} empty="— Year of effective date —" /></Field>
-        <Field label="Grade / Level"><Select name="student_grade_id" options={o.grades} value={a.student_grade_id} /></Field>
-        <Field label="Fee Frequency"><Select name="fee_frequency_code" options={o.frequencies} value={a.fee_frequency_code ?? 'MONTHLY'} empty={false} /></Field>
-        <Field label="House"><Select name="house_id" options={o.houses} value={a.house_id} /></Field>
-        <Field label="Club"><Select name="club_id" options={o.clubs} value={a.club_id} /></Field>
-        <Field label="Community"><Select name="community_id" options={o.communities} value={a.community_id} /></Field>
-        <Field label="Person Type"><Select name="person_type_id" options={o.personTypes} value={a.person_type_id} /></Field>
+        <Field label="Branch › Class › Section *" className="sm:col-span-2">{D('class_section', await myClassesDated(u), cs, { required: true })}</Field>
+        <Field label="Academic Year" help="Empty = the year containing the date">{D('academic_year_id', years, a.academic_year_id, { empty: '— Year of effective date —' })}</Field>
+        <Field label="Grade / Level">{D('student_grade_id', await datedRefOptions('student-grades', E), a.student_grade_id)}</Field>
+        <Field label="Fee Frequency">{D('fee_frequency_code', (await datedLookupOptions('FEE_FREQUENCY')).filter((o) => o.value !== 'ONE_TIME'), a.fee_frequency_code ?? 'MONTHLY', { empty: false })}</Field>
+        <Field label="House">{D('house_id', await datedRefOptions('houses', E), a.house_id)}</Field>
+        <Field label="Club">{D('club_id', await datedRefOptions('clubs', E), a.club_id)}</Field>
+        <Field label="Community">{D('community_id', await datedRefOptions('communities', E), a.community_id)}</Field>
+        <Field label="Person Type">{D('person_type_id', personTypes, a.person_type_id)}</Field>
         {status}
       </>
     );
   }
   return (
     <>
-      <Field label="Business Unit *"><Select name="business_unit_id" options={o.bus} value={a.business_unit_id} required /></Field>
-      <Field label="Location"><Select name="location_id" options={o.locations} value={a.location_id} /></Field>
-      <Field label="Department"><Select name="department_id" options={o.departments} value={a.department_id} /></Field>
-      <Field label="Job"><Select name="job_id" options={o.jobs} value={a.job_id} /></Field>
-      <Field label="Position"><Select name="position_id" options={o.positions} value={a.position_id} /></Field>
-      <Field label="Grade"><Select name="staff_grade_id" options={o.staffGrades} value={a.staff_grade_id} /></Field>
-      <Field label="Employment Type"><Select name="employment_type_code" options={o.employmentTypes} value={a.employment_type_code} /></Field>
-      <Field label="Employment Category"><Select name="employment_category_code" options={o.employmentCategories} value={a.employment_category_code} /></Field>
-      <Field label="Payroll Status"><Select name="payroll_status_code" options={o.payrollStatuses} value={a.payroll_status_code} /></Field>
-      <Field label="Person Type"><Select name="person_type_id" options={o.personTypes} value={a.person_type_id} /></Field>
+      <Field label="Business Unit *">{D('business_unit_id', await datedRefOptions('business-units', E), a.business_unit_id, { required: true })}</Field>
+      <Field label="Location">{D('location_id', await datedRefOptions('locations', E), a.location_id)}</Field>
+      <Field label="Department">{D('department_id', await datedRefOptions('departments', E), a.department_id)}</Field>
+      <Field label="Job">{D('job_id', await datedRefOptions('jobs', E), a.job_id)}</Field>
+      <Field label="Position">{D('position_id', await datedRefOptions('positions', E), a.position_id)}</Field>
+      <Field label="Grade">{D('staff_grade_id', await datedRefOptions('staff-grades', E), a.staff_grade_id)}</Field>
+      <Field label="Employment Type">{D('employment_type_code', await datedLookupOptions('EMPLOYMENT_TYPE'), a.employment_type_code)}</Field>
+      <Field label="Employment Category">{D('employment_category_code', await datedLookupOptions('EMPLOYMENT_CATEGORY'), a.employment_category_code)}</Field>
+      <Field label="Payroll Status">{D('payroll_status_code', await datedLookupOptions('PAYROLL_STATUS'), a.payroll_status_code)}</Field>
+      <Field label="Person Type">{D('person_type_id', personTypes, a.person_type_id)}</Field>
       {status}
     </>
   );

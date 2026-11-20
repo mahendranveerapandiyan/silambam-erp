@@ -50,3 +50,26 @@ export async function assertStudentAccess(u: SessionUser, personId: string, asOf
     where a.person_id = ${personId} and a.assignment_type = 'STUDENT' ${studentScopeSql(u, asOf)}`;
   if (!r) throw new Error('You do not have access to this student (not in your class on this date).');
 }
+
+/**
+ * Class/section options with the periods they are valid for (section × class ×
+ * branch versions, and for incharges their incharge period), labelled with the
+ * names in force during each period. Used by date-aware forms.
+ */
+export async function myClassesDated(u: SessionUser): Promise<{ value: string; label: string; start: string; end: string }[]> {
+  const rows = await sql`
+    select sf.id section_id, sf.class_id,
+      greatest(sf.effective_start_date, cf.effective_start_date, bf.effective_start_date ${seesAllStudents(u) ? sql`` : sql`, ci.start_date`}) s,
+      least(sf.effective_end_date, cf.effective_end_date, bf.effective_end_date ${seesAllStudents(u) ? sql`` : sql`, ci.end_date`}) e,
+      bf.name || ' › ' || cf.name || ' › ' || sf.name label
+    from section s
+    join section_f sf on sf.id = s.id and sf.active_flag = 'Y'
+    join class_f cf on cf.id = sf.class_id and daterange(cf.effective_start_date, cf.effective_end_date, '[]') && daterange(sf.effective_start_date, sf.effective_end_date, '[]')
+    join business_unit_f bf on bf.id = cf.business_unit_id and daterange(bf.effective_start_date, bf.effective_end_date, '[]') && daterange(cf.effective_start_date, cf.effective_end_date, '[]')
+    ${seesAllStudents(u) ? sql`` : sql`join class_incharge ci on ci.person_id = ${u.personId ?? '0'} and ci.class_id = sf.class_id and (ci.section_id is null or ci.section_id = s.id)`}
+    where s.enterprise_id = ${u.enterpriseId}`;
+  return rows
+    .filter((r) => r.s <= r.e)
+    .map((r) => ({ value: `${r.class_id}:${r.section_id}`, label: r.label, start: r.s, end: r.e }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}

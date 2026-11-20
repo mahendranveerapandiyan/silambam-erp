@@ -23,6 +23,7 @@ export default async function EntityList({ params, searchParams }: { params: Pro
   const show = (f: (typeof listFields)[number], v: any) => {
     if (v === null || v === undefined || v === '') return '';
     if (f.type === 'lookup') return L(f.lookup!, v);
+    if (f.type === 'multilookup') return String(v).split(',').map((c) => L(f.lookup!, c)).join(', ');
     if (f.type === 'yesno') return v === 'Y' ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge>;
     if (f.type === 'ref') return refMaps[f.name][String(v)] ?? v;
     if (f.type === 'color') return <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-3 rounded" style={{ background: v }} />{v}</span>;

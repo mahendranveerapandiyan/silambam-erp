@@ -10,6 +10,22 @@ import { nextNumber } from '@/lib/numbering';
 import { assertStudentAccess, myClasses } from '@/lib/scope';
 import { actionByType, actionInfo, academicYearOn, buLegalEmployer, classHierarchy, type PersonKind } from '@/lib/people';
 import { generateStudentFees } from '@/lib/fees';
+import { assertEffective } from '@/lib/integrity';
+
+/** Assignment columns that point at date-tracked setup records. */
+const ASG_REFS: [string, string, string][] = [
+  ['section_id', 'section', 'Section'], ['student_grade_id', 'student_grade', 'Grade'], ['house_id', 'house', 'House'],
+  ['club_id', 'club', 'Club'], ['community_id', 'community', 'Community'], ['person_type_id', 'person_type', 'Person type'],
+  ['assignment_status_id', 'assignment_status', 'Status'], ['location_id', 'location', 'Location'], ['job_id', 'job', 'Job'],
+  ['staff_grade_id', 'staff_grade', 'Grade'], ['department_id', 'department', 'Department'], ['position_id', 'position', 'Position'],
+];
+async function assertAssignmentRefs(v: Record<string, any>, date: string) {
+  for (const [col, table, label] of ASG_REFS) if (v[col]) await assertEffective(sql, table, v[col], date, label);
+  if (v.academic_year_id) {
+    const [y] = await sql`select name, start_date, end_date from academic_year where id = ${v.academic_year_id}`;
+    if (y && (date < y.start_date || date > y.end_date)) throw new Error(`${date} is outside academic year ${y.name} (${y.start_date} – ${y.end_date}).`);
+  }
+}
 
 const base = (k: PersonKind) => (k === 'STUDENT' ? '/students' : '/staff');
 
@@ -30,7 +46,7 @@ async function guard(u: SessionUser, kind: PersonKind, personId: string | null, 
 }
 
 /** Assignment attribute values from a submitted form. */
-async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string, string | null>, date: string) {
+async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string, string | null>, date: string): Promise<Record<string, any>> {
   if (kind === 'STUDENT') {
     if (!o.class_section) throw new Error('Class / Section is required');
     const [classId, sectionId] = o.class_section.split(':');
@@ -41,19 +57,23 @@ async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string
     const h = await classHierarchy(classId, date);
     let ay = o.academic_year_id;
     if (!ay) ay = (await academicYearOn(u.enterpriseId, date))?.id ?? null;
-    return {
+    const sv = {
       class_id: classId, section_id: sectionId || null, business_unit_id: h.business_unit_id, legal_employer_id: h.legal_employer_id,
       academic_year_id: ay, student_grade_id: o.student_grade_id, house_id: o.house_id, club_id: o.club_id, community_id: o.community_id,
       fee_frequency_code: o.fee_frequency_code ?? 'MONTHLY', person_type_id: o.person_type_id, comments: o.comments,
     };
+    await assertAssignmentRefs({ ...sv, assignment_status_id: o.assignment_status_id }, date);
+    return sv;
   }
   if (!o.business_unit_id) throw new Error('Business unit is required');
-  return {
+  const fv = {
     business_unit_id: o.business_unit_id, legal_employer_id: await buLegalEmployer(o.business_unit_id, date), location_id: o.location_id,
     job_id: o.job_id, staff_grade_id: o.staff_grade_id, department_id: o.department_id, position_id: o.position_id,
     employment_type_code: o.employment_type_code, employment_category_code: o.employment_category_code, payroll_status_code: o.payroll_status_code,
     person_type_id: o.person_type_id, comments: o.comments,
   };
+  await assertAssignmentRefs({ ...fv, assignment_status_id: o.assignment_status_id }, date);
+  return fv;
 }
 
 async function createLogin(tx: Tx, u: SessionUser, username: string, password: string, display: string, personId: string | null, roles: string[], students: string[] = []) {

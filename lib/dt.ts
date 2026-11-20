@@ -135,3 +135,77 @@ export async function refNames(entityKey: string, enterpriseId: string, asOf: st
 }
 
 export { EOT };
+
+// ------------------------------------------------------------------------
+// Correct any saved version (including its effective start date)
+// ------------------------------------------------------------------------
+/**
+ * Corrects the version that starts on `versionStart`. If `newStart` differs,
+ * the version's start moves and the previous version's end follows it, so the
+ * history stays continuous. Returns the old/new start for integrity checks.
+ */
+export async function dtCorrectVersion(tx: Tx, table: string, id: string, versionStart: string, newStart: string, values: Row, by: string) {
+  const ft = `${table}_f`;
+  const [row] = await tx`select * from ${tx(ft)} where id = ${id} and effective_start_date = ${versionStart} for update`;
+  if (!row) throw new Error('That version no longer exists. Refresh the page.');
+  const [prev] = await tx`select * from ${tx(ft)} where id = ${id} and effective_end_date = ${addDays(versionStart, -1)} for update`;
+  if (newStart > row.effective_end_date) throw new Error(`Start date cannot be after this version's end date (${row.effective_end_date}).`);
+  if (prev && newStart <= prev.effective_start_date)
+    throw new Error(`Start date must be after the previous version's start (${prev.effective_start_date}). To go earlier, correct or delete the previous version first.`);
+  const audit = { last_updated_by: by, last_update_date: new Date() };
+  // order the updates so the no-overlap constraint is never violated midway
+  if (prev && newStart < versionStart) await tx`update ${tx(ft)} set effective_end_date = ${addDays(newStart, -1)} where id = ${id} and effective_start_date = ${prev.effective_start_date}`;
+  await tx`update ${tx(ft)} set ${tx({ ...values, ...audit, effective_start_date: newStart })}, object_version_number = object_version_number + 1
+           where id = ${id} and effective_start_date = ${versionStart}`;
+  if (prev && newStart > versionStart) await tx`update ${tx(ft)} set effective_end_date = ${addDays(newStart, -1)} where id = ${id} and effective_start_date = ${prev.effective_start_date}`;
+  return { isFirst: !prev, oldStart: versionStart, newStart };
+}
+
+/** First start / last end of a record. */
+export async function dtSpan(tx: Tx, table: string, id: string) {
+  const [r] = await tx`select min(effective_start_date) s, max(effective_end_date) e from ${tx(table + '_f')} where id = ${id}`;
+  return { start: r.s as string, end: r.e as string };
+}
+
+// ------------------------------------------------------------------------
+// Date-aware options: each option carries the period it is valid for and the
+// name it had in that period, so forms can show only what exists on the date
+// being entered (e.g. a branch renamed LSTS -> LSTC shows the right name).
+// ------------------------------------------------------------------------
+export type DatedOpt = { value: string; label: string; start: string; end: string; parent?: string | null; inactive?: boolean };
+
+export async function datedRefOptions(entityKey: string, enterpriseId: string): Promise<DatedOpt[]> {
+  const e = ENTITIES[entityKey];
+  const rows = await sql`
+    select b.id, f.* from ${sql(e.table)} b join ${sql(e.table + '_f')} f on f.id = b.id
+    where b.enterprise_id = ${enterpriseId} ${fixedWhere(e)}
+    order by ${e.fields.some((x) => x.name === 'sequence_no') ? sql`f.sequence_no,` : sql``} f.name, f.effective_start_date`;
+  if (!e.parentRef) {
+    return rows.map((r) => ({ value: String(r.id), label: r.name, start: r.effective_start_date, end: r.effective_end_date, inactive: r.active_flag === 'N' }));
+  }
+  // label "Parent › Name": split each version by the parent's versions
+  const parents = await datedRefOptions(e.parentRef.entity, enterpriseId);
+  const out: DatedOpt[] = [];
+  for (const r of rows) {
+    const pid = String(r[e.parentRef.field]);
+    for (const p of parents.filter((x) => x.value === pid)) {
+      const start = r.effective_start_date > p.start ? r.effective_start_date : p.start;
+      const end = r.effective_end_date < p.end ? r.effective_end_date : p.end;
+      if (start <= end) out.push({ value: String(r.id), label: `${p.label} › ${r.name}`, start, end, parent: pid, inactive: r.active_flag === 'N' || p.inactive });
+    }
+  }
+  return out.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+export async function datedLookupOptions(type: string): Promise<DatedOpt[]> {
+  const rows = await sql`select lookup_code, meaning, parent_code, start_date, end_date from lookup_value
+    where lookup_type = ${type} and enabled_flag = 'Y' order by display_seq, meaning`;
+  return rows.map((r) => ({ value: r.lookup_code, label: r.meaning, start: r.start_date, end: r.end_date, parent: r.parent_code }));
+}
+
+/** Name of a record on a given date from a preloaded version list. */
+export function nameOn(opts: DatedOpt[], id: string | null | undefined, date: string) {
+  if (!id) return '';
+  const vs = opts.filter((o) => o.value === String(id));
+  return (vs.find((o) => date >= o.start && date <= o.end) ?? vs.at(-1))?.label ?? String(id);
+}

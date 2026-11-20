@@ -148,7 +148,7 @@ try {
     const classes = [];
     for (const [bi, bu] of bus.entries()) {
       for (const [ci, [cn, timing]] of [['Kids Batch', '6:00 AM - 7:00 AM'], ['Adults Batch', '6:00 PM - 7:30 PM']].entries()) {
-        const c = await dt(tx, 'class', E, `BR${bi + 1}-C${ci + 1}`, cn, { business_unit_id: bu, batch_timing: timing, training_days: 'Mon, Wed, Fri', capacity: 40 });
+        const c = await dt(tx, 'class', E, `BR${bi + 1}-C${ci + 1}`, cn, { business_unit_id: bu, batch_timing: timing, training_days: 'MON,WED,FRI', capacity: 40 });
         const s = await dt(tx, 'section', E, `BR${bi + 1}-C${ci + 1}-A`, 'Section A', { class_id: c, capacity: 20 });
         classes.push({ bu, c, s });
       }

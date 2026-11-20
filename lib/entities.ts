@@ -2,12 +2,12 @@
 // screens (/setup/[entity]) drives create / view / update / correct /
 // end-date / history for every entry below.
 
-export type FieldType = 'text' | 'textarea' | 'number' | 'color' | 'lookup' | 'ref' | 'yesno';
+export type FieldType = 'text' | 'textarea' | 'number' | 'color' | 'lookup' | 'multilookup' | 'ref' | 'yesno';
 export type Field = {
   name: string;
   label: string;
   type: FieldType;
-  lookup?: string; // lookup type for 'lookup'
+  lookup?: string; // lookup type for 'lookup' / 'multilookup' (stored as comma-separated codes)
   ref?: string; // entity key for 'ref'
   parentField?: string; // dependent lookup (e.g. state depends on country)
   required?: boolean;
@@ -79,7 +79,7 @@ const E: Entity[] = [
     fields: [
       { name: 'business_unit_id', label: 'Business Unit', type: 'ref', ref: 'business-units', required: true, list: true },
       { name: 'batch_timing', label: 'Batch Timing', type: 'text', list: true },
-      { name: 'training_days', label: 'Training Days', type: 'text', list: true },
+      { name: 'training_days', label: 'Training Days', type: 'multilookup', lookup: 'DAY_OF_WEEK', list: true },
       { name: 'capacity', label: 'Capacity', type: 'number' },
       active,
     ],
