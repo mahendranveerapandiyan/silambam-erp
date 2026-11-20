@@ -25,5 +25,6 @@ npm run db:migrate
 node scripts/seed.mjs --demo || echo "Database already has data - skipping demo seed."
 
 echo
-echo "Ready. The app starts automatically (npm run dev) on port 3000."
+npm run build
+echo "Ready. Start the app with:  npm start   (then open port 3000 in the PORTS tab)"
 echo "Logins: admin/admin123 · incharge1/pass123 · parent1/pass123"

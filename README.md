@@ -10,9 +10,9 @@ See **[DEPLOY.md](DEPLOY.md)** – one small server (≈ ₹0–900/month) with 
 
 ## Open in GitHub Codespaces (no install)
 
-Click **Code › Codespaces › Create codespace on main**. The first start takes a few minutes: it installs packages, starts PostgreSQL, creates the schema and loads demo data, then runs the app and opens port 3000 in a new browser tab (if it doesn't, open the **Ports** tab and click the globe icon next to 3000). Log in with `admin / admin123`.
+Click **Code › Codespaces › Create codespace on main**. The first start takes a few minutes: it installs packages, starts PostgreSQL, creates the schema, loads demo data and builds the app. Then run `npm start` in the terminal and open port 3000 from the **Ports** tab (globe icon). Log in with `admin / admin123`.
 
-Next time you open the same codespace the data is still there and the app starts again automatically. To start over with fresh demo data run `npm run db:reset` in the terminal.
+Next time you open the same codespace the data is still there; run `npm start` again. If it says the port is in use, run `npx --yes kill-port 3000` first. To start over with fresh demo data run `npm run db:reset` in the terminal.
 
 ## Quick start (development)
 
