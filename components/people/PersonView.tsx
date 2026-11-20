@@ -10,6 +10,7 @@ import { fmtDate, fmtDateTime, money, ageOn } from '@/lib/util';
 import { totals } from '@/lib/fees';
 import { PageHeader, Flash, Field, Badge, Back, Tabs, Empty, Select, STATUS_COLOR, here } from '../ui';
 import { ConfirmButton } from '../client';
+import { PhotoInput } from '../PhotoInput';
 import { PersonFields } from './PersonFields';
 import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment } from '@/app/(app)/people/actions';
 
@@ -92,7 +93,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
           </div>
           {canEdit && (
             <form action={uploadPhoto.bind(null, kind, personId)} className="flex gap-2">
-              <Back to={back} /><input type="file" name="photo" accept="image/*" capture="user" className="input" required /><button className="btn btn-sm">Upload</button>
+              <Back to={back} /><PhotoInput required /><button className="btn btn-sm">Upload</button>
             </form>
           )}
           {isAdmin(u) && (

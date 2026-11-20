@@ -15,28 +15,32 @@ export default async function CollectFees({ searchParams }: { searchParams: SP }
   const asOf = await getAsOf();
   const today = todayISO();
   const cls = s(sp.cls), q = s(sp.q), show = s(sp.show) ?? 'pending';
+  const page = Math.max(1, Number(s(sp.page)) || 1);
   const classes = await myClasses(u, asOf);
   const L = await lk();
   const like = q ? `%${q}%` : null;
   const rows = await sql`
     select a.person_id, a.assignment_number, ${fullName()} full_name, pf.phone, af.fee_frequency_code,
       ${nm('class', 'af.class_id', asOf)} class_name, ${nm('business_unit', 'af.business_unit_id', asOf)} bu_name,
-      coalesce(t.due, 0) due, coalesce(t.paid, 0) paid, coalesce(t.exempted, 0) exempted, coalesce(t.balance, 0) balance, coalesce(t.overdue, 0) overdue
+      coalesce(t.due, 0) due, coalesce(t.paid, 0) paid, coalesce(t.exempted, 0) exempted, coalesce(t.balance, 0) balance, coalesce(t.overdue, 0) overdue,
+      count(*) over () total_count, sum(coalesce(t.balance, 0)) over () total_balance, sum(coalesce(t.overdue, 0)) over () total_overdue
     from assignment a
     join assignment_f af on af.id = a.id and ${asOf}::date between af.effective_start_date and af.effective_end_date
     join person p on p.id = a.person_id ${personAsOf(asOf)}
-    left join lateral (select sum(amount) due, sum(paid_amount) paid, sum(exempted_amount) exempted, sum(balance_amount) balance,
+    left join (select person_id, sum(amount) due, sum(paid_amount) paid, sum(exempted_amount) exempted, sum(balance_amount) balance,
         sum(balance_amount) filter (where due_date < ${today}) overdue
-      from fee_demand_v d where d.person_id = a.person_id and d.cancelled_flag = 'N') t on true
+      from fee_demand_v d where d.enterprise_id = ${u.enterpriseId} and d.cancelled_flag = 'N' group by person_id) t on t.person_id = a.person_id
     where a.enterprise_id = ${u.enterpriseId} and a.assignment_type = 'STUDENT' ${studentScopeSql(u, asOf)}
       ${cls ? sql`and af.class_id = ${cls.split(':')[0]} and af.section_id = ${cls.split(':')[1]}` : sql``}
       ${like ? sql`and (a.assignment_number ilike ${like} or ${fullName()} ilike ${like} or pf.phone ilike ${like})` : sql``}
       ${show === 'pending' ? sql`and coalesce(t.balance, 0) > 0` : show === 'overdue' ? sql`and coalesce(t.overdue, 0) > 0` : sql``}
-    order by overdue desc, full_name limit 1000`;
-  const sum = (k: string) => rows.reduce((a, r) => a + Number(r[k]), 0);
+    order by overdue desc, full_name limit 100 offset ${(page - 1) * 100}`;
+  const total = Number(rows[0]?.total_count ?? 0);
+  const pages = Math.max(1, Math.ceil(total / 100));
+  const pageHref = (n: number) => '?' + new URLSearchParams({ ...(q ? { q } : {}), ...(cls ? { cls } : {}), show, page: String(n) }).toString();
   return (
     <div>
-      <PageHeader title="Collect Fees" subtitle={`${rows.length} student(s) · pending ${money(sum('balance'))} · overdue ${money(sum('overdue'))}`} />
+      <PageHeader title="Collect Fees" subtitle={`${total} student(s) · pending ${money(rows[0]?.total_balance ?? 0)} · overdue ${money(rows[0]?.total_overdue ?? 0)}`} />
       <Flash sp={sp} />
       <div className="card">
         <form className="mb-3 grid gap-2 sm:grid-cols-4">
@@ -59,6 +63,13 @@ export default async function CollectFees({ searchParams }: { searchParams: SP }
           </table>
           {!rows.length && <Empty />}
         </div>
+        {pages > 1 && (
+          <div className="mt-3 flex items-center gap-2 text-sm">
+            <span className="muted">Page {page} of {pages}</span>
+            {page > 1 && <Link className="btn btn-sm" href={pageHref(page - 1)}>‹ Previous</Link>}
+            {page < pages && <Link className="btn btn-sm" href={pageHref(page + 1)}>Next ›</Link>}
+          </div>
+        )}
       </div>
     </div>
   );

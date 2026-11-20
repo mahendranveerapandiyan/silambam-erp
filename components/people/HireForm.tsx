@@ -6,6 +6,7 @@ import type { PersonKind } from '@/lib/people';
 import { lookupOptions } from '@/lib/lookups';
 import { PageHeader, Flash, Field, Back } from '../ui';
 import { PersonFields } from './PersonFields';
+import { PhotoInput } from '../PhotoInput';
 import { AssignmentFields } from './AssignmentFields';
 import { hirePerson } from '@/app/(app)/people/actions';
 
@@ -40,7 +41,7 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
           <p className="muted mb-3">Ignored when an existing person number is given.</p>
           <div className="grid-form">
             <PersonFields asOf={asOf} />
-            <Field label="Photo"><input type="file" name="photo" accept="image/*" capture="user" className="input" /></Field>
+            <Field label="Photo"><PhotoInput /></Field>
           </div>
         </div>
         {stu ? (

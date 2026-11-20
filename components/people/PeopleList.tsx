@@ -10,13 +10,17 @@ import { AutoSubmit } from '../client';
 
 export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: PersonKind; asOf: string; sp: Record<string, any> }) {
   const f = { q: s(sp.q), bu: s(sp.bu), cls: s(sp.cls), grade: s(sp.grade), status: s(sp.status) };
-  const rows = await peopleList(u, kind, asOf, f);
+  const page = Math.max(1, Number(s(sp.page)) || 1);
+  const rows = await peopleList(u, kind, asOf, f, page);
+  const total = Number(rows[0]?.total_count ?? 0);
+  const pages = Math.max(1, Math.ceil(total / 100));
+  const pageHref = (n: number) => '?' + new URLSearchParams({ ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)) as Record<string, string>, page: String(n) }).toString();
   const [bus, classes, grades, L] = [await refOptions('business-units', u.enterpriseId, asOf), await refOptions('classes', u.enterpriseId, asOf), await refOptions('student-grades', u.enterpriseId, asOf), await lk()];
   const stu = kind === 'STUDENT';
   const base = stu ? '/students' : '/staff';
   return (
     <div>
-      <PageHeader title={stu ? 'Student Directory' : 'Staff Directory'} subtitle={`${rows.length} record(s) as of ${fmtDate(asOf)}${stu && !isAdmin(u) && !u.roles.includes('ACCOUNTANT') ? ' · your classes only' : ''}`}
+      <PageHeader title={stu ? 'Student Directory' : 'Staff Directory'} subtitle={`${total} record(s) as of ${fmtDate(asOf)}${stu && !isAdmin(u) && !u.roles.includes('ACCOUNTANT') ? ' · your classes only' : ''}`}
         actions={<><Link href={`${base}/new`} className="btn btn-primary">{stu ? '+ New Admission' : '+ Hire Staff'}</Link></>} />
       <Flash sp={sp} />
       <div className="card">
@@ -40,7 +44,7 @@ export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: 
             <tbody>
               {rows.map((r) => (
                 <tr key={r.assignment_id}>
-                  <td className="w-10">{r.has_photo ? <img src={`/api/photo/${r.person_id}`} alt="" className="h-8 w-8 rounded-full object-cover" /> : <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/10 text-xs font-bold">{r.full_name?.[0]}</div>}</td>
+                  <td className="w-10">{r.has_photo ? <img src={`/api/photo/${r.person_id}`} alt="" loading="lazy" className="h-8 w-8 rounded-full object-cover" /> : <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black/10 text-xs font-bold">{r.full_name?.[0]}</div>}</td>
                   <td><Link className="link" href={`${base}/${r.person_id}`}>{r.assignment_number}</Link></td>
                   <td>{r.full_name}</td>
                   <td>{r.phone}</td>
@@ -55,6 +59,13 @@ export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: 
           </table>
           {!rows.length && <Empty />}
         </div>
+        {pages > 1 && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+            <span className="muted">Page {page} of {pages}</span>
+            {page > 1 && <Link className="btn btn-sm" href={pageHref(page - 1)}>‹ Previous</Link>}
+            {page < pages && <Link className="btn btn-sm" href={pageHref(page + 1)}>Next ›</Link>}
+          </div>
+        )}
       </div>
     </div>
   );

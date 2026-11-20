@@ -24,6 +24,8 @@ export async function peopleList(
   kind: PersonKind,
   asOf: string,
   f: { q?: string | null; bu?: string | null; cls?: string | null; grade?: string | null; status?: string | null },
+  page = 1,
+  pageSize = 100,
 ) {
   const like = f.q ? `%${f.q}%` : null;
   const status = f.status || 'ACTIVE';
@@ -39,7 +41,8 @@ export async function peopleList(
       ${nm('job', 'af.job_id', asOf)} job_name,
       ${nm('department', 'af.department_id', asOf)} department_name,
       ${nm('staff_grade', 'af.staff_grade_id', asOf)} staff_grade_name,
-      exists (select 1 from person_photo ph where ph.person_id = p.id) has_photo
+      exists (select 1 from person_photo ph where ph.person_id = p.id) has_photo,
+      count(*) over () as total_count
     from assignment a
     join assignment_f af on af.id = a.id and ${asOf}::date between af.effective_start_date and af.effective_end_date
     join person p on p.id = a.person_id
@@ -53,7 +56,7 @@ export async function peopleList(
       ${f.grade ? sql`and af.student_grade_id = ${f.grade}` : sql``}
       ${like ? sql`and (a.assignment_number ilike ${like} or p.person_number ilike ${like} or ${fullName()} ilike ${like} or pf.phone ilike ${like})` : sql``}
     order by full_name
-    limit 1000`;
+    limit ${pageSize} offset ${(Math.max(1, page) - 1) * pageSize}`;
 }
 
 export async function personDetail(personId: string, asOf: string) {

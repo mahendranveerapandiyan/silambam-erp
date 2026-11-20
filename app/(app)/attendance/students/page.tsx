@@ -50,7 +50,7 @@ export default async function StudentAttendance({ searchParams }: { searchParams
               <thead><tr><th></th><th>Student</th><th>Status</th><th>Remarks</th><th>Recorded</th></tr></thead>
               <tbody>{rows.map((r) => (
                 <tr key={r.person_id}>
-                  <td className="w-10">{r.has_photo ? <img src={`/api/photo/${r.person_id}`} alt="" className="h-9 w-9 rounded-full object-cover" /> : <div className="h-9 w-9 rounded-full bg-black/10" />}</td>
+                  <td className="w-10">{r.has_photo ? <img src={`/api/photo/${r.person_id}`} alt="" loading="lazy" className="h-9 w-9 rounded-full object-cover" /> : <div className="h-9 w-9 rounded-full bg-black/10" />}</td>
                   <td><div className="font-medium">{r.full_name}</div><div className="font-mono text-xs text-gray-500">{r.assignment_number}</div></td>
                   <td>
                     <div className="flex flex-wrap gap-1">

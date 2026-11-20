@@ -27,6 +27,8 @@ services:
       DATABASE_URL: postgres://silambam:${DB_PASSWORD}@db:5432/silambam
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET missing in deploy/.env}
       TZ: ${TZ:-Asia/Kolkata}
+      # keep Node's memory small and predictable on 1 GB servers
+      NODE_OPTIONS: --max-old-space-size=256
     mem_limit: 512m
 
   db:
