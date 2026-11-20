@@ -6,7 +6,11 @@ import { cache } from 'react';
 import { sql } from './db';
 
 const COOKIE = 'erp_session';
-const secret = () => new TextEncoder().encode(process.env.SESSION_SECRET || 'dev-only-secret-change-me-please-0123456789');
+const secret = () => {
+  const s = process.env.SESSION_SECRET;
+  if (!s && process.env.NODE_ENV === 'production') throw new Error('SESSION_SECRET is not set');
+  return new TextEncoder().encode(s || 'dev-only-secret-change-me-please-0123456789');
+};
 
 export type Role = 'ADMIN' | 'INCHARGE' | 'STAFF' | 'ACCOUNTANT' | 'PARENT' | 'STUDENT';
 export type SessionUser = {

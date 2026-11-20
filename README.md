@@ -4,6 +4,10 @@ A date-effective, lookup-driven ERP for a Silambam training school: students, st
 
 **Stack:** Next.js 15 (App Router, server actions) · TypeScript · PostgreSQL 16 · Tailwind CSS. Works on phones (QR scanning uses the phone camera; needs HTTPS in production).
 
+## Going live
+
+See **[DEPLOY.md](DEPLOY.md)** – one small server (≈ ₹0–900/month) with automatic HTTPS and nightly backups, installed with `sudo bash deploy/setup.sh`.
+
 ## Open in GitHub Codespaces (no install)
 
 Click **Code › Codespaces › Create codespace on main**. The first start takes a few minutes: it installs packages, starts PostgreSQL, creates the schema and loads demo data, then runs the app and opens port 3000 in a new browser tab (if it doesn't, open the **Ports** tab and click the globe icon next to 3000). Log in with `admin / admin123`.

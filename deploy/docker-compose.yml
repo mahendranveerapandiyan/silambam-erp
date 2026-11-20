@@ -1,0 +1,66 @@
+# Production stack for one small server (1-2 GB RAM is enough):
+#   caddy  - HTTPS (free Let's Encrypt certificate, auto-renewed)
+#   app    - Silambam ERP
+#   db     - PostgreSQL 16, tuned for a small server
+#   backup - nightly database backups to deploy/backups (kept BACKUP_KEEP_DAYS days)
+# Managed by deploy/setup.sh and deploy/deploy.sh; settings live in deploy/.env
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN missing in deploy/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  app:
+    build: ..
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      DATABASE_URL: postgres://silambam:${DB_PASSWORD}@db:5432/silambam
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET missing in deploy/.env}
+      TZ: ${TZ:-Asia/Kolkata}
+    mem_limit: 512m
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: silambam
+      POSTGRES_USER: silambam
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD missing in deploy/.env}
+      TZ: ${TZ:-Asia/Kolkata}
+    command: >
+      postgres -c shared_buffers=128MB -c effective_cache_size=384MB -c work_mem=4MB
+               -c maintenance_work_mem=64MB -c max_connections=40
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      PGHOST: db
+      PGUSER: silambam
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: silambam
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      BACKUP_TIME: ${BACKUP_TIME:-0 2 * * *}
+      TZ: ${TZ:-Asia/Kolkata}
+    volumes:
+      - ./backups:/backups
+      - ./backup.sh:/backup.sh:ro
+    entrypoint: ["/bin/sh", "-c", "echo \"$$BACKUP_TIME sh /backup.sh >> /backups/backup.log 2>&1\" | crontab - && crond -f -l 8"]
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

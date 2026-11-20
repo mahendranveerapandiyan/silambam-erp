@@ -1,11 +1,10 @@
-# Local / small-server deployment: PostgreSQL + the app.
-#   docker compose up -d --build
-#   docker compose exec app npm run db:migrate
-#   docker compose exec app node scripts/seed.mjs          # base config only
-#   (or: node scripts/seed.mjs --demo for demo branches/students)
+# Quick local run (http://localhost:3000). For a real server use deploy/ (HTTPS + backups).
+#   SESSION_SECRET=some-long-random-text docker compose up -d --build
+#   docker compose exec app node scripts/migrate.mjs
+#   docker compose exec app node scripts/seed.mjs --demo     # or without --demo for an empty school
 services:
   db:
-    image: postgres:16
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: silambam
@@ -20,7 +19,6 @@ services:
     environment:
       DATABASE_URL: postgres://silambam:${DB_PASSWORD:-change-me}@db:5432/silambam
       SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET to a long random string}
-      NODE_ENV: production
     ports:
       - "3000:3000"
 volumes:
