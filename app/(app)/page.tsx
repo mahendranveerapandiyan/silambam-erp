@@ -37,7 +37,7 @@ export default async function Dashboard() {
   const exams = await sql`select id, name, exam_date, exam_type_code from exam where enterprise_id = ${E} and exam_date between ${today} and ${addDays(today, 60)} and status_code = 'SCHEDULED' order by exam_date limit 5`;
   const events = await sql`select id, name, start_date, event_type_code from event where enterprise_id = ${E} and end_date >= ${today} and status_code in ('PLANNED','OPEN') order by start_date limit 5`;
   const classes = await myClasses(u, today);
-  const classAtt = classes.length && classes.length <= 20 ? await sql`select class_id, section_id, count(*)::int marked from student_attendance where attendance_date = ${today} group by 1, 2` : [];
+  const classAtt = classes.length > 0 && classes.length <= 20 ? await sql`select class_id, section_id, count(*)::int marked from student_attendance where attendance_date = ${today} group by 1, 2` : [];
   const markedMap = new Map(classAtt.map((r) => [`${r.class_id}:${r.section_id}`, r.marked]));
 
   return (

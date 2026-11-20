@@ -21,6 +21,7 @@ export default async function FeeSummary({ searchParams }: { searchParams: SP })
   const L = await lk();
   const bus = await refOptions('business-units', u.enterpriseId, asOf);
   const [year] = years.filter((y) => String(y.id) === ay);
+  if (!year) return <div className="max-w-3xl"><PageHeader title="Fee Summary" /><div className="card"><Empty>No academic year is defined yet. Create one under <b>Academic Structure › Academic Years</b>, then set up fee structures.</Empty></div></div>;
   // demands of the year (+ manual/sale lines dated within it) restricted to the user's students
   const base = sql`
     from fee_demand_v d
