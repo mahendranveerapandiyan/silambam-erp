@@ -9,7 +9,7 @@ import { PageHeader, Flash, Badge, Back, type SP } from '@/components/ui';
 import { ConfirmButton } from '@/components/client';
 import { saveLookupValue, deleteLookupValue, updateLookupType } from '../../actions';
 
-const cols = 'grid grid-cols-[7rem_1fr_1fr_5rem_4rem_4.5rem_8.5rem_8.5rem_7rem_auto] gap-1.5 items-center';
+const cols = 'grid grid-cols-[7rem_1fr_1fr_7rem_4rem_4.5rem_8.5rem_8.5rem_9rem_auto] gap-1.5 items-center';
 
 export default async function LookupValues({ params, searchParams }: { params: Promise<{ type: string }>; searchParams: SP }) {
   const u = await requirePriv(lookupPrivs((await params).type));
@@ -23,6 +23,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
   const parents = t.parent_lookup_type ? await sql`select lookup_code, meaning from lookup_value where lookup_type = ${t.parent_lookup_type} order by display_seq, meaning` : [];
   const back = `/config/lookups/${type}`;
   const sys = t.access_level === 'SYSTEM' || !write;
+  const isId = type === 'IDENTIFICATION_TYPE';
   const ParentSel = ({ v, form }: { v?: string; form: string }) =>
     t.parent_lookup_type ? (
       <select name="parent_code" form={form} defaultValue={v ?? ''} className="input"><option value="" />{parents.map((p) => <option key={p.lookup_code} value={p.lookup_code}>{p.meaning}</option>)}</select>
@@ -42,7 +43,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
       <div className="card overflow-x-auto">
         <div className="min-w-[1100px]">
           <div className={`${cols} border-b pb-1 text-xs font-semibold uppercase text-gray-600`}>
-            <div>Code</div><div>Meaning</div><div>Description</div><div>Tag</div><div>Seq</div><div>Enabled</div><div>Start Date</div><div>End Date</div><div>Parent</div><div />
+            <div>Code</div><div>Meaning</div><div>Description</div><div>{isId ? 'Tag (countries)' : 'Tag'}</div><div>Seq</div><div>Enabled</div><div>Start Date</div><div>End Date</div><div>Parent</div><div />
           </div>
           {values.map((v) => {
             const fid = `f-${v.lookup_code}`;
@@ -52,7 +53,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
                   {usage.get(v.lookup_code) && <div className="font-sans text-[10px] text-blue-700" title={describeUsage(usage.get(v.lookup_code)!)}>in use ({usage.get(v.lookup_code)!.count}){usage.get(v.lookup_code)!.last && (usage.get(v.lookup_code)!.last === '4712-12-31' ? ' · ongoing' : ` to ${usage.get(v.lookup_code)!.last}`)}</div>}</div>
                 <input name="meaning" form={fid} defaultValue={v.meaning} className="input" />
                 <input name="description" form={fid} defaultValue={v.description ?? ''} className="input" />
-                <input name="tag" form={fid} defaultValue={v.tag ?? ''} className="input" />
+                <input name="tag" form={fid} defaultValue={v.tag ?? ''} placeholder={isId ? 'all countries' : ''} className="input" />
                 <input name="display_seq" form={fid} type="number" defaultValue={v.display_seq} className="input" />
                 <select name="enabled_flag" form={fid} defaultValue={v.enabled_flag} className="input"><option value="Y">Yes</option><option value="N">No</option></select>
                 <input name="start_date" form={fid} type="date" defaultValue={v.start_date} className="input" />
@@ -72,7 +73,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
               <input name="lookup_code" form="f-new" placeholder="NEW_CODE" className="input uppercase" required />
               <input name="meaning" form="f-new" placeholder="Meaning" className="input" required />
               <input name="description" form="f-new" className="input" />
-              <input name="tag" form="f-new" className="input" />
+              <input name="tag" form="f-new" placeholder={isId ? '+IN, +US / -US' : ''} className="input" />
               <input name="display_seq" form="f-new" type="number" defaultValue={(values.at(-1)?.display_seq ?? 0) + 10} className="input" />
               <select name="enabled_flag" form="f-new" className="input"><option value="Y">Yes</option><option value="N">No</option></select>
               <input name="start_date" form="f-new" type="date" defaultValue="1951-01-01" className="input" />
@@ -82,6 +83,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
             </div>
           )}
         </div>
+        {isId && <p className="mb-2 mt-3 rounded bg-blue-50 p-2 text-sm"><b>Tag = countries where the type is offered</b>, by the country of the legal employer the person is hired under: empty = all countries · <code>+IN</code> = India only · <code>+IN, +US</code> = only these · <code>-US</code> = all except the US. Use codes from the Country lookup.</p>}
         <p className="muted mt-3">Values are offered in forms only while enabled and between their start and end dates (relative to the As-of date). 🔒 values are used by application logic and cannot be disabled or deleted. Values marked “in use” cannot be deleted, and their end date cannot be earlier than the last date they are used.</p>
       </div>
       </EditScope>

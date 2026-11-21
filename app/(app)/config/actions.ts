@@ -46,6 +46,7 @@ export async function saveLookupValue(type: string, fd: FormData) {
       enabled_flag: o.enabled_flag === 'N' ? 'N' : 'Y', start_date: o.start_date || '1951-01-01', end_date: o.end_date || '4712-12-31',
       parent_code: o.parent_code, last_updated_by: u.username, last_update_date: new Date(),
     };
+    if (type === 'IDENTIFICATION_TYPE') await checkCountryRule(o.tag);
     if (o._new) {
       if (access === 'SYSTEM') throw new Error('This is a system lookup; values cannot be added.');
       const code = o.lookup_code.toUpperCase().replace(/\s+/g, '_');
@@ -253,4 +254,17 @@ export async function saveField(id: string | null, fd: FormData) {
       lookup_type: o.data_type === 'LOOKUP' ? o.lookup_type : null, created_by: u.username })}`;
     return { to: `/config/fields?context=${encodeURIComponent(o.context_code)}`, msg: `Field ${code} added` };
   });
+}
+
+/** Identification Type: tag must be a country rule (+IN, +US / -US) using Country lookup codes. */
+async function checkCountryRule(tag: string | null) {
+  const { parseCountryRule } = await import('@/lib/countryRule');
+  if (tag) {
+    if (!/^\s*[+-]\s*[A-Za-z]{2,3}\s*(,\s*[+-]\s*[A-Za-z]{2,3}\s*)*$/.test(tag))
+      throw new Error('Tag must look like "+IN" or "+IN, +US" (only these countries) or "-US" (all except these).');
+    const { inc, exc } = parseCountryRule(tag);
+    const known = new Set((await sql`select lookup_code from lookup_value where lookup_type = 'COUNTRY'`).map((r) => r.lookup_code as string));
+    const bad = [...inc, ...exc].filter((c) => !known.has(c));
+    if (bad.length) throw new Error(`Unknown country code ${bad.join(', ')} – use the codes from the Country lookup (e.g. IN, US, LK).`);
+  }
 }

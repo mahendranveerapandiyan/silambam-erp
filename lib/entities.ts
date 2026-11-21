@@ -57,6 +57,7 @@ const E: Entity[] = [
     key: 'legal-employers', table: 'legal_employer', priv: 'CD_LEGAL_EMPLOYER_PRV', label: 'Legal Employer', plural: 'Legal Employers', group: 'Enterprise Structure',
     description: 'Registered legal entities (trust, society, company) that employ staff and admit students.',
     fields: [
+      { name: 'country_code', label: 'Country', type: 'lookup', lookup: 'COUNTRY', required: true, default: 'IN', list: true, help: 'Decides which identification types are offered when hiring / admitting under this employer' },
       { name: 'division_id', label: 'Division', type: 'ref', ref: 'divisions', list: true },
       { name: 'registration_number', label: 'Registration Number', type: 'text', list: true },
       { name: 'tax_number', label: 'Tax / GST Number', type: 'text' },

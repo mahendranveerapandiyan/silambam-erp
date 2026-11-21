@@ -10,7 +10,7 @@ import { numberPreviews } from '@/lib/numbering';
 import { PageHeader, Flash, Field, Back } from '../ui';
 import { PersonFields } from './PersonFields';
 import { PhotoInput } from '../PhotoInput';
-import { IdentificationFields } from './IdentificationFields';
+import { IdentificationFields, employerWatch } from './IdentificationFields';
 import { AssignmentFields } from './AssignmentFields';
 import { hirePerson } from '@/app/(app)/people/actions';
 
@@ -20,6 +20,7 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
   const { actions, reasons } = await actionAndReasonOptions(u.enterpriseId, kind, 'HIRE');
   const defaultAction = actions[0]?.value;
   const previews = await numberPreviews(u.enterpriseId, kind, asOf);
+  const watch = await employerWatch(u.enterpriseId, asOf, !stu);
   return (
     <div className="max-w-6xl">
       <PageHeader title={stu ? 'New Student Admission' : 'Hire Staff'} actions={<Link href={stu ? '/students' : '/staff'} className="btn">Back</Link>} />
@@ -55,10 +56,10 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
         </div>
         <div className="card">
           <h2 className="h2">Identification *</h2>
-          <p className="muted mb-3">At least one identity document is required (types are maintained in Configuration › Lookups › Identification Type). The same document cannot be recorded for two people.</p>
-          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5"><IdentificationFields prefix="id1" asOf={asOf} required /></div>
+          <p className="muted mb-3">At least one identity document is required. The types offered depend on the country of the legal employer (Configuration › Lookups › Identification Type). The same document cannot be recorded for two people.</p>
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5"><IdentificationFields prefix="id1" asOf={asOf} required watch={watch} /></div>
           <details className="mt-3"><summary className="cursor-pointer text-sm font-medium">+ Add a second document (optional)</summary>
-            <div className="mt-2 grid gap-3 sm:grid-cols-3 lg:grid-cols-5"><IdentificationFields prefix="id2" asOf={asOf} /></div></details>
+            <div className="mt-2 grid gap-3 sm:grid-cols-3 lg:grid-cols-5"><IdentificationFields prefix="id2" asOf={asOf} watch={watch} /></div></details>
           <p className="muted mt-2">Not required when an existing person number is given and that person already has identification.</p>
         </div>
         {stu ? (

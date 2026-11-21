@@ -16,7 +16,7 @@ import { actionByType, actionInfo, academicYearOn, buLegalEmployer, classHierarc
 import { generateStudentFees } from '@/lib/fees';
 import { assertEffective } from '@/lib/integrity';
 import { parseAttributes } from '@/lib/fields';
-import { readIdForm, validateIdentifier, assertIdUnique, insertIdentifier, normId } from '@/lib/identifiers';
+import { readIdForm, validateIdentifier, assertIdUnique, insertIdentifier, normId, employerCountry, personEmployerCountry } from '@/lib/identifiers';
 
 /** Assignment columns that point at date-tracked setup records. */
 const ASG_REFS: [string, string, string][] = [
@@ -147,16 +147,18 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
         personId = p.id;
         await tx`insert into person_f ${tx({ id: personId, effective_start_date: date, ...pv, created_by: u.username, last_updated_by: u.username })}`;
       }
-      // identification: mandatory unless an existing person already has one
+      const av = await assignmentVals(u, kind, o, date);
+      // identification: mandatory unless an existing person already has one;
+      // the types allowed follow the legal employer's country
       const [hasId] = await tx`select 1 from person_identifier where person_id = ${personId}`;
       if (!ids.length && !hasId) throw new Error('Identification details are required (type and number)');
+      const country = await employerCountry(tx, av.legal_employer_id, date);
       for (const [i, x] of ids.entries()) {
-        await validateIdentifier(tx, x);
+        await validateIdentifier(tx, x, country);
         await assertIdUnique(tx, u.enterpriseId, x, personId);
         const [same] = await tx`select 1 from person_identifier where person_id = ${personId} and id_type_code = ${x.type} and id_number_norm = ${normId(x.number)}`;
         if (!same) await insertIdentifier(tx, u.enterpriseId, personId, x, i === 0 && !hasId, u.username);
       }
-      const av = await assignmentVals(u, kind, o, date);
       const hire = o.action_id ? await actionInfo(o.action_id, date) : await actionByType(u.enterpriseId, kind, 'HIRE', date);
       if (!hire) throw new Error(`No ${kind === 'STUDENT' ? 'admission' : 'hire'} action is configured`);
       const anum = (await nextNumber(tx, u.enterpriseId, kind, { buId: av.business_unit_id, leId: av.legal_employer_id, date })) ?? o.assignment_number;
@@ -393,7 +395,7 @@ export async function saveIdentifier(kind: PersonKind, personId: string, rowId: 
     const x = readIdForm(o, 'idf');
     if (!x) throw new Error('Enter the identification type and number');
     await sql.begin(async (tx) => {
-      await validateIdentifier(tx, x);
+      await validateIdentifier(tx, x, await personEmployerCountry(tx, personId, await getAsOf(), kind));
       await assertIdUnique(tx, u.enterpriseId, x, null, rowId);
       const primary = o.idf_primary === 'Y';
       if (primary) await tx`update person_identifier set primary_flag = 'N' where person_id = ${personId}`;

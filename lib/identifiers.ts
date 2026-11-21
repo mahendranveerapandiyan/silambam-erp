@@ -1,23 +1,41 @@
 import 'server-only';
 import { sql, type Tx } from './db';
+import { countryAllowed } from './countryRule';
 
 export const normId = (n: string) => n.replace(/[\s-]/g, '').toUpperCase();
 
 export type IdInput = { type: string; number: string; country?: string | null; issue?: string | null; expiry?: string | null };
 
-/** Validates type, format (lookup tag = regular expression) and dates. */
-export async function validateIdentifier(tx: Tx, x: IdInput) {
+/**
+ * Validates the type (enabled, and offered for the legal employer's country –
+ * see the Identification Type tag) and the dates.
+ */
+export async function validateIdentifier(tx: Tx, x: IdInput, employerCountry: string | null) {
   const [t] = await tx`select meaning, tag from lookup_value where lookup_type = 'IDENTIFICATION_TYPE' and lookup_code = ${x.type} and enabled_flag = 'Y'`;
   if (!t) throw new Error('Choose a valid identification type');
-  const n = normId(x.number);
-  if (n.length < 3) throw new Error(`${t.meaning}: enter the document number`);
-  if (t.tag) {
-    let ok = true;
-    try { ok = new RegExp(t.tag).test(n); } catch { ok = true; }
-    if (!ok) throw new Error(`${t.meaning} number "${x.number}" is not in the expected format (${t.meaning === 'Aadhaar' ? '12 digits' : 'see Configuration › Lookups › Identification Type'}).`);
+  if (normId(x.number).length < 2) throw new Error(`${t.meaning}: enter the document number`);
+  if (!countryAllowed(t.tag, employerCountry)) {
+    const [c] = await tx`select meaning from lookup_value where lookup_type = 'COUNTRY' and lookup_code = ${employerCountry}`;
+    throw new Error(`${t.meaning} is not used for ${c?.meaning ?? employerCountry} (the legal employer's country). Choose another identification type.`);
   }
   if (x.issue && x.expiry && x.expiry < x.issue) throw new Error(`${t.meaning}: expiry date cannot be before the issue date`);
   return t.meaning as string;
+}
+
+/** Country of the legal employer on a date. */
+export async function employerCountry(tx: Tx, legalEmployerId: string | null | undefined, date: string): Promise<string | null> {
+  if (!legalEmployerId) return null;
+  const [r] = await tx`select country_code from legal_employer_f where id = ${legalEmployerId}
+    order by (${date}::date between effective_start_date and effective_end_date) desc, effective_start_date desc limit 1`;
+  return r?.country_code ?? null;
+}
+
+/** Legal employer country of a person's current (or latest) assignment. */
+export async function personEmployerCountry(tx: Tx, personId: string, date: string, kind?: string): Promise<string | null> {
+  const [r] = await tx`select af.legal_employer_id from assignment a join assignment_f af on af.id = a.id
+    where a.person_id = ${personId} ${kind ? tx`and a.assignment_type = ${kind}` : tx``}
+    order by (${date}::date between af.effective_start_date and af.effective_end_date) desc, af.effective_start_date desc limit 1`;
+  return employerCountry(tx, r?.legal_employer_id, date);
 }
 
 /** No two people may share the same document (type + number). */

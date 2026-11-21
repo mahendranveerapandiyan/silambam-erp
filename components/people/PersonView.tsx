@@ -15,7 +15,7 @@ import { EditableForm, EditScope } from '../EditMode';
 import { deleteIncharge } from '@/app/(app)/staff/actions';
 import { PersonFields } from './PersonFields';
 import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate, deletePerson, saveIdentifier } from '@/app/(app)/people/actions';
-import { identifiersOf } from '@/lib/identifiers';
+import { identifiersOf, personEmployerCountry } from '@/lib/identifiers';
 import { IdentificationFields } from './IdentificationFields';
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
@@ -260,10 +260,11 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   }
 
   async function Identification() {
+    const empCountry = await personEmployerCountry(sql, personId, asOf, kind);
     const row = (r: any) => (
       <form key={r?.id ?? 'new'} action={saveIdentifier.bind(null, kind, personId, r?.id ?? null)} className={`rounded-md border p-3 ${r ? 'border-black/10' : 'border-green-300 bg-green-50'}`}>
         <Back to={back} />
-        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5"><IdentificationFields prefix="idf" asOf={asOf} value={r ?? {}} required /></div>
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5"><IdentificationFields prefix="idf" asOf={asOf} value={r ?? {}} required employerCountry={empCountry} /></div>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1 text-sm"><input type="checkbox" name="idf_primary" value="Y" defaultChecked={r?.primary_flag === 'Y'} /> Primary document</label>
           <button className="btn btn-sm">{r ? 'Save' : 'Add document'}</button>

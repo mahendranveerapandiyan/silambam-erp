@@ -145,7 +145,7 @@ try {
     // ------------------------------- DEMO DATA ------------------------------
     const loc = await dt(tx, 'location', E, 'HQ', 'Head Office', { location_type_code: 'OFFICE', city: 'Madurai', state_code: 'IN-TN', country_code: 'IN' });
     const div = await dt(tx, 'division', E, 'SOUTH', 'South Region');
-    const le = await dt(tx, 'legal_employer', E, 'SAT', 'Silambam Academy Trust', { division_id: div, location_id: loc, currency_code: 'INR' });
+    const le = await dt(tx, 'legal_employer', E, 'SAT', 'Silambam Academy Trust', { country_code: 'IN', division_id: div, location_id: loc, currency_code: 'INR' });
     const bus = [];
     for (const [i, city] of ['Madurai', 'Chennai', 'Coimbatore', 'Trichy', 'Tirunelveli'].entries()) {
       const l = await dt(tx, 'location', E, `LOC${i + 1}`, `${city} Training Center`, { location_type_code: 'TRAINING_CENTER', city, state_code: 'IN-TN', country_code: 'IN' });
