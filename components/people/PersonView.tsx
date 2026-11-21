@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import type { SessionUser } from '@/lib/auth';
 import { can } from '@/lib/auth';
 import { sql } from '@/lib/db';
-import { assignmentBase, assignmentFor, personDetail, type PersonKind } from '@/lib/people';
+import { assignmentBase, assignmentFor, personDetail, deletionBlockers, type PersonKind } from '@/lib/people';
 import { datedRefOptions, nameOn } from '@/lib/dt';
 import { lk, lookupOptions } from '@/lib/lookups';
 import { fmtDate, fmtDateTime, money, ageOn } from '@/lib/util';
@@ -14,7 +14,7 @@ import { PhotoInput } from '../PhotoInput';
 import { EditableForm, EditScope } from '../EditMode';
 import { deleteIncharge } from '@/app/(app)/staff/actions';
 import { PersonFields } from './PersonFields';
-import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate } from '@/app/(app)/people/actions';
+import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate, deletePerson } from '@/app/(app)/people/actions';
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -41,6 +41,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   const contacts = await sql`select * from person_contact where person_id = ${personId} order by primary_flag desc, id`;
   const canEdit = can(u, stu ? 'CD_STUDENT_DIRECTORY_PRV' : 'CD_STAFF_DIRECTORY_PRV', 'WRITE');
   const canAct = can(u, stu ? 'CD_STUDENT_ACTION_PRV' : 'CD_STAFF_ACTION_PRV', 'WRITE');
+  const canDelete = can(u, stu ? 'CD_STUDENT_ADMISSION_PRV' : 'CD_STAFF_HIRE_PRV', 'WRITE');
 
   return (
     <div className="max-w-7xl">
@@ -145,6 +146,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         </div>
         <div className="space-y-4">
           {feeBox}
+          {canDelete && <DeleteCard />}
           {canAct && (
             <form action={changeStartDate.bind(null, kind, personId)} className="card space-y-2">
               <Back to={back} />
@@ -162,6 +164,24 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
           </div>
         </div>
       </div>
+    );
+  }
+
+  async function DeleteCard() {
+    const blockers = await deletionBlockers(personId, kind);
+    return (
+      <form action={deletePerson.bind(null, kind, personId)} className="card">
+        <Back to={back} />
+        <h2 className="h2">Delete {stu ? 'Student' : 'Staff'}</h2>
+        {blockers.length ? (
+          <p className="text-sm text-gray-600">Cannot be deleted: {blockers.join(', ')}. Use a {stu ? 'Withdrawal' : 'Termination'} action instead.</p>
+        ) : (
+          <>
+            <p className="muted mb-2">For records entered by mistake. Removes the {stu ? 'admission (and its unpaid fee lines)' : 'hire'} and the personal record; linked logins are deactivated.</p>
+            <ConfirmButton className="btn btn-danger" message={`Permanently delete ${ab!.assignment_number}?`}>Delete</ConfirmButton>
+          </>
+        )}
+      </form>
     );
   }
 

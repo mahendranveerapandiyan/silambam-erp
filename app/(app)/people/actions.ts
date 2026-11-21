@@ -52,13 +52,21 @@ async function guard(u: SessionUser, kind: PersonKind, personId: string | null, 
 /** Assignment attribute values from a submitted form. */
 async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string, string | null>, date: string): Promise<Record<string, any>> {
   if (kind === 'STUDENT') {
-    if (!o.class_section) throw new Error('Class / Section is required');
-    const [classId, sectionId] = o.class_section.split(':');
+    // separate Branch / Class / Section fields (older "class:section" value still accepted)
+    const [csClass, csSection] = (o.class_section ?? '').split(':');
+    const classId = o.class_id ?? csClass;
+    const sectionId = o.section_id ?? csSection;
+    if (!classId) throw new Error('Class is required');
+    if (!sectionId) throw new Error('Section is required');
+    const [sec] = await sql`select class_id from section_f where id = ${sectionId} and ${date}::date between effective_start_date and effective_end_date`;
+    if (!sec) throw new Error(`The section is not effective on ${date}.`);
+    if (String(sec.class_id) !== String(classId)) throw new Error('That section does not belong to the chosen class.');
     if (!seesAllStudents(u)) {
-      const allowed = (await myClasses(u, date)).some((c) => String(c.class_id) === classId && String(c.section_id) === sectionId);
+      const allowed = (await myClasses(u, date)).some((c) => String(c.class_id) === String(classId) && String(c.section_id) === String(sectionId));
       if (!allowed) throw new Error('You can only place students in your own classes.');
     }
     const h = await classHierarchy(classId, date);
+    if (o.business_unit_id && String(o.business_unit_id) !== String(h.business_unit_id)) throw new Error('That class does not belong to the chosen branch on this date.');
     let ay = o.academic_year_id;
     if (!ay) ay = (await academicYearOn(u.enterpriseId, date))?.id ?? null;
     const sv = {
@@ -81,8 +89,10 @@ async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string
     }
   }
   if (!o.business_unit_id) throw new Error('Business unit is required');
+  const le = await buLegalEmployer(o.business_unit_id, date);
+  if (o.legal_employer_id && String(o.legal_employer_id) !== String(le)) throw new Error('That business unit does not belong to the chosen legal employer on this date.');
   const fv = {
-    business_unit_id: o.business_unit_id, legal_employer_id: await buLegalEmployer(o.business_unit_id, date), location_id: o.location_id,
+    business_unit_id: o.business_unit_id, legal_employer_id: le, location_id: o.location_id,
     job_id: o.job_id, staff_grade_id: o.staff_grade_id, department_id: o.department_id, position_id: o.position_id,
     employment_type_code: o.employment_type_code, employment_category_code: o.employment_category_code, payroll_status_code: o.payroll_status_code,
     person_type_id: o.person_type_id, comments: o.comments,
@@ -329,5 +339,29 @@ export async function changeStartDate(kind: PersonKind, personId: string, fd: Fo
       }
     });
     return { msg: `${kind === 'STUDENT' ? 'Admission' : 'Hire'} date changed to ${newDate}${cancelled ? ` · ${cancelled} unpaid fee line(s) before that date cancelled` : ''}` };
+  });
+}
+
+/** Delete a staff member / student entered by mistake (see deletionBlockers). */
+export async function deletePerson(kind: PersonKind, personId: string, fd: FormData) {
+  const u = await requirePriv(kind === 'STUDENT' ? 'CD_STUDENT_ADMISSION_PRV' : 'CD_STAFF_HIRE_PRV', 'WRITE');
+  const base = kind === 'STUDENT' ? '/students' : '/staff';
+  await act(backOf(fd), async () => {
+    await guard(u, kind, personId, (await getAsOf()));
+    const { deletionBlockers } = await import('@/lib/people');
+    const blockers = await deletionBlockers(personId, kind);
+    if (blockers.length) throw new Error(`Cannot delete – found ${blockers.join(', ')}. Use a ${kind === 'STUDENT' ? 'Withdrawal' : 'Termination'} action instead.`);
+    let number = '';
+    await sql.begin(async (tx) => {
+      const [a] = await tx`select id, assignment_number from assignment where person_id = ${personId} and assignment_type = ${kind}`;
+      number = a.assignment_number;
+      await tx`delete from fee_demand where assignment_id = ${a.id} or (person_id = ${personId} and ${kind} = 'STUDENT')`;
+      await tx`delete from assignment where id = ${a.id}`;
+      const [other] = await tx`select 1 from assignment where person_id = ${personId}`;
+      // logins of this person stop working
+      await tx`update user_account set active_flag = 'N', last_updated_by = ${u.username}, last_update_date = now() where person_id = ${personId}`;
+      if (!other) await tx`delete from person where id = ${personId}`;
+    });
+    return { to: base, msg: `${kind === 'STUDENT' ? 'Student' : 'Staff'} ${number} deleted` };
   });
 }

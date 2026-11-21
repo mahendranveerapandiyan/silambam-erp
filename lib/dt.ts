@@ -174,8 +174,14 @@ export async function dtSpan(tx: Tx, table: string, id: string) {
 // ------------------------------------------------------------------------
 export type DatedOpt = { value: string; label: string; start: string; end: string; parent?: string | null; inactive?: boolean };
 
-export async function datedRefOptions(entityKey: string, enterpriseId: string): Promise<DatedOpt[]> {
+export async function datedRefOptions(entityKey: string, enterpriseId: string, opts: { parentField?: string; plain?: boolean } = {}): Promise<DatedOpt[]> {
   const e = ENTITIES[entityKey];
+  if (opts.plain || opts.parentField) {
+    // own names only; parent = the given column (or the registry parent)
+    const pf = opts.parentField ?? e.parentRef?.field;
+    const rows = await sql`select b.id, f.* from ${sql(e.table)} b join ${sql(e.table + '_f')} f on f.id = b.id where b.enterprise_id = ${enterpriseId} ${fixedWhere(e)} order by f.name, f.effective_start_date`;
+    return rows.map((r) => ({ value: String(r.id), label: r.name, start: r.effective_start_date, end: r.effective_end_date, parent: pf && r[pf] ? String(r[pf]) : null, inactive: r.active_flag === 'N' }));
+  }
   const rows = await sql`
     select b.id, f.* from ${sql(e.table)} b join ${sql(e.table + '_f')} f on f.id = b.id
     where b.enterprise_id = ${enterpriseId} ${fixedWhere(e)}

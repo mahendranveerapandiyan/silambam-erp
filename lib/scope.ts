@@ -73,3 +73,12 @@ export async function myClassesDated(u: SessionUser): Promise<{ value: string; l
     .map((r) => ({ value: `${r.class_id}:${r.section_id}`, label: r.label, start: r.s, end: r.e }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
+
+/** Class ids and "class:section" keys the user is incharge of (null = all). */
+export async function allowedClassKeys(u: SessionUser): Promise<Set<string> | null> {
+  if (seesAllStudents(u)) return null;
+  const rows = await sql`select class_id, section_id from class_incharge where person_id = ${u.personId ?? '0'}`;
+  const keys = new Set<string>();
+  for (const r of rows) { keys.add(String(r.class_id)); keys.add(r.section_id ? `${r.class_id}:${r.section_id}` : `${r.class_id}:*`); }
+  return keys;
+}

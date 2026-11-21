@@ -195,3 +195,33 @@ export async function actionAndReasonOptions(enterpriseId: string, kind: PersonK
         reasonOpts.push({ value: r.lookup_code, label: r.meaning, start: r.start_date, end: r.end_date, parent: String(a.id) });
   return { actions, reasons: reasonOpts };
 }
+
+/**
+ * Why a hired staff member / admitted student cannot be deleted (empty = can).
+ * Deleting is meant for records entered by mistake: only the original hire /
+ * admission version may exist and nothing may have been recorded against it.
+ */
+export async function deletionBlockers(personId: string, kind: PersonKind): Promise<string[]> {
+  const [a] = await sql`select id from assignment where person_id = ${personId} and assignment_type = ${kind}`;
+  if (!a) return ['No record found'];
+  const checks: [string, any][] = [
+    ['assignment change(s) after the ' + (kind === 'STUDENT' ? 'admission' : 'hire'), sql`select count(*) - 1 from assignment_f where id = ${a.id}`],
+  ];
+  if (kind === 'STAFF') {
+    checks.push(['class incharge assignment(s)', sql`select count(*) from class_incharge where person_id = ${personId}`]);
+    checks.push(['attendance record(s)', sql`select count(*) from staff_attendance where person_id = ${personId}`]);
+  } else {
+    checks.push(['attendance record(s)', sql`select count(*) from student_attendance where person_id = ${personId}`]);
+    checks.push(['fee payment(s)', sql`select count(*) from fee_payment where person_id = ${personId}`]);
+    checks.push(['fee exception(s)', sql`select count(*) from fee_exemption e join fee_demand d on d.id = e.demand_id where d.person_id = ${personId}`]);
+    checks.push(['exam entry(ies)', sql`select count(*) from exam_candidate where person_id = ${personId}`]);
+    checks.push(['event entry(ies)', sql`select count(*) from event_participant where person_id = ${personId}`]);
+    checks.push(['equipment sale(s)', sql`select count(*) from stock_txn where person_id = ${personId}`]);
+  }
+  const out: string[] = [];
+  for (const [label, q] of checks) {
+    const [r] = await sql`select (${q})::int n`;
+    if (r.n > 0) out.push(`${r.n} ${label}`);
+  }
+  return out;
+}

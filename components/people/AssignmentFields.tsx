@@ -2,7 +2,7 @@ import type { SessionUser } from '@/lib/auth';
 import type { Row } from '@/lib/db';
 import type { PersonKind } from '@/lib/people';
 import { datedLookupOptions, datedRefOptions } from '@/lib/dt';
-import { myClassesDated } from '@/lib/scope';
+import { allowedClassKeys } from '@/lib/scope';
 import { sql } from '@/lib/db';
 import { Field } from '../ui';
 import { DatedSelect } from '../DatedSelect';
@@ -14,7 +14,7 @@ import { PositionAutofill } from '../PositionAutofill';
  */
 export async function AssignmentFields({ u, kind, a = {}, showStatus = false, dateField }: { u: SessionUser; kind: PersonKind; asOf?: string; a?: Row; showStatus?: boolean; dateField: string }) {
   const E = u.enterpriseId;
-  const D = (name: string, options: any[], value: any, extra: { required?: boolean; empty?: string | false } = {}) => (
+  const D = (name: string, options: any[], value: any, extra: { required?: boolean; empty?: string | false; parentField?: string } = {}) => (
     <DatedSelect name={name} options={options} dateField={dateField} value={value == null ? '' : String(value)} {...extra} />
   );
   const statuses = await datedRefOptions(kind === 'STUDENT' ? 'student-statuses' : 'staff-statuses', E);
@@ -25,10 +25,17 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
   if (kind === 'STUDENT') {
     const years = (await sql`select id, name, start_date, end_date from academic_year where enterprise_id = ${E} order by start_date desc`)
       .map((y) => ({ value: String(y.id), label: y.name, start: y.start_date, end: y.end_date }));
-    const cs = a.class_id ? `${a.class_id}:${a.section_id ?? ''}` : '';
+    // Branch → Class → Section, limited to the user's own classes when they are an incharge
+    const allowed = await allowedClassKeys(u);
+    const classes = (await datedRefOptions('classes', E, { plain: true })).filter((c) => !allowed || allowed.has(c.value));
+    const sections = (await datedRefOptions('sections', E, { plain: true }))
+      .filter((s) => !allowed || allowed.has(`${s.parent}:*`) || allowed.has(`${s.parent}:${s.value}`));
+    const bus = (await datedRefOptions('business-units', E)).filter((b) => !allowed || classes.some((c) => c.parent === b.value));
     return (
       <>
-        <Field label="Branch › Class › Section *" className="sm:col-span-2">{D('class_section', await myClassesDated(u), cs, { required: true })}</Field>
+        <Field label="Branch *">{D('business_unit_id', bus, a.business_unit_id, { required: true })}</Field>
+        <Field label="Class *">{D('class_id', classes, a.class_id, { required: true, parentField: 'business_unit_id' })}</Field>
+        <Field label="Section *">{D('section_id', sections, a.section_id, { required: true, parentField: 'class_id' })}</Field>
         <Field label="Academic Year" help="Empty = the year containing the date">{D('academic_year_id', years, a.academic_year_id, { empty: '— Year of effective date —' })}</Field>
         <Field label="Grade / Level">{D('student_grade_id', await datedRefOptions('student-grades', E), a.student_grade_id)}</Field>
         <Field label="Fee Frequency">{D('fee_frequency_code', (await datedLookupOptions('FEE_FREQUENCY')).filter((o) => o.value !== 'ONE_TIME'), a.fee_frequency_code ?? 'MONTHLY', { empty: false })}</Field>
@@ -42,7 +49,8 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
   }
   return (
     <>
-      <Field label="Business Unit *">{D('business_unit_id', await datedRefOptions('business-units', E), a.business_unit_id, { required: true })}</Field>
+      <Field label="Legal Employer">{D('legal_employer_id', await datedRefOptions('legal-employers', E), a.legal_employer_id)}</Field>
+      <Field label="Business Unit *">{D('business_unit_id', await datedRefOptions('business-units', E, { parentField: 'legal_employer_id' }), a.business_unit_id, { required: true, parentField: 'legal_employer_id' })}</Field>
       <Field label="Location">{D('location_id', await datedRefOptions('locations', E), a.location_id)}</Field>
       <Field label="Department">{D('department_id', await datedRefOptions('departments', E), a.department_id)}</Field>
       <Field label="Job">{D('job_id', await datedRefOptions('jobs', E), a.job_id)}</Field>

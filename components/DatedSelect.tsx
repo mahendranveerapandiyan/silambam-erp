@@ -49,12 +49,13 @@ export function DatedSelect({
     seen.add(o.value);
     visible.push(o);
   }
-  const missing = sel && !visible.some((o) => o.value === sel);
+  const otherParent = parentField && parent && options.some((o) => o.value === sel && o.parent && o.parent !== parent && !(date && (date < o.start || date > o.end)));
+  const missing = sel && !visible.some((o) => o.value === sel) && !otherParent;
   const missingLabel = missing ? options.find((o) => o.value === sel)?.label : null;
 
   return (
     <>
-      <select ref={ref} name={name} value={missing ? '' : sel} onChange={(e) => setSel(e.target.value)} required={required} disabled={disabled} className={className}>
+      <select ref={ref} name={name} value={missing || otherParent ? '' : sel} onChange={(e) => setSel(e.target.value)} required={required} disabled={disabled} className={className}>
         {empty !== false && <option value="">{empty}</option>}
         {visible.map((o) => <option key={o.value} value={o.value} data-parent={o.parent ?? ''}>{o.label}{o.inactive ? ' (inactive)' : ''}</option>)}
       </select>
