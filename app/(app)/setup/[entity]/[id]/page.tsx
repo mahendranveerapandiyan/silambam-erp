@@ -10,6 +10,7 @@ import { activeFields, fieldDisplay } from '@/lib/fields';
 import { fmtDate, fmtDateTime } from '@/lib/util';
 import { EntityFields } from '@/components/EntityFields';
 import { ConfirmButton } from '@/components/client';
+import { EditableForm } from '@/components/EditMode';
 import { PageHeader, Flash, Field, Back, Badge, type SP, here, s } from '@/components/ui';
 import { updateEntity, correctVersion, endDateEntity, deleteLatestVersion, deleteEntity } from '../../actions';
 
@@ -54,9 +55,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
         actions={<Link href={`/setup/${entity}`} className="btn">Back to list</Link>} />
       <Flash sp={sp} />
 
-      {!write ? (
-        <div className="card mb-4 text-sm">View only – you can see this record and its history but not change it.</div>
-      ) : version ? (
+      {version && write ? (
         <form action={correctVersion.bind(null, entity, id, version.effective_start_date)} className="card mb-4 border-blue-300">
           <Back to={back} />
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-blue-50 p-3 text-sm">
@@ -82,7 +81,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
           This record is not effective on {fmtDate(asOf)}. Use <b>Correct</b> on a version below, or change the <b>As of</b> date in the header.
         </div>
       ) : (
-        <form action={updateEntity.bind(null, entity, id)} className="card mb-4">
+        <EditableForm action={updateEntity.bind(null, entity, id)} canEdit={write} className="card mb-4">
           <Back to={back} />
           <div className="mb-3 flex flex-wrap items-end gap-3 rounded-md bg-black/[0.03] p-3">
             <Field label="Change Mode">
@@ -100,8 +99,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
             <EntityFields e={e} values={row} enterpriseId={u.enterpriseId} dateField="effective_date" />
             <Field label="Description" className="sm:col-span-2 lg:col-span-3"><textarea name="description" defaultValue={row.description ?? ''} className="input" rows={2} /></Field>
           </div>
-          <div className="mt-4"><button className="btn btn-primary">Save</button></div>
-        </form>
+        </EditableForm>
       )}
 
       <div className="card mb-4">

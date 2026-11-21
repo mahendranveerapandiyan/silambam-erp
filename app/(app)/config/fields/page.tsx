@@ -1,4 +1,5 @@
 import { requirePriv, can } from '@/lib/auth';
+import { EditableForm, EditScope } from '@/components/EditMode';
 import { sql } from '@/lib/db';
 import { getAsOf } from '@/lib/asof';
 import { fieldContexts } from '@/lib/fields';
@@ -32,6 +33,7 @@ export default async function FieldsPage({ searchParams }: { searchParams: SP })
         </select>
         <AutoSubmit />
       </form>
+      <EditScope canEdit={write} label="Edit">
       <div className="card overflow-x-auto">
         <div className="min-w-[1100px]">
           <div className={`${cols} border-b pb-1 text-xs font-semibold uppercase text-gray-600`}><div>Field Code</div><div>Label</div><div>Type</div><div>Lookup</div><div>Mandatory</div><div>Active</div><div>Order</div><div>Help text</div><div /></div>
@@ -67,6 +69,7 @@ export default async function FieldsPage({ searchParams }: { searchParams: SP })
         </div>
         <p className="muted mt-3">The field code and type are fixed once created. Make a field inactive to hide it; existing values are kept.</p>
       </div>
+      </EditScope>
     </div>
   );
 }

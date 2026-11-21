@@ -6,6 +6,7 @@ import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/a
 import { act, backOf, formObj, fileToBytes } from '@/lib/util';
 import { THEME_KEYS } from '@/lib/theme';
 import { lookupPrivs } from '@/lib/menu';
+import { lookupUsage, describeUsage } from '@/lib/lookupUsage';
 
 // ---------------- Lookups ----------------
 export async function createLookupType(fd: FormData) {
@@ -53,6 +54,14 @@ export async function saveLookupValue(type: string, fd: FormData) {
     }
     const [cur] = await sql`select system_flag from lookup_value where lookup_type = ${type} and lookup_code = ${o.lookup_code}`;
     if (cur?.system_flag === 'Y' && vals.enabled_flag === 'N') throw new Error('System values cannot be disabled (the application depends on them).');
+    if (vals.end_date < vals.start_date) throw new Error('End date cannot be before the start date');
+    const use = (await lookupUsage(type)).get(o.lookup_code);
+    if (use?.last && vals.end_date < use.last)
+      throw new Error(use.last === '4712-12-31'
+        ? `${o.lookup_code} is still in use on current records with no end date (${describeUsage(use)}). Change those records first, or disable the value instead of end-dating it.`
+        : `${o.lookup_code} is in use until ${use.last} (${describeUsage(use)}). The end date must be on or after that date.`);
+    if (use?.first && vals.start_date > use.first)
+      throw new Error(`${o.lookup_code} is already used from ${use.first} (${describeUsage(use)}). The start date must be on or before that date.`);
     await sql`update lookup_value set ${sql(vals)} where lookup_type = ${type} and lookup_code = ${o.lookup_code}`;
     return { msg: `Value ${o.lookup_code} saved` };
   });
@@ -63,6 +72,8 @@ export async function deleteLookupValue(type: string, code: string, fd: FormData
   await act(backOf(fd), async () => {
     const [cur] = await sql`select system_flag from lookup_value where lookup_type = ${type} and lookup_code = ${code}`;
     if (cur?.system_flag === 'Y' || (await typeAccess(type)) === 'SYSTEM') throw new Error('System values cannot be deleted.');
+    const use = (await lookupUsage(type)).get(code);
+    if (use?.count) throw new Error(`Cannot delete ${code}: it is in use – ${describeUsage(use)}. Set an end date or disable it instead.`);
     await sql`delete from lookup_value where lookup_type = ${type} and lookup_code = ${code}`;
     return { msg: `Value ${code} deleted` };
   });

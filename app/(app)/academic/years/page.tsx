@@ -1,4 +1,5 @@
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
+import { EditableForm, EditScope } from '@/components/EditMode';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { lookupOptions } from '@/lib/lookups';
@@ -31,6 +32,7 @@ export default async function Years({ searchParams }: { searchParams: SP }) {
     <div className="max-w-6xl">
       <PageHeader title="Academic Years" subtitle={<>Defined at enterprise level; years cannot overlap; the code is locked once created. Current year on {fmtDate(asOf)}: {cur ? <Badge color="green">{cur.name}</Badge> : <Badge color="red">none</Badge>}</>} />
       <Flash sp={await searchParams} />
+      <EditScope canEdit={write} label="Edit">
       <div className="card overflow-x-auto">
         <div className="min-w-[900px]">
           <div className={`${cols} border-b pb-1 text-xs font-semibold uppercase text-gray-600`}><div>Code</div><div>Name</div><div>Start</div><div>End</div><div>Status</div><div>Usage</div><div /></div>
@@ -38,6 +40,7 @@ export default async function Years({ searchParams }: { searchParams: SP }) {
           {write && <Row />}
         </div>
       </div>
+      </EditScope>
       <p className="muted mt-3">Fee structures and exams are defined per academic year. Use <b>Fees › Fee Structures › Copy</b> to carry fees into a new year.</p>
     </div>
   );

@@ -215,7 +215,7 @@ try {
       await tx`insert into assignment_f ${tx({ id: a.id, effective_start_date: ayStart, action_id: staffAction, assignment_status_id: st.STF_ACTIVE, person_type_id: ptInstr,
         legal_employer_id: le, business_unit_id: cl.bu, job_id: i % 2 ? jobs.INSTRUCTOR : jobs.MASTER, staff_grade_id: sg, department_id: dept,
         employment_type_code: 'FULL_TIME', employment_category_code: 'PERMANENT', payroll_status_code: 'PROCESS', created_by: BY })}`;
-      await tx`insert into class_incharge (person_id, class_id, section_id, start_date, created_by) values (${pid}, ${cl.c}, ${null}, ${ayStart}, ${BY})`;
+      await tx`insert into class_incharge (person_id, class_id, section_id, academic_year_id, start_date, end_date, created_by) values (${pid}, ${cl.c}, ${null}, ${ay.id}, ${ayStart}, ${`${ayStartYear + 1}-05-31`}, ${BY})`;
       const uname = `incharge${i + 1}`;
       const [u] = await tx`insert into user_account (enterprise_id, username, password_hash, display_name, person_id, created_by)
         values (${E}, ${uname}, ${bcrypt.hashSync('pass123', 10)}, ${first[(i * 3) % 20] + ' ' + last[i % 8]}, ${pid}, ${BY}) returning id`;

@@ -1,4 +1,5 @@
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
+import { EditableForm, EditScope } from '@/components/EditMode';
 import { getTheme, THEME_KEYS } from '@/lib/theme';
 import { PageHeader, Flash, Field, type SP } from '@/components/ui';
 import { saveTheme } from '../actions';
@@ -11,7 +12,7 @@ export default async function ThemePage({ searchParams }: { searchParams: SP }) 
     <div className="max-w-4xl">
       <PageHeader title="UI Theme" subtitle="Header, menu, body and text colours and font size. Changes apply to every user immediately." />
       <Flash sp={await searchParams} />
-      <form action={saveTheme} className="card">
+      <EditableForm action={saveTheme} canEdit={write} saveLabel="Save Theme">
         <div className="grid-form">
           {THEME_KEYS.map(([k, label, type]) => (
             <Field key={k} label={label}>
@@ -27,11 +28,8 @@ export default async function ThemePage({ searchParams }: { searchParams: SP }) 
             </Field>
           ))}
         </div>
-        <div className="mt-4 flex gap-2">
-          {write && <><button className="btn btn-primary">Save Theme</button>
-          <button name="_reset" value="1" className="btn">Reset to Defaults</button></>}
-        </div>
-      </form>
+        <div className="mt-4"><button name="_reset" value="1" className="btn">Reset to Defaults</button></div>
+      </EditableForm>
     </div>
   );
 }

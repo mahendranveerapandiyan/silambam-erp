@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { EditableForm, EditScope } from '@/components/EditMode';
 import { notFound } from 'next/navigation';
 import { requirePriv, can } from '@/lib/auth';
 import { sql } from '@/lib/db';
@@ -28,7 +29,7 @@ export default async function RolePage({ params, searchParams }: { params: Promi
       <PageHeader title={`Role: ${role.name}`} subtitle={<><span className="font-mono">{code}</span> {role.system_flag === 'Y' && <Badge color="gray">built-in</Badge>} · {users.length} user(s)</>}
         actions={<Link href="/config/roles" className="btn">All roles</Link>} />
       <Flash sp={await searchParams} />
-      <form action={saveRole.bind(null, code)} className="space-y-4">
+      <EditableForm action={saveRole.bind(null, code)} canEdit={can(u, 'CD_ROLE_PRV', 'WRITE')} className="space-y-4" saveLabel="Save Role">
         <Back to={back} />
         <div className="card grid gap-3 sm:grid-cols-4">
           <Field label="Role Name *"><input name="name" defaultValue={role.name} className="input" required disabled={!can(u, 'CD_ROLE_PRV', 'WRITE')} /></Field>
@@ -62,8 +63,7 @@ export default async function RolePage({ params, searchParams }: { params: Promi
             </div>
           ))}
         </div>
-        {can(u, 'CD_ROLE_PRV', 'WRITE') && <button className="btn btn-primary">Save Role</button>}
-      </form>
+      </EditableForm>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         <div className="card">
           <h2 className="h2">Users with this role</h2>

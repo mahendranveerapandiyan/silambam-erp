@@ -1,8 +1,10 @@
 import Link from 'next/link';
+import { EditableForm, EditScope } from '@/components/EditMode';
 import { notFound } from 'next/navigation';
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { lookupPrivs } from '@/lib/menu';
+import { lookupUsage, describeUsage } from '@/lib/lookupUsage';
 import { PageHeader, Flash, Badge, Back, type SP } from '@/components/ui';
 import { ConfirmButton } from '@/components/client';
 import { saveLookupValue, deleteLookupValue, updateLookupType } from '../../actions';
@@ -17,6 +19,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
   const [t] = await sql`select * from lookup_type where lookup_type = ${type}`;
   if (!t) notFound();
   const values = await sql`select * from lookup_value where lookup_type = ${type} order by display_seq, meaning`;
+  const usage = await lookupUsage(type);
   const parents = t.parent_lookup_type ? await sql`select lookup_code, meaning from lookup_value where lookup_type = ${t.parent_lookup_type} order by display_seq, meaning` : [];
   const back = `/config/lookups/${type}`;
   const sys = t.access_level === 'SYSTEM' || !write;
@@ -29,6 +32,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
       <PageHeader title={t.meaning} subtitle={<><span className="font-mono">{t.lookup_type}</span> · Module {t.module_code} · <Badge color={sys ? 'red' : t.access_level === 'EXTENSIBLE' ? 'amber' : 'green'}>{t.access_level}</Badge>{t.parent_lookup_type && <> · depends on <Link className="link" href={`/config/lookups/${t.parent_lookup_type}`}>{t.parent_lookup_type}</Link></>}</>}
         actions={<Link href="/config/lookups" className="btn">All lookups</Link>} />
       <Flash sp={sp} />
+      <EditScope canEdit={write} label="Edit">
       <form action={updateLookupType.bind(null, type)} className="card mb-4 flex flex-wrap items-end gap-2">
         <Back to={back} />
         <label className="flex-1"><span className="label">Meaning (locked)</span><input value={t.meaning} disabled className="input" /></label>
@@ -44,7 +48,8 @@ export default async function LookupValues({ params, searchParams }: { params: P
             const fid = `f-${v.lookup_code}`;
             return (
               <div key={v.lookup_code} className={`${cols} border-b border-black/5 py-1`}>
-                <div className="font-mono text-xs">{v.lookup_code}{v.system_flag === 'Y' && <span title="Used by application logic"> 🔒</span>}</div>
+                <div className="font-mono text-xs">{v.lookup_code}{v.system_flag === 'Y' && <span title="Used by application logic"> 🔒</span>}
+                  {usage.get(v.lookup_code) && <div className="font-sans text-[10px] text-blue-700" title={describeUsage(usage.get(v.lookup_code)!)}>in use ({usage.get(v.lookup_code)!.count}){usage.get(v.lookup_code)!.last && (usage.get(v.lookup_code)!.last === '4712-12-31' ? ' · ongoing' : ` to ${usage.get(v.lookup_code)!.last}`)}</div>}</div>
                 <input name="meaning" form={fid} defaultValue={v.meaning} className="input" />
                 <input name="description" form={fid} defaultValue={v.description ?? ''} className="input" />
                 <input name="tag" form={fid} defaultValue={v.tag ?? ''} className="input" />
@@ -55,7 +60,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
                 <ParentSel v={v.parent_code} form={fid} />
                 <div className="flex gap-1">
                   {write && <form id={fid} action={saveLookupValue.bind(null, type)}><Back to={back} /><input type="hidden" name="lookup_code" value={v.lookup_code} /><button className="btn btn-sm">Save</button></form>}
-                  {!sys && v.system_flag !== 'Y' && (
+                  {!sys && v.system_flag !== 'Y' && !usage.get(v.lookup_code) && (
                     <form action={deleteLookupValue.bind(null, type, v.lookup_code)}><Back to={back} /><ConfirmButton className="btn btn-sm" message={`Delete ${v.lookup_code}? Prefer disabling values already in use.`}>✕</ConfirmButton></form>
                   )}
                 </div>
@@ -77,8 +82,9 @@ export default async function LookupValues({ params, searchParams }: { params: P
             </div>
           )}
         </div>
-        <p className="muted mt-3">Values are offered in forms only while enabled and between their start and end dates (relative to the As-of date). 🔒 values are used by application logic and cannot be disabled or deleted.</p>
+        <p className="muted mt-3">Values are offered in forms only while enabled and between their start and end dates (relative to the As-of date). 🔒 values are used by application logic and cannot be disabled or deleted. Values marked “in use” cannot be deleted, and their end date cannot be earlier than the last date they are used.</p>
       </div>
+      </EditScope>
     </div>
   );
 }

@@ -15,6 +15,7 @@ export type Field = {
   default?: string;
   help?: string;
   showWhen?: { field: string; values: string[] }; // only shown (and required) when another field has one of these values
+  lockOnUpdate?: boolean; // can be set when the record is created, never changed afterwards
 };
 export type Entity = {
   key: string;
@@ -118,7 +119,7 @@ const E: Entity[] = [
     key: 'subjects', table: 'subject', priv: 'CD_SUBJECT_PRV', label: 'Subject', plural: 'Subjects', group: 'Academic Structure',
     description: 'Exam subjects. Subject Type (Theory, Practical, Viva) is a lookup.',
     fields: [
-      { name: 'subject_type_code', label: 'Subject Type', type: 'lookup', lookup: 'SUBJECT_TYPE', required: true, list: true },
+      { name: 'subject_type_code', label: 'Subject Type', type: 'lookup', lookup: 'SUBJECT_TYPE', required: true, list: true, lockOnUpdate: true, help: 'Fixed once the subject is created' },
       { name: 'default_max_marks', label: 'Default Max Marks', type: 'number', list: true },
       { name: 'default_pass_marks', label: 'Default Pass Marks', type: 'number', list: true },
       active,

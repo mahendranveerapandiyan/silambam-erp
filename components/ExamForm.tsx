@@ -2,11 +2,12 @@ import type { Row } from '@/lib/db';
 import type { Opt } from '@/lib/lookups';
 import { Field, Select, Back } from './ui';
 import { ShowFor } from './client';
+import { EditableForm } from './EditMode';
 
 export function ExamForm({ action, exam, back, o, defaultAy }: { action: (fd: FormData) => Promise<void>; exam?: Row; back: string; o: Record<string, Opt[]>; defaultAy?: string }) {
   const e = exam ?? {};
   return (
-    <form action={action} className="card">
+    <EditableForm action={action} canEdit startEditing={!exam} saveLabel={exam ? 'Save' : 'Create Exam'}>
       <Back to={back} />
       <div className="grid-form">
         <Field label="Academic Year *"><Select name="academic_year_id" options={o.years} value={e.academic_year_id ?? defaultAy} required /></Field>
@@ -32,7 +33,6 @@ export function ExamForm({ action, exam, back, o, defaultAy }: { action: (fd: Fo
           <div className="flex flex-wrap gap-3">{o.subjects.map((s) => <label key={s.value} className="flex items-center gap-1 text-sm"><input type="checkbox" name="subjects" value={s.value} defaultChecked /> {s.label}</label>)}</div></div>
       )}
       <Field label="Description" className="mt-3"><textarea name="description" defaultValue={e.description ?? ''} rows={2} className="input" /></Field>
-      <button className="btn btn-primary mt-4">{exam ? 'Save' : 'Create Exam'}</button>
-    </form>
+    </EditableForm>
   );
 }

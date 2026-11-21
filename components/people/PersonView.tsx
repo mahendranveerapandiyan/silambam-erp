@@ -11,6 +11,8 @@ import { totals } from '@/lib/fees';
 import { PageHeader, Flash, Field, Badge, Back, Tabs, Empty, Select, STATUS_COLOR, here } from '../ui';
 import { ConfirmButton } from '../client';
 import { PhotoInput } from '../PhotoInput';
+import { EditableForm, EditScope } from '../EditMode';
+import { deleteIncharge } from '@/app/(app)/staff/actions';
 import { PersonFields } from './PersonFields';
 import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate } from '@/app/(app)/people/actions';
 
@@ -207,8 +209,8 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
     const hist = await sql`select * from person_f where id = ${personId} order by effective_start_date desc`;
     return (
       <div className="space-y-4">
-        {canEdit && (
-          <form action={updatePerson.bind(null, kind, personId)} className="card">
+        {(
+          <EditableForm action={updatePerson.bind(null, kind, personId)} canEdit={canEdit}>
             <Back to={back} />
             <div className="mb-3 flex flex-wrap items-end gap-3 rounded-md bg-black/[0.03] p-3">
               <Field label="Change Mode"><select name="mode" className="input"><option value="UPDATE">Update – new version from date</option><option value="CORRECT">Correct – fix current version</option></select></Field>
@@ -216,8 +218,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
               <span className="muted pb-2">Current version: {fmtDate(p.effective_start_date)} → {fmtDate(p.effective_end_date)}</span>
             </div>
             <div className="grid-form"><PersonFields p={p} asOf={asOf} enterpriseId={u.enterpriseId} kind={kind} dateField="effective_date" /></div>
-            <button className="btn btn-primary mt-4">Save</button>
-          </form>
+          </EditableForm>
         )}
         <div className="card overflow-x-auto">
           <h2 className="h2">History</h2>
@@ -247,7 +248,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         {canEdit && <div className="flex gap-1"><button className="btn btn-sm">{c ? 'Save' : 'Add'}</button>{c && <button name="_delete" value="1" className="btn btn-sm">✕</button>}</div>}
       </form>
     );
-    return <div className="card space-y-2">{contacts.map(row)}{canEdit && row(null)}</div>;
+    return <div className="card"><EditScope canEdit={canEdit}><div className="space-y-2">{contacts.map(row)}{canEdit && row(null)}</div></EditScope></div>;
   }
 
   async function Attendance() {
@@ -310,13 +311,17 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   }
 
   async function Classes() {
-    const rows = await sql`select ci.*, (select name from class_f where id = ci.class_id order by effective_start_date desc limit 1) class_name,
-      (select name from section_f where id = ci.section_id order by effective_start_date desc limit 1) section_name from class_incharge ci where person_id = ${personId} order by start_date desc`;
+    const rows = await sql`select ci.*, y.name ay_name, (select name from class_f where id = ci.class_id order by effective_start_date desc limit 1) class_name,
+      (select name from section_f where id = ci.section_id order by effective_start_date desc limit 1) section_name
+      from class_incharge ci left join academic_year y on y.id = ci.academic_year_id where person_id = ${personId} order by start_date desc, ci.id desc`;
+    const canManage = can(u, 'CD_CLASS_INCHARGE_PRV', 'WRITE');
     return (
       <div className="card"><div className="mb-2 flex justify-between"><h2 className="h2">Classes this staff member is in charge of</h2><Link href="/staff/incharges" className="btn btn-sm">Manage</Link></div>
-        <table className="tbl"><thead><tr><th>Class</th><th>Section</th><th>From</th><th>To</th></tr></thead>
-          <tbody>{rows.map((r) => <tr key={r.id}><td>{r.class_name}</td><td>{r.section_name ?? 'All sections'}</td><td>{fmtDate(r.start_date)}</td><td>{fmtDate(r.end_date)}</td></tr>)}</tbody></table>
+        <table className="tbl"><thead><tr><th>Academic Year</th><th>Class</th><th>Section</th><th>From</th><th>To</th><th></th></tr></thead>
+          <tbody>{rows.map((r, i) => <tr key={r.id}><td>{r.ay_name ?? '—'}</td><td>{r.class_name}</td><td>{r.section_name ?? 'All sections'}</td><td>{fmtDate(r.start_date)}</td><td>{fmtDate(r.end_date)}</td>
+            <td>{canManage && i === 0 && <form action={deleteIncharge.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message="Delete this (latest) incharge assignment?">Delete latest</ConfirmButton></form>}</td></tr>)}</tbody></table>
         {!rows.length && <Empty />}</div>
     );
   }
+
 }

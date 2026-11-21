@@ -7,6 +7,15 @@ import { assertDependentsWithin, assertRefsEffective, usages } from '@/lib/integ
 import { act, backOf, formObj } from '@/lib/util';
 import { parseAttributes } from '@/lib/fields';
 import { validateEntity } from '@/lib/entityRules';
+import type { Tx } from '@/lib/db';
+
+/** Fields marked lockOnUpdate keep the value they were created with. */
+async function keepLocked(tx: Tx, e: Entity, id: string, vals: Record<string, any>) {
+  const locked = e.fields.filter((f) => f.lockOnUpdate);
+  if (!locked.length) return;
+  const [first] = await tx`select * from ${tx(e.table + '_f')} where id = ${id} order by effective_start_date limit 1`;
+  for (const f of locked) vals[f.name] = first?.[f.name] ?? vals[f.name];
+}
 
 /** Field values from the form (multi-select lookups come as several values). */
 async function parse(e: Entity, fd: FormData, enterpriseId: string) {
@@ -72,6 +81,7 @@ export async function updateEntity(key: string, id: string, fd: FormData) {
         const [cur] = await tx`select effective_start_date from ${tx(e.table + '_f')} where id = ${id} and ${date}::date between effective_start_date and effective_end_date`;
         if (cur) checkDate = cur.effective_start_date;
       }
+      await keepLocked(tx, e, id, vals);
       await assertRefsEffective(tx, key, vals, checkDate);
       await validateEntity(tx, key, vals, { id, date: checkDate });
       await dtChange(tx, e.table, id, date, mode, vals, u.username);
@@ -90,6 +100,7 @@ export async function correctVersion(key: string, id: string, versionStart: stri
     if (!newStart) throw new Error('Effective start date is required');
     const vals = await parse(e, fd, u.enterpriseId);
     await sql.begin(async (tx) => {
+      await keepLocked(tx, e, id, vals);
       await assertRefsEffective(tx, key, vals, newStart);
       await validateEntity(tx, key, vals, { id, date: newStart });
       const r = await dtCorrectVersion(tx, e.table, id, versionStart, newStart, vals, u.username);

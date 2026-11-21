@@ -26,7 +26,9 @@ export async function EntityFields({ e, values, enterpriseId, dateField }: { e: 
         switch (f.type) {
           case 'lookup':
           case 'ref':
-            input = <DatedSelect name={f.name} options={opts[f.name]} dateField={dateField} value={val} required={f.required} parentField={f.parentField} />;
+            input = f.lockOnUpdate && values.id
+              ? <><DatedSelect name={`${f.name}__locked`} options={opts[f.name]} dateField={dateField} value={val} disabled /><input type="hidden" name={f.name} value={val} /></>
+              : <DatedSelect name={f.name} options={opts[f.name]} dateField={dateField} value={val} required={f.required} parentField={f.parentField} />;
             break;
           case 'multilookup': {
             const chosen = new Set(val.split(',').filter(Boolean));

@@ -4,6 +4,7 @@ import { getAsOf } from '@/lib/asof';
 import { lookupOptions } from '@/lib/lookups';
 import { PageHeader, Flash, Field, Select, type SP } from '@/components/ui';
 import { saveEnterprise } from '../actions';
+import { EditableForm } from '@/components/EditMode';
 
 export default async function EnterprisePage({ searchParams }: { searchParams: SP }) {
   const u = await requirePriv('CD_ENTERPRISE_PRV');
@@ -16,7 +17,7 @@ export default async function EnterprisePage({ searchParams }: { searchParams: S
     <div className="max-w-4xl">
       <PageHeader title="Enterprise" subtitle="Top of the enterprise structure: Enterprise → Division → Legal Employer → Business Unit → Class → Section. Academic years are defined at this level." />
       <Flash sp={await searchParams} />
-      <form action={saveEnterprise} className="card"><fieldset disabled={!write} className="contents">
+      <EditableForm action={saveEnterprise} canEdit={write}>
         <div className="grid-form">
           <Field label={locked ? 'Code (locked)' : 'Code *'} help={locked ? 'Cannot be changed once saved' : 'Locked after you save'}>
             {locked ? <input value={e.code} disabled className="input" /> : <input name="code" defaultValue={e.code} required pattern="[A-Za-z0-9_-]{2,20}" className="input uppercase" />}
@@ -38,9 +39,7 @@ export default async function EnterprisePage({ searchParams }: { searchParams: S
               <label className="flex items-center gap-1 text-sm"><input type="checkbox" name="remove_logo" value="Y" /> Remove logo</label></div>
           )}
         </div>
-        </fieldset>
-        {write ? <button className="btn btn-primary mt-4">Save</button> : <p className="muted mt-4">View only – you cannot change these details.</p>}
-      </form>
+      </EditableForm>
     </div>
   );
 }

@@ -1,10 +1,11 @@
 import type { Row } from '@/lib/db';
 import type { Opt } from '@/lib/lookups';
 import { Field, Select, Back } from './ui';
+import { EditableForm } from './EditMode';
 
 export function EventForm({ action, ev = {}, back, o }: { action: (fd: FormData) => Promise<void>; ev?: Row; back: string; o: Record<string, Opt[]> }) {
   return (
-    <form action={action} className="card">
+    <EditableForm action={action} canEdit startEditing={!ev.id} saveLabel={ev.id ? 'Save' : 'Create Event'}>
       <Back to={back} />
       <div className="grid-form">
         <Field label="Name *"><input name="name" defaultValue={ev.name} className="input" required /></Field>
@@ -17,7 +18,6 @@ export function EventForm({ action, ev = {}, back, o }: { action: (fd: FormData)
         <Field label="Status"><Select name="status_code" options={o.statuses} value={ev.status_code ?? 'PLANNED'} empty={false} /></Field>
         <Field label="Description" className="sm:col-span-2 lg:col-span-3"><textarea name="description" defaultValue={ev.description ?? ''} rows={2} className="input" /></Field>
       </div>
-      <button className="btn btn-primary mt-4">{ev.id ? 'Save' : 'Create Event'}</button>
-    </form>
+    </EditableForm>
   );
 }

@@ -1,10 +1,11 @@
 import { Field, Back } from './ui';
+import { EditableForm, EditScope } from '@/components/EditMode';
 import type { Row } from '@/lib/db';
 
 
-export function UserForm({ action, user, roles = [], students = [], back, allRoles }: { action: (fd: FormData) => Promise<void>; user?: Row; roles?: string[]; students?: Row[]; back: string; allRoles: Row[] }) {
+export function UserForm({ action, user, roles = [], students = [], back, allRoles, canEdit = true }: { action: (fd: FormData) => Promise<void>; user?: Row; roles?: string[]; students?: Row[]; back: string; allRoles: Row[]; canEdit?: boolean }) {
   return (
-    <form action={action} className="card">
+    <EditableForm action={action} canEdit={canEdit} startEditing={!user} saveLabel={user ? 'Save' : 'Create User'}>
       <Back to={back} />
       <div className="grid-form">
         <Field label="Username *"><input name="username" defaultValue={user?.username} disabled={!!user} required className="input lowercase" /></Field>
@@ -26,7 +27,6 @@ export function UserForm({ action, user, roles = [], students = [], back, allRol
         </div>
         <input name="add_students" placeholder="Add student numbers, comma separated" className="input max-w-md" />
       </div>
-      <button className="btn btn-primary mt-4">{user ? 'Save' : 'Create User'}</button>
-    </form>
+    </EditableForm>
   );
 }
