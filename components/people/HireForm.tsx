@@ -10,6 +10,7 @@ import { numberPreviews } from '@/lib/numbering';
 import { PageHeader, Flash, Field, Back } from '../ui';
 import { PersonFields } from './PersonFields';
 import { PhotoInput } from '../PhotoInput';
+import { IdentificationFields } from './IdentificationFields';
 import { AssignmentFields } from './AssignmentFields';
 import { hirePerson } from '@/app/(app)/people/actions';
 
@@ -51,6 +52,14 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
             <PersonFields asOf={asOf} enterpriseId={u.enterpriseId} kind={kind} dateField="hire_date" />
             <Field label="Photo"><PhotoInput /></Field>
           </div>
+        </div>
+        <div className="card">
+          <h2 className="h2">Identification *</h2>
+          <p className="muted mb-3">At least one identity document is required (types are maintained in Configuration › Lookups › Identification Type). The same document cannot be recorded for two people.</p>
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5"><IdentificationFields prefix="id1" asOf={asOf} required /></div>
+          <details className="mt-3"><summary className="cursor-pointer text-sm font-medium">+ Add a second document (optional)</summary>
+            <div className="mt-2 grid gap-3 sm:grid-cols-3 lg:grid-cols-5"><IdentificationFields prefix="id2" asOf={asOf} /></div></details>
+          <p className="muted mt-2">Not required when an existing person number is given and that person already has identification.</p>
         </div>
         {stu ? (
           <>

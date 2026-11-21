@@ -202,6 +202,8 @@ try {
     const mkPerson = async (fn, ln, gender, dob) => {
       const [p] = await tx`insert into person (enterprise_id, person_number, date_of_birth, qr_token, created_by)
         values (${E}, ${pnum()}, ${dob}, ${crypto.randomBytes(12).toString('hex')}, ${BY}) returning id`;
+      await tx`insert into person_identifier (enterprise_id, person_id, id_type_code, id_number, issuing_country_code, primary_flag, created_by)
+        values (${E}, ${p.id}, 'AADHAAR', ${String(400000000000 + Number(p.id))}, 'IN', 'Y', ${BY})`;
       await tx`insert into person_f (id, effective_start_date, first_name, last_name, gender_code, phone, city, state_code, country_code, created_by)
         values (${p.id}, ${ayStart}, ${fn}, ${ln}, ${gender}, ${'98' + String(10000000 + p.id).slice(-8)}, 'Madurai', 'IN-TN', 'IN', ${BY})`;
       return p.id;

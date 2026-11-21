@@ -14,7 +14,9 @@ import { PhotoInput } from '../PhotoInput';
 import { EditableForm, EditScope } from '../EditMode';
 import { deleteIncharge } from '@/app/(app)/staff/actions';
 import { PersonFields } from './PersonFields';
-import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate, deletePerson } from '@/app/(app)/people/actions';
+import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate, deletePerson, saveIdentifier } from '@/app/(app)/people/actions';
+import { identifiersOf } from '@/lib/identifiers';
+import { IdentificationFields } from './IdentificationFields';
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -36,9 +38,10 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   const tab = typeof sp.tab === 'string' ? sp.tab : 'overview';
   const back = here(`${base}/${personId}`, sp);
   const tabs: [string, string][] = stu
-    ? [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['contacts', 'Parents / Contacts'], ['attendance', 'Attendance'], ['fees', 'Fees'], ['exams', 'Exams'], ['events', 'Events']]
-    : [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['contacts', 'Contacts'], ['attendance', 'Attendance'], ['classes', 'Classes (Incharge)']];
+    ? [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['identification', 'Identification'], ['contacts', 'Parents / Contacts'], ['attendance', 'Attendance'], ['fees', 'Fees'], ['exams', 'Exams'], ['events', 'Events']]
+    : [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['identification', 'Identification'], ['contacts', 'Contacts'], ['attendance', 'Attendance'], ['classes', 'Classes (Incharge)']];
   const contacts = await sql`select * from person_contact where person_id = ${personId} order by primary_flag desc, id`;
+  const ids = await identifiersOf(personId);
   const canEdit = can(u, stu ? 'CD_STUDENT_DIRECTORY_PRV' : 'CD_STAFF_DIRECTORY_PRV', 'WRITE');
   const canAct = can(u, stu ? 'CD_STUDENT_ACTION_PRV' : 'CD_STAFF_ACTION_PRV', 'WRITE');
   const canDelete = can(u, stu ? 'CD_STUDENT_ADMISSION_PRV' : 'CD_STAFF_HIRE_PRV', 'WRITE');
@@ -61,6 +64,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
       {tab === 'overview' && <Overview />}
       {tab === 'assignment' && <AssignmentHistory />}
       {tab === 'personal' && <Personal />}
+      {tab === 'identification' && <Identification />}
       {tab === 'contacts' && <Contacts />}
       {tab === 'attendance' && <Attendance />}
       {tab === 'fees' && <Fees />}
@@ -108,6 +112,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
             <Info label="Date of Birth">{fmtDate(p.date_of_birth)}{p.date_of_birth && ` (${ageOn(p.date_of_birth, asOf)} yrs)`}</Info>
             <Info label="Gender">{L('GENDER', p.gender_code)}</Info>
             <Info label="Blood Group">{L('BLOOD_GROUP', p.blood_group_code)}</Info>
+            <Info label="Identification">{ids.length ? `${L('IDENTIFICATION_TYPE', ids[0].id_type_code)} ${ids[0].id_number}` : <Link className="text-red-700 underline" href={`${base}/${personId}?tab=identification`}>Missing – add now</Link>}</Info>
             <Info label="Mobile">{p.phone}</Info>
             <Info label="Email">{p.email}</Info>
             <Info label="City">{p.city}</Info>
@@ -250,6 +255,29 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
                 <td className="text-xs text-gray-500">{h.last_updated_by}</td></tr>))}
             </tbody></table>
         </div>
+      </div>
+    );
+  }
+
+  async function Identification() {
+    const row = (r: any) => (
+      <form key={r?.id ?? 'new'} action={saveIdentifier.bind(null, kind, personId, r?.id ?? null)} className={`rounded-md border p-3 ${r ? 'border-black/10' : 'border-green-300 bg-green-50'}`}>
+        <Back to={back} />
+        <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5"><IdentificationFields prefix="idf" asOf={asOf} value={r ?? {}} required /></div>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-1 text-sm"><input type="checkbox" name="idf_primary" value="Y" defaultChecked={r?.primary_flag === 'Y'} /> Primary document</label>
+          <button className="btn btn-sm">{r ? 'Save' : 'Add document'}</button>
+          {r && ids.length > 1 && <ConfirmButton className="btn btn-sm" name="_delete" value="1" message="Remove this document?">Remove</ConfirmButton>}
+        </div>
+      </form>
+    );
+    return (
+      <div className="card">
+        {!ids.length && <div className="mb-3 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">No identification recorded – it is mandatory. Add a document below.</div>}
+        <EditScope canEdit={canEdit}>
+          <div className="space-y-3">{ids.map(row)}{canEdit && row(null)}</div>
+        </EditScope>
+        <p className="muted mt-3">Each document number can belong to only one person (students and staff). Spaces and hyphens are ignored when comparing.</p>
       </div>
     );
   }

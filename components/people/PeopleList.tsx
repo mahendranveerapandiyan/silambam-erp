@@ -26,7 +26,7 @@ export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: 
       <Flash sp={sp} />
       <div className="card">
         <form className="mb-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          <input name="q" defaultValue={f.q ?? ''} placeholder="Name, number or phone" className="input lg:col-span-2" />
+          <input name="q" defaultValue={f.q ?? ''} placeholder="Name, number, phone or ID number" className="input lg:col-span-2" />
           <Select name="bu" options={bus} value={f.bu} empty="All branches" />
           {stu && <Select name="cls" options={classes} value={f.cls} empty="All classes" />}
           {stu && <Select name="grade" options={grades} value={f.grade} empty="All grades" />}

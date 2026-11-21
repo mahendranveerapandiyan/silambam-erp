@@ -46,6 +46,8 @@ const STATIC: Use[] = [
   { type: 'INCOME_CATEGORY', table: 'finance_txn', col: 'category_code', label: 'Income entries', from: 'txn_date', to: 'txn_date', where: "txn_kind = 'INCOME'" },
   { type: 'EXPENSE_CATEGORY', table: 'finance_txn', col: 'category_code', label: 'Expense entries', from: 'txn_date', to: 'txn_date', where: "txn_kind = 'EXPENSE'" },
   { type: 'ROLE', table: 'user_role', col: 'role_code', label: 'User roles' },
+  { type: 'IDENTIFICATION_TYPE', table: 'person_identifier', col: 'id_type_code', label: 'Identification documents' },
+  { type: 'COUNTRY', table: 'person_identifier', col: 'issuing_country_code', label: 'Identification documents' },
 ];
 
 /** Setup fields that store lookup codes (from the entity registry). */

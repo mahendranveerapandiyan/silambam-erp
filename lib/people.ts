@@ -54,7 +54,8 @@ export async function peopleList(
       ${f.bu ? sql`and af.business_unit_id = ${f.bu}` : sql``}
       ${f.cls ? sql`and af.class_id = ${f.cls}` : sql``}
       ${f.grade ? sql`and af.student_grade_id = ${f.grade}` : sql``}
-      ${like ? sql`and (a.assignment_number ilike ${like} or p.person_number ilike ${like} or ${fullName()} ilike ${like} or pf.phone ilike ${like})` : sql``}
+      ${like ? sql`and (a.assignment_number ilike ${like} or p.person_number ilike ${like} or ${fullName()} ilike ${like} or pf.phone ilike ${like}
+        or exists (select 1 from person_identifier pi where pi.person_id = p.id and pi.id_number_norm like ${'%' + (f.q ?? '').replace(/[\s-]/g, '').toUpperCase() + '%'}))` : sql``}
     order by full_name
     limit ${pageSize} offset ${(Math.max(1, page) - 1) * pageSize}`;
 }

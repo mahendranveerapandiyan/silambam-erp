@@ -16,6 +16,7 @@ import { actionByType, actionInfo, academicYearOn, buLegalEmployer, classHierarc
 import { generateStudentFees } from '@/lib/fees';
 import { assertEffective } from '@/lib/integrity';
 import { parseAttributes } from '@/lib/fields';
+import { readIdForm, validateIdentifier, assertIdUnique, insertIdentifier, normId } from '@/lib/identifiers';
 
 /** Assignment columns that point at date-tracked setup records. */
 const ASG_REFS: [string, string, string][] = [
@@ -123,6 +124,8 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
     if (!date) throw new Error(`${kind === 'STUDENT' ? 'Admission' : 'Hire'} date is required`);
     await guard(u, kind, null, date);
     const photo = await photoToJpeg(fd.get('photo'));
+    const ids = [readIdForm(o, 'id1'), readIdForm(o, 'id2')].filter((x): x is NonNullable<typeof x> => !!x);
+    if (ids.length === 2 && ids[0].type === ids[1].type && normId(ids[0].number) === normId(ids[1].number)) throw new Error('The two identification documents are the same');
     let personId = '';
     let msg = '';
     await sql.begin(async (tx) => {
@@ -143,6 +146,15 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
           values (${u.enterpriseId}, ${pnum}, ${o.date_of_birth}, ${crypto.randomBytes(12).toString('hex')}, ${u.username}) returning id`;
         personId = p.id;
         await tx`insert into person_f ${tx({ id: personId, effective_start_date: date, ...pv, created_by: u.username, last_updated_by: u.username })}`;
+      }
+      // identification: mandatory unless an existing person already has one
+      const [hasId] = await tx`select 1 from person_identifier where person_id = ${personId}`;
+      if (!ids.length && !hasId) throw new Error('Identification details are required (type and number)');
+      for (const [i, x] of ids.entries()) {
+        await validateIdentifier(tx, x);
+        await assertIdUnique(tx, u.enterpriseId, x, personId);
+        const [same] = await tx`select 1 from person_identifier where person_id = ${personId} and id_type_code = ${x.type} and id_number_norm = ${normId(x.number)}`;
+        if (!same) await insertIdentifier(tx, u.enterpriseId, personId, x, i === 0 && !hasId, u.username);
       }
       const av = await assignmentVals(u, kind, o, date);
       const hire = o.action_id ? await actionInfo(o.action_id, date) : await actionByType(u.enterpriseId, kind, 'HIRE', date);
@@ -363,5 +375,37 @@ export async function deletePerson(kind: PersonKind, personId: string, fd: FormD
       if (!other) await tx`delete from person where id = ${personId}`;
     });
     return { to: base, msg: `${kind === 'STUDENT' ? 'Student' : 'Staff'} ${number} deleted` };
+  });
+}
+
+// ------------------------------------------------------------ identification
+export async function saveIdentifier(kind: PersonKind, personId: string, rowId: string | null, fd: FormData) {
+  const u = await requirePriv(dirPriv(kind), 'WRITE');
+  await act(backOf(fd), async () => {
+    await guard(u, kind, personId, await getAsOf());
+    const o = formObj(fd);
+    if (o._delete && rowId) {
+      const [n] = await sql`select count(*)::int n from person_identifier where person_id = ${personId}`;
+      if (n.n <= 1) throw new Error('At least one identification document must remain. Add the new one before removing this.');
+      await sql`delete from person_identifier where id = ${rowId} and person_id = ${personId}`;
+      return { msg: 'Identification removed' };
+    }
+    const x = readIdForm(o, 'idf');
+    if (!x) throw new Error('Enter the identification type and number');
+    await sql.begin(async (tx) => {
+      await validateIdentifier(tx, x);
+      await assertIdUnique(tx, u.enterpriseId, x, null, rowId);
+      const primary = o.idf_primary === 'Y';
+      if (primary) await tx`update person_identifier set primary_flag = 'N' where person_id = ${personId}`;
+      if (rowId) {
+        await tx`update person_identifier set id_type_code = ${x.type}, id_number = ${x.number.toUpperCase()}, issuing_country_code = ${x.country ?? null},
+          issue_date = ${x.issue ?? null}, expiry_date = ${x.expiry ?? null}, primary_flag = ${primary ? 'Y' : 'N'}, last_updated_by = ${u.username}, last_update_date = now()
+          where id = ${rowId} and person_id = ${personId}`;
+      } else {
+        const [any] = await tx`select 1 from person_identifier where person_id = ${personId}`;
+        await insertIdentifier(tx, u.enterpriseId, personId, x, primary || !any, u.username);
+      }
+    });
+    return { msg: 'Identification saved' };
   });
 }
