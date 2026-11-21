@@ -2,6 +2,8 @@ import type { Entity } from '@/lib/entities';
 import { datedLookupOptions, datedRefOptions, type DatedOpt } from '@/lib/dt';
 import { Field } from './ui';
 import { DatedSelect } from './DatedSelect';
+import { AdditionalFields } from './AdditionalFields';
+import { ShowFor } from './client';
 
 /**
  * Renders the configurable fields of a registry entity. Lookup and reference
@@ -51,15 +53,23 @@ export async function EntityFields({ e, values, enterpriseId, dateField }: { e: 
           case 'number':
             input = <input type="number" step="any" name={f.name} defaultValue={val} required={f.required} className="input" />;
             break;
+          case 'time':
+            input = <input type="time" name={f.name} defaultValue={val.slice(0, 5)} required={f.required} className="input" />;
+            break;
           default:
             input = <input name={f.name} defaultValue={val} required={f.required} className="input" />;
         }
-        return (
+        const field = (
           <Field key={f.name} label={f.label + (f.required ? ' *' : '')} help={f.help} className={f.type === 'multilookup' ? 'sm:col-span-2' : ''}>
             {input}
           </Field>
         );
+        return f.showWhen
+          ? <div key={f.name} {...{ [`data-show-for-${f.showWhen.field}`]: f.showWhen.values.join(',') }}>{field}</div>
+          : field;
       })}
+      {[...new Set(e.fields.filter((f) => f.showWhen).map((f) => f.showWhen!.field))].map((c) => <ShowFor key={c} select={c} />)}
+      <AdditionalFields enterpriseId={enterpriseId} context={`setup:${e.key}`} attributes={values.attributes} dateField={dateField} />
     </>
   );
 }

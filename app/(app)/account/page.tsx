@@ -8,7 +8,7 @@ export default async function Account({ searchParams }: { searchParams: SP }) {
   const L = await lk();
   return (
     <div className="max-w-md">
-      <PageHeader title="My Account" subtitle={<>{u.username} · {u.roles.map((r) => <Badge key={r} color="blue">{L('ROLE', r)}</Badge>)}</>} />
+      <PageHeader title="My Account" subtitle={<>{u.username} · {u.roles.map((r) => <Badge key={r} color="blue">{r}</Badge>)}</>} />
       <Flash sp={await searchParams} />
       <form action={changePassword} className="card space-y-3">
         <h2 className="h2">Change Password</h2>

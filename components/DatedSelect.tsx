@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export type DatedOpt = { value: string; label: string; start: string; end: string; parent?: string | null; inactive?: boolean };
 
@@ -17,6 +17,18 @@ export function DatedSelect({
   const [date, setDate] = useState<string>('');
   const [parent, setParent] = useState<string>('');
   const [sel, setSel] = useState<string>(value ?? '');
+  const ref = useRef<HTMLSelectElement>(null);
+  // other components (e.g. position autofill) can set the value: el.dispatchEvent(new CustomEvent('cd:set', { detail: v }))
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const h = (e: Event) => {
+      setSel(String((e as CustomEvent).detail ?? ''));
+      setTimeout(() => el.dispatchEvent(new Event('change', { bubbles: true })), 0);
+    };
+    el.addEventListener('cd:set', h);
+    return () => el.removeEventListener('cd:set', h);
+  }, []);
 
   useEffect(() => {
     const d = document.querySelector<HTMLInputElement>(`[name="${dateField}"]`);
@@ -42,7 +54,7 @@ export function DatedSelect({
 
   return (
     <>
-      <select name={name} value={missing ? '' : sel} onChange={(e) => setSel(e.target.value)} required={required} disabled={disabled} className={className}>
+      <select ref={ref} name={name} value={missing ? '' : sel} onChange={(e) => setSel(e.target.value)} required={required} disabled={disabled} className={className}>
         {empty !== false && <option value="">{empty}</option>}
         {visible.map((o) => <option key={o.value} value={o.value} data-parent={o.parent ?? ''}>{o.label}{o.inactive ? ' (inactive)' : ''}</option>)}
       </select>

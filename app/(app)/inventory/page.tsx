@@ -1,4 +1,4 @@
-import { requireUser, hasRole } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
@@ -8,7 +8,7 @@ import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s } from
 import { saveItem } from './actions';
 
 export default async function Inventory({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_INVENTORY_ITEM_PRV');
   const sp = await searchParams;
   const asOf = await getAsOf();
   const L = await lk();
@@ -16,7 +16,7 @@ export default async function Inventory({ searchParams }: { searchParams: SP }) 
   const items = await sql`select i.*, coalesce((select json_object_agg(business_unit_id, q) from (select business_unit_id, sum(quantity) q from stock_txn t where t.item_id = i.id group by 1) x), '{}') stock
     from item i where enterprise_id = ${u.enterpriseId} order by category_code, name, size_label`;
   const editing = items.find((i) => String(i.id) === s(sp.edit));
-  const canEdit = hasRole(u, 'ACCOUNTANT');
+  const canEdit = can(u, 'CD_INVENTORY_ITEM_PRV', 'WRITE');
   const [cats, uoms] = [await lookupOptions('ITEM_CATEGORY', asOf), await lookupOptions('UOM', asOf)];
   return (
     <div className="max-w-7xl">

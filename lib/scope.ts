@@ -1,20 +1,20 @@
 import 'server-only';
 import { sql, type Row } from './db';
-import { hasRole, type SessionUser } from './auth';
+import { can, type SessionUser } from './auth';
 
 /**
  * Data security for student data.
- * ADMIN / ACCOUNTANT see every student. A Class Incharge sees only students whose
+ * Users with CD_ALL_STUDENTS_DATA_PRV see every student; others see only students whose
  * assignment (as of the date) is in a class/section they are in charge of.
  */
 export function seesAllStudents(u: SessionUser) {
-  return hasRole(u, 'ACCOUNTANT');
+  return can(u, 'CD_ALL_STUDENTS_DATA_PRV');
 }
 
 /** SQL fragment restricting an assignment_f alias to the user's classes. */
 export function studentScopeSql(u: SessionUser, asOf: string, alias = 'af') {
   if (seesAllStudents(u)) return sql``;
-  if (!u.personId || !u.roles.includes('INCHARGE')) return sql`and false`;
+  if (!u.personId) return sql`and false`;
   return sql`and exists (
     select 1 from class_incharge ci
     where ci.person_id = ${u.personId}

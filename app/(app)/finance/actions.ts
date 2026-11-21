@@ -1,10 +1,10 @@
 'use server';
 import { sql } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, todayISO } from '@/lib/util';
 
 export async function saveTxn(fd: FormData) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FINANCE_TXN_PRV', 'WRITE');
   await act(backOf(fd, '/finance'), async () => {
     const o = formObj(fd);
     if (o._delete) {

@@ -2,8 +2,9 @@ import { lookupOptions } from '@/lib/lookups';
 import { Field, Select } from '../ui';
 import { Cascade } from '../client';
 import type { Row } from '@/lib/db';
+import { AdditionalFields } from '../AdditionalFields';
 
-export async function PersonFields({ p = {}, asOf }: { p?: Row; asOf: string }) {
+export async function PersonFields({ p = {}, asOf, enterpriseId, kind, dateField }: { p?: Row; asOf: string; enterpriseId: string; kind: 'STUDENT' | 'STAFF'; dateField: string }) {
   const L = async (t: string) => lookupOptions(t, asOf);
   const [titles, genders, blood, marital, nat, rel, tongue, countries, states] = await Promise.all(
     ['TITLE', 'GENDER', 'BLOOD_GROUP', 'MARITAL_STATUS', 'NATIONALITY', 'RELIGION', 'MOTHER_TONGUE', 'COUNTRY', 'STATE'].map(L),
@@ -34,6 +35,7 @@ export async function PersonFields({ p = {}, asOf }: { p?: Row; asOf: string }) 
       <Field label="Emergency Contact Name"><input name="emergency_contact_name" defaultValue={p.emergency_contact_name ?? ''} className="input" /></Field>
       <Field label="Emergency Contact Phone"><input name="emergency_contact_phone" defaultValue={p.emergency_contact_phone ?? ''} className="input" /></Field>
       <Field label="Medical Notes / Allergies"><input name="medical_notes" defaultValue={p.medical_notes ?? ''} className="input" /></Field>
+      <AdditionalFields enterpriseId={enterpriseId} context={kind} attributes={p.attributes} dateField={dateField} />
     </>
   );
 }

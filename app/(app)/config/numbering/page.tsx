@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { getAsOf } from '@/lib/asof';
 import { lk, lookupOptions } from '@/lib/lookups';
@@ -7,7 +7,7 @@ import { PageHeader, Flash, Field, Select, type SP } from '@/components/ui';
 import { saveNumberRule } from '../actions';
 
 export default async function Numbering({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_NUMBERING_PRV');
   const asOf = await getAsOf();
   const rules = await sql`select r.*, (select max(last_value) from number_sequence s where s.rule_id = r.id) last_used from number_rule r where enterprise_id = ${u.enterpriseId} order by id`;
   const [methods, scopes, yn, L] = [await lookupOptions('NUMBER_METHOD', asOf), await lookupOptions('NUMBER_SCOPE', asOf), await lookupOptions('YES_NO', asOf), await lk()];

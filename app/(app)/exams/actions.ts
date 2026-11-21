@@ -1,6 +1,6 @@
 'use server';
 import { sql } from '@/lib/db';
-import { requireUser, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, addDays, todayISO } from '@/lib/util';
 import { eligibleStudents, examFeeFor } from '@/lib/exams';
 import { addDemand, cancelDemandIfUnpaid } from '@/lib/fees';
@@ -17,7 +17,7 @@ async function loadExam(id: string, enterpriseId: string) {
 }
 
 export async function saveExam(id: string | null, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
   await act(backOf(fd, '/exams'), async () => {
     const o = formObj(fd);
     if (!o.academic_year_id || !o.exam_type_code || !o.name || !o.exam_date) throw new Error('Academic year, type, name and date are required');
@@ -52,7 +52,7 @@ export async function saveExam(id: string | null, fd: FormData) {
 }
 
 export async function saveSubject(examId: string, rowId: string | null, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     await loadExam(examId, u.enterpriseId);
     const o = formObj(fd);
@@ -71,12 +71,12 @@ export async function saveSubject(examId: string, rowId: string | null, fd: Form
 
 /** Incharges select eligible students; an exam fee line is created per candidate. */
 export async function assignCandidates(examId: string, fd: FormData) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv('CD_EXAM_CANDIDATE_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
     if (['PUBLISHED', 'CANCELLED'].includes(exam.status_code)) throw new Error('Exam is closed');
     const ids = new Set(fd.getAll('person').map(String));
-    const override = formObj(fd).override === 'Y' && isAdmin(u);
+    const override = formObj(fd).override === 'Y' && can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
     if (!ids.size) throw new Error('Select at least one student');
     const pool = (await eligibleStudents(u, exam)).filter((s) => ids.has(String(s.person_id)));
     const blocked = pool.filter((s) => !s.eligible && !(override && !s.checks.find((c) => c.label === 'One grade exam / year' && !c.ok)));
@@ -104,7 +104,7 @@ export async function assignCandidates(examId: string, fd: FormData) {
 }
 
 export async function removeCandidate(examId: string, candidateId: string, fd: FormData) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv('CD_EXAM_CANDIDATE_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const [c] = await sql`select * from exam_candidate where id = ${candidateId} and exam_id = ${examId}`;
     if (!c) throw new Error('Candidate not found');
@@ -119,10 +119,10 @@ export async function removeCandidate(examId: string, candidateId: string, fd: F
 }
 
 export async function saveMarks(examId: string, fd: FormData) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv('CD_EXAM_CANDIDATE_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
-    if (exam.status_code === 'PUBLISHED' && !isAdmin(u)) throw new Error('Results are published; only administrators can change marks');
+    if (exam.status_code === 'PUBLISHED' && !can(u, 'CD_EXAM_SETUP_PRV', 'WRITE')) throw new Error('Results are published; only users who can set up exams can change marks');
     const o = formObj(fd);
     const subjects = await sql`select * from exam_subject where exam_id = ${examId}`;
     if (!subjects.length) throw new Error('Add subjects before entering marks');
@@ -157,7 +157,7 @@ export async function saveMarks(examId: string, fd: FormData) {
 
 /** Publish results; for grade exams, promote passed students to the target grade. */
 export async function publishResults(examId: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
     const o = formObj(fd);
@@ -184,7 +184,7 @@ export async function publishResults(examId: string, fd: FormData) {
 }
 
 export async function saveExamFees(fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_EXAM_FEE_PRV', 'WRITE');
   await act(backOf(fd, '/exams/fees'), async () => {
     const o = formObj(fd);
     if (!o.academic_year_id) throw new Error('Academic year is required');

@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
@@ -9,7 +9,7 @@ import { AutoSubmit } from '@/components/client';
 import { saveExamFees } from '../actions';
 
 export default async function ExamFees({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_EXAM_FEE_PRV');
   const sp = await searchParams;
   const asOf = await getAsOf();
   const years = (await sql`select id, name from academic_year where enterprise_id = ${u.enterpriseId} order by start_date desc`).map((y) => ({ value: String(y.id), label: y.name }));

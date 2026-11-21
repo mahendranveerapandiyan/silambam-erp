@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
@@ -14,7 +14,7 @@ import { EventForm } from '@/components/EventForm';
 import { saveEvent, addParticipants, updateParticipant } from '../actions';
 
 export default async function EventPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv(['CD_EVENT_SETUP_PRV', 'CD_EVENT_PARTICIPANT_PRV'], 'READ');
   const { id } = await params;
   const sp = await searchParams;
   const [ev] = await sql`select * from event where id = ${id} and enterprise_id = ${u.enterpriseId}`;
@@ -28,7 +28,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
     from event_participant ep join person p on p.id = ep.person_id join assignment a on a.person_id = p.id and a.assignment_type = 'STUDENT'
     left join assignment_f af on af.id = a.id and ${today}::date between af.effective_start_date and af.effective_end_date
     ${personAsOf(today)} left join fee_demand_v d on d.id = ep.fee_demand_id
-    where ep.event_id = ${id} ${isAdmin(u) ? sql`` : studentScopeSql(u, today)} order by full_name`;
+    where ep.event_id = ${id} ${studentScopeSql(u, today)} order by full_name`;
   const classes = await myClasses(u, today);
   const cls = s(sp.cls);
   const pick = cls ? await sql`select a.person_id, a.assignment_number, ${fullName()} full_name from assignment a
@@ -78,7 +78,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
           </div>
         )}
       </div>
-      {isAdmin(u) && <div className="mt-4"><h2 className="h2">Event Details</h2>
+      {can(u, 'CD_EVENT_SETUP_PRV', 'WRITE') && <div className="mt-4"><h2 className="h2">Event Details</h2>
         <EventForm action={saveEvent.bind(null, id)} ev={ev} back={back} o={{ types: await lookupOptions('EVENT_TYPE', asOf), statuses: await lookupOptions('EVENT_STATUS', asOf), bus: await refOptions('business-units', u.enterpriseId, asOf) }} /></div>}
     </div>
   );

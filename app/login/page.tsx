@@ -13,7 +13,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <form action={login} className="card w-full max-w-sm space-y-4">
         <div className="text-center">
           {e?.has_logo && <img src="/api/logo" alt="" className="mx-auto mb-2 h-16" />}
-          <h1 className="text-xl font-bold">{e?.name ?? 'Silambam ERP'}</h1>
+          <div className="mb-1 text-2xl font-extrabold tracking-tight" style={{ color: 'var(--header-bg)' }}>caMpus dAy</div>
+          {e?.name && <h1 className="text-base font-semibold">{e.name}</h1>}
           <p className="muted">Sign in to continue</p>
         </div>
         {err && <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{err}</div>}

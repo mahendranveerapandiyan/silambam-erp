@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requirePriv } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { assignmentFor, personDetail } from '@/lib/people';
 import { lk } from '@/lib/lookups';
@@ -7,7 +7,7 @@ import { fmtDate, fmtDateTime, todayISO } from '@/lib/util';
 import { PageHeader, Badge, Empty, STATUS_COLOR } from '@/components/ui';
 
 export default async function Me() {
-  const u = await requireUser();
+  const u = await requirePriv('CD_MY_PROFILE_PRV');
   if (!u.personId) return <div className="card max-w-lg">Your login is not linked to a staff record. Ask an administrator to link it (Configuration › Users).</div>;
   const today = todayISO();
   const [p, a, L] = [await personDetail(u.personId, today), await assignmentFor(u.personId, 'STAFF', today), await lk()];

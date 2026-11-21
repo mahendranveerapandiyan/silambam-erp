@@ -1,19 +1,25 @@
 'use server';
 import { sql } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getEntity, type Entity } from '@/lib/entities';
 import { dtChange, dtCorrectVersion, dtDeleteLatest, dtEndDate, dtSpan } from '@/lib/dt';
 import { assertDependentsWithin, assertRefsEffective, usages } from '@/lib/integrity';
 import { act, backOf, formObj } from '@/lib/util';
+import { parseAttributes } from '@/lib/fields';
+import { validateEntity } from '@/lib/entityRules';
 
 /** Field values from the form (multi-select lookups come as several values). */
-function parse(e: Entity, fd: FormData) {
+async function parse(e: Entity, fd: FormData, enterpriseId: string) {
   const o = formObj(fd);
   const v: Record<string, any> = {};
   if (!o.name) throw new Error('Name is required');
   v.name = o.name;
   v.description = o.description ?? null;
   for (const f of e.fields) {
+    if (f.showWhen && !f.showWhen.values.includes(o[f.showWhen.field] ?? '')) {
+      v[f.name] = null; // not applicable for the chosen option
+      continue;
+    }
     if (f.type === 'multilookup') {
       const codes = fd.getAll(f.name).map(String).filter(Boolean);
       if (f.required && !codes.length) throw new Error(`${f.label} is required`);
@@ -25,21 +31,23 @@ function parse(e: Entity, fd: FormData) {
     v[f.name] = f.type === 'number' ? (raw === null ? null : Number(raw)) : f.type === 'yesno' ? (raw === 'N' ? 'N' : 'Y') : raw;
     if (f.type === 'number' && raw !== null && Number.isNaN(v[f.name])) throw new Error(`${f.label} must be a number`);
   }
+  v.attributes = await parseAttributes(enterpriseId, `setup:${e.key}`, fd);
   return { ...v, ...(e.fixed ?? {}) };
 }
 
 export async function createEntity(key: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv(getEntity(key)!.priv, 'WRITE');
   const e = getEntity(key)!;
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     if (!o.code) throw new Error('Code is required');
     const start = o.effective_start_date;
     if (!start) throw new Error('Effective start date is required');
-    const vals = parse(e, fd);
+    const vals = await parse(e, fd, u.enterpriseId);
     let id = '';
     await sql.begin(async (tx) => {
       await assertRefsEffective(tx, key, vals, start);
+      await validateEntity(tx, key, vals, { id: null, date: start });
       const [b] = await tx`insert into ${tx(e.table)} (enterprise_id, code, created_by) values (${u.enterpriseId}, ${o.code!.toUpperCase()}, ${u.username}) returning id`;
       id = b.id;
       await tx`insert into ${tx(e.table + '_f')} ${tx({ id, effective_start_date: start, ...vals, created_by: u.username, last_updated_by: u.username })}`;
@@ -50,14 +58,14 @@ export async function createEntity(key: string, fd: FormData) {
 
 /** Update (new version from a date) or correct the version current on that date. */
 export async function updateEntity(key: string, id: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv(getEntity(key)!.priv, 'WRITE');
   const e = getEntity(key)!;
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     const date = o.effective_date;
     if (!date) throw new Error('Effective date is required');
     const mode = o.mode === 'CORRECT' ? 'CORRECT' : 'UPDATE';
-    const vals = parse(e, fd);
+    const vals = await parse(e, fd, u.enterpriseId);
     await sql.begin(async (tx) => {
       let checkDate = date;
       if (mode === 'CORRECT') {
@@ -65,6 +73,7 @@ export async function updateEntity(key: string, id: string, fd: FormData) {
         if (cur) checkDate = cur.effective_start_date;
       }
       await assertRefsEffective(tx, key, vals, checkDate);
+      await validateEntity(tx, key, vals, { id, date: checkDate });
       await dtChange(tx, e.table, id, date, mode, vals, u.username);
     });
     return { msg: mode === 'CORRECT' ? 'Record corrected' : `Record updated effective ${date}` };
@@ -73,15 +82,16 @@ export async function updateEntity(key: string, id: string, fd: FormData) {
 
 /** Correct a specific saved version, including moving its effective start date. */
 export async function correctVersion(key: string, id: string, versionStart: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv(getEntity(key)!.priv, 'WRITE');
   const e = getEntity(key)!;
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     const newStart = o.effective_start_date;
     if (!newStart) throw new Error('Effective start date is required');
-    const vals = parse(e, fd);
+    const vals = await parse(e, fd, u.enterpriseId);
     await sql.begin(async (tx) => {
       await assertRefsEffective(tx, key, vals, newStart);
+      await validateEntity(tx, key, vals, { id, date: newStart });
       const r = await dtCorrectVersion(tx, e.table, id, versionStart, newStart, vals, u.username);
       // moving the record's very first start later must not orphan records that use it
       if (r.isFirst && newStart > versionStart) await assertDependentsWithin(tx, e.table, id, newStart, null, `start this ${e.label.toLowerCase()} on ${newStart}`);
@@ -91,7 +101,7 @@ export async function correctVersion(key: string, id: string, versionStart: stri
 }
 
 export async function endDateEntity(key: string, id: string, fd: FormData) {
-  await requireUser('ADMIN');
+  await requirePriv(getEntity(key)!.priv, 'WRITE');
   const e = getEntity(key)!;
   await act(backOf(fd), async () => {
     const d = formObj(fd).end_date;
@@ -105,7 +115,7 @@ export async function endDateEntity(key: string, id: string, fd: FormData) {
 }
 
 export async function deleteLatestVersion(key: string, id: string, fd: FormData) {
-  await requireUser('ADMIN');
+  await requirePriv(getEntity(key)!.priv, 'WRITE');
   const e = getEntity(key)!;
   await act(backOf(fd), async () => {
     await sql.begin(async (tx) => {
@@ -119,7 +129,7 @@ export async function deleteLatestVersion(key: string, id: string, fd: FormData)
 
 /** Delete a record completely – only when nothing uses it. */
 export async function deleteEntity(key: string, id: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv(getEntity(key)!.priv, 'WRITE');
   const e = getEntity(key)!;
   await act(backOf(fd), async () => {
     await sql.begin(async (tx) => {

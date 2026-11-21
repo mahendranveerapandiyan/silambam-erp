@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser, hasRole, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { myClasses, studentScopeSql } from '@/lib/scope';
 import { academicYearOn } from '@/lib/people';
@@ -8,7 +8,7 @@ import { fmtDate, money, todayISO, addDays } from '@/lib/util';
 import { PageHeader, Stat, Badge, Empty } from '@/components/ui';
 
 export default async function Dashboard() {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_DASHBOARD_PRV');
   const today = todayISO();
   const E = u.enterpriseId;
   const L = await lk();
@@ -26,7 +26,7 @@ export default async function Dashboard() {
     join assignment_f af on af.id = a.id and ${today}::date between af.effective_start_date and af.effective_end_date
     where d.enterprise_id = ${E} and d.cancelled_flag = 'N' ${scope}`;
   const [coll] = await sql`select coalesce(sum(p.amount),0) a from fee_payment p where p.enterprise_id = ${E} and p.status_code = 'ACTIVE'
-    and to_char(p.payment_date, 'YYYY-MM') = ${today.slice(0, 7)} ${hasRole(u, 'ACCOUNTANT') ? sql`` : sql`and p.collected_by = ${u.username}`}`;
+    and to_char(p.payment_date, 'YYYY-MM') = ${today.slice(0, 7)} ${can(u, 'CD_ALL_STUDENTS_DATA_PRV') ? sql`` : sql`and p.collected_by = ${u.username}`}`;
   const [staff] = await sql`select count(*)::int n, (select count(*)::int from staff_attendance where attendance_date = ${today} and status_code in ('P','L')) present from assignment a
     join assignment_f af on af.id = a.id and ${today}::date between af.effective_start_date and af.effective_end_date
     join assignment_status_f st on st.id = af.assignment_status_id and ${today}::date between st.effective_start_date and st.effective_end_date
@@ -44,19 +44,19 @@ export default async function Dashboard() {
     <div className="max-w-7xl">
       <PageHeader title={`Welcome, ${u.displayName}`} subtitle={<>{fmtDate(today)} · {ay ? ay.name : <span className="text-red-700">No academic year covers today – define one</span>}</>} />
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label={isAdmin(u) || hasRole(u, 'ACCOUNTANT') ? 'Active Students' : 'My Students'} value={stu.n} href="/students" />
+        <Stat label={can(u, 'CD_ALL_STUDENTS_DATA_PRV') ? 'Active Students' : 'My Students'} value={stu.n} href="/students" />
         <Stat label="Attendance Today" value={att.marked ? `${Math.round((att.present / att.marked) * 100)}%` : '—'} sub={`${att.present} present of ${att.marked} marked`} href="/attendance/students" />
         <Stat label="Pending Fees" value={money(fees.pending)} sub={<span className="text-red-700">{money(fees.overdue)} overdue</span>} href="/fees" />
-        <Stat label={hasRole(u, 'ACCOUNTANT') ? 'Collected This Month' : 'Collected by Me This Month'} value={money(coll.a)} href="/fees/summary" />
-        {isAdmin(u) && <>
-          <Stat label="Active Staff" value={staff.n} sub={`${staff.present} checked in today`} href="/attendance/staff" />
-          <Stat label="Exception Approvals" value={pendEx.n} sub="waiting for you" href="/fees/exemptions" />
-          <Stat label="Low Stock Items" value={lowStock.n} sub="at or below reorder level" href="/inventory" />
+        <Stat label={can(u, 'CD_ALL_STUDENTS_DATA_PRV') ? 'Collected This Month' : 'Collected by Me This Month'} value={money(coll.a)} href="/fees/summary" />
+        {<>
+          {can(u, 'CD_STAFF_ATTENDANCE_PRV') && <Stat label="Active Staff" value={staff.n} sub={`${staff.present} checked in today`} href="/attendance/staff" />}
+          {can(u, 'CD_FEE_EXCEPTION_APPROVAL_PRV') && <Stat label="Exception Approvals" value={pendEx.n} sub="waiting for you" href="/fees/exemptions" />}
+          {can(u, 'CD_INVENTORY_ITEM_PRV') && <Stat label="Low Stock Items" value={lowStock.n} sub="at or below reorder level" href="/inventory" />}
         </>}
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card">
-          <h2 className="h2">{isAdmin(u) ? 'Classes' : 'My Classes'} – today&apos;s attendance</h2>
+          <h2 className="h2">{can(u, 'CD_ALL_STUDENTS_DATA_PRV') ? 'Classes' : 'My Classes'} – today&apos;s attendance</h2>
           {classes.length > 20 ? <p className="muted">{classes.length} classes. <Link className="link" href="/attendance/students">Open attendance</Link></p> : classes.map((c) => {
             const k = `${c.class_id}:${c.section_id}`;
             return (

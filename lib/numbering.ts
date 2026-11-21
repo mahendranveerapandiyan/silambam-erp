@@ -54,3 +54,42 @@ export async function nextNumber(tx: Tx, enterpriseId: string, objectCode: strin
     returning last_value`;
   return formatNumber(rule, seq.last_value, scopeCode, year);
 }
+
+export type NumberPreviews = { single: string | null; byScope: Record<string, string>; classToScope: Record<string, string>; buToScope: Record<string, string> } | null;
+
+/**
+ * The number the next student / staff member would get, without using it up.
+ * For branch- or LE-level rules it is worked out per branch / LE; the form
+ * picks the right one from the selected branch or class.
+ */
+export async function numberPreviews(enterpriseId: string, kind: 'STUDENT' | 'STAFF', date: string): Promise<NumberPreviews> {
+  const { sql } = await import('./db');
+  const rule = await getRule(sql, enterpriseId, kind);
+  if (!rule || rule.method_code === 'MANUAL') return null;
+  const year = date.slice(0, 4);
+  const period = rule.reset_yearly_flag === 'Y' ? year : 'ALL';
+  const next = async (scopeId: string, scopeCode: string | null) => {
+    const [s] = await sql`select last_value from number_sequence where rule_id = ${rule.id} and scope_id = ${scopeId} and period = ${period}`;
+    return formatNumber(rule, s ? Number(s.last_value) + 1 : Number(rule.start_number), scopeCode, year);
+  };
+  const out = { single: null as string | null, byScope: {} as Record<string, string>, classToScope: {} as Record<string, string>, buToScope: {} as Record<string, string> };
+  if (rule.scope_code === 'ENTERPRISE') {
+    out.single = await next('0', null);
+    return out;
+  }
+  const bus = await sql`select b.id, b.code, f.legal_employer_id from business_unit b
+    join lateral (select * from business_unit_f x where x.id = b.id order by (${date}::date between x.effective_start_date and x.effective_end_date) desc, x.effective_start_date desc limit 1) f on true
+    where b.enterprise_id = ${enterpriseId}`;
+  if (rule.scope_code === 'BU') {
+    for (const b of bus) { out.byScope[String(b.id)] = await next(String(b.id), b.code); out.buToScope[String(b.id)] = String(b.id); }
+  } else {
+    const les = await sql`select id, code from legal_employer where enterprise_id = ${enterpriseId}`;
+    for (const l of les) out.byScope[String(l.id)] = await next(String(l.id), l.code);
+    for (const b of bus) out.buToScope[String(b.id)] = String(b.legal_employer_id);
+  }
+  const classes = await sql`select c.id, f.business_unit_id from class c
+    join lateral (select * from class_f x where x.id = c.id order by (${date}::date between x.effective_start_date and x.effective_end_date) desc, x.effective_start_date desc limit 1) f on true
+    where c.enterprise_id = ${enterpriseId}`;
+  for (const c of classes) out.classToScope[String(c.id)] = out.buToScope[String(c.business_unit_id)];
+  return out;
+}

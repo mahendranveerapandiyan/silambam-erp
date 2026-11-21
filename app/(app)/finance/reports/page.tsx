@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
@@ -12,7 +12,7 @@ const EXPENSE = '#eb6834'; // categorical slot 2
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export default async function Reports({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FINANCE_REPORT_PRV');
   const sp = await searchParams;
   const asOf = await getAsOf();
   const today = todayISO();

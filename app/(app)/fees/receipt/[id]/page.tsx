@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
 import { assertStudentAccess } from '@/lib/scope';
@@ -8,7 +8,7 @@ import { fmtDate, money, todayISO } from '@/lib/util';
 import { PrintButton } from '@/components/client';
 
 export default async function Receipt({ params }: { params: Promise<{ id: string }> }) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv(['CD_FEE_COLLECT_PRV', 'CD_FEE_SUMMARY_PRV'], 'READ');
   const { id } = await params;
   const [p] = await sql`select fp.*, a.assignment_number, (select trim(concat_ws(' ', first_name, last_name)) from person_f x where x.id = fp.person_id order by effective_start_date desc limit 1) full_name,
     (select name from business_unit_f b where b.id = fp.business_unit_id order by effective_start_date desc limit 1) bu_name

@@ -1,16 +1,21 @@
 'use server';
+import { photoToJpeg } from '@/lib/images';
 import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { sql, type Tx } from '@/lib/db';
-import { requireUser, isAdmin, type SessionUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { act, backOf, formObj, fileToBytes } from '@/lib/util';
-import { dtChange } from '@/lib/dt';
+import { dtChange, dtCorrectVersion } from '@/lib/dt';
 import { nextNumber } from '@/lib/numbering';
-import { assertStudentAccess, myClasses } from '@/lib/scope';
+import { assertStudentAccess, myClasses, seesAllStudents } from '@/lib/scope';
+
+const dirPriv = (k: PersonKind) => (k === 'STUDENT' ? 'CD_STUDENT_DIRECTORY_PRV' : 'CD_STAFF_DIRECTORY_PRV');
+const actPriv = (k: PersonKind) => (k === 'STUDENT' ? 'CD_STUDENT_ACTION_PRV' : 'CD_STAFF_ACTION_PRV');
 import { actionByType, actionInfo, academicYearOn, buLegalEmployer, classHierarchy, type PersonKind } from '@/lib/people';
 import { generateStudentFees } from '@/lib/fees';
 import { assertEffective } from '@/lib/integrity';
+import { parseAttributes } from '@/lib/fields';
 
 /** Assignment columns that point at date-tracked setup records. */
 const ASG_REFS: [string, string, string][] = [
@@ -41,7 +46,6 @@ function personVals(o: Record<string, string | null>) {
 }
 
 async function guard(u: SessionUser, kind: PersonKind, personId: string | null, asOf: string) {
-  if (kind === 'STAFF' && !isAdmin(u)) throw new Error('Only administrators can manage staff.');
   if (kind === 'STUDENT' && personId) await assertStudentAccess(u, personId, asOf);
 }
 
@@ -50,7 +54,7 @@ async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string
   if (kind === 'STUDENT') {
     if (!o.class_section) throw new Error('Class / Section is required');
     const [classId, sectionId] = o.class_section.split(':');
-    if (!isAdmin(u)) {
+    if (!seesAllStudents(u)) {
       const allowed = (await myClasses(u, date)).some((c) => String(c.class_id) === classId && String(c.section_id) === sectionId);
       if (!allowed) throw new Error('You can only place students in your own classes.');
     }
@@ -64,6 +68,17 @@ async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string
     };
     await assertAssignmentRefs({ ...sv, assignment_status_id: o.assignment_status_id }, date);
     return sv;
+  }
+  // a chosen position supplies any details left blank
+  if (o.position_id) {
+    const [pf] = await sql`select * from position_f where id = ${o.position_id} and ${date}::date between effective_start_date and effective_end_date`;
+    if (pf) {
+      o.business_unit_id ??= pf.business_unit_id && String(pf.business_unit_id);
+      o.department_id ??= pf.department_id && String(pf.department_id);
+      o.job_id ??= pf.job_id && String(pf.job_id);
+      o.staff_grade_id ??= pf.staff_grade_id && String(pf.staff_grade_id);
+      o.employment_type_code ??= pf.full_time_flag === 'N' ? 'PART_TIME' : 'FULL_TIME';
+    }
   }
   if (!o.business_unit_id) throw new Error('Business unit is required');
   const fv = {
@@ -91,13 +106,13 @@ async function createLogin(tx: Tx, u: SessionUser, username: string, password: s
 
 // ------------------------------------------------------------------ hire
 export async function hirePerson(kind: PersonKind, fd: FormData) {
-  const u = await requireUser(kind === 'STUDENT' ? 'INCHARGE' : 'ADMIN');
+  const u = await requirePriv(kind === 'STUDENT' ? 'CD_STUDENT_ADMISSION_PRV' : 'CD_STAFF_HIRE_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     const date = o.hire_date;
     if (!date) throw new Error(`${kind === 'STUDENT' ? 'Admission' : 'Hire'} date is required`);
     await guard(u, kind, null, date);
-    const photo = await fileToBytes(fd.get('photo'));
+    const photo = await photoToJpeg(fd.get('photo'));
     let personId = '';
     let msg = '';
     await sql.begin(async (tx) => {
@@ -110,7 +125,8 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
         const [dup] = await tx`select assignment_number from assignment where person_id = ${personId} and assignment_type = ${kind}`;
         if (dup) throw new Error(`This person already has a ${kind.toLowerCase()} record (${dup.assignment_number}). Use the Re-admission / Rehire action instead.`);
       } else {
-        const pv = personVals(o);
+        const pv: Record<string, any> = personVals(o);
+        pv.attributes = await parseAttributes(u.enterpriseId, kind, fd);
         const pnum = (await nextNumber(tx, u.enterpriseId, 'PERSON', { date })) ?? o.person_number;
         if (!pnum) throw new Error('Person number is required (manual numbering)');
         const [p] = await tx`insert into person (enterprise_id, person_number, date_of_birth, qr_token, created_by)
@@ -131,7 +147,7 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
         av.person_type_id = pt?.id ?? null;
       }
       await tx`insert into assignment_f ${tx({
-        id: a.id, effective_start_date: date, action_id: hire.id, action_reason_code: o.action_reason_code ?? 'NEW_JOINER',
+        id: a.id, effective_start_date: date, action_id: hire.id, action_reason_code: o.action_reason_code ?? (kind === 'STUDENT' ? 'NEW_ADMISSION' : 'HIRE'),
         assignment_status_id: o.assignment_status_id ?? hire.assignment_status_id, ...av, created_by: u.username, last_updated_by: u.username,
       })}`;
       if (photo) await tx`insert into person_photo (person_id, mime, data) values (${personId}, ${photo.mime}, ${photo.data}) on conflict (person_id) do update set mime = excluded.mime, data = excluded.data`;
@@ -164,13 +180,16 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
 
 // --------------------------------------------------------- personal info
 export async function updatePerson(kind: PersonKind, personId: string, fd: FormData) {
-  const u = await requireUser(kind === 'STUDENT' ? 'INCHARGE' : 'ADMIN');
+  const u = await requirePriv(dirPriv(kind), 'WRITE');
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     if (!o.effective_date) throw new Error('Effective date is required');
     await guard(u, kind, personId, await getAsOf());
+    const [cur] = await sql`select attributes from person_f where id = ${personId} and ${o.effective_date}::date between effective_start_date and effective_end_date`;
+    const vals: Record<string, any> = personVals(o);
+    vals.attributes = await parseAttributes(u.enterpriseId, kind, fd, cur?.attributes ?? {});
     await sql.begin(async (tx) => {
-      await dtChange(tx, 'person', personId, o.effective_date!, o.mode === 'CORRECT' ? 'CORRECT' : 'UPDATE', personVals(o), u.username);
+      await dtChange(tx, 'person', personId, o.effective_date!, o.mode === 'CORRECT' ? 'CORRECT' : 'UPDATE', vals, u.username);
       await tx`update person set date_of_birth = ${o.date_of_birth} where id = ${personId}`;
     });
     return { msg: 'Personal details saved' };
@@ -178,10 +197,10 @@ export async function updatePerson(kind: PersonKind, personId: string, fd: FormD
 }
 
 export async function uploadPhoto(kind: PersonKind, personId: string, fd: FormData) {
-  const u = await requireUser(kind === 'STUDENT' ? 'INCHARGE' : 'ADMIN');
+  const u = await requirePriv(dirPriv(kind), 'WRITE');
   await act(backOf(fd), async () => {
     await guard(u, kind, personId, await getAsOf());
-    const photo = await fileToBytes(fd.get('photo'));
+    const photo = await photoToJpeg(fd.get('photo'));
     if (!photo) throw new Error('Choose an image');
     await sql`insert into person_photo (person_id, mime, data) values (${personId}, ${photo.mime}, ${photo.data})
       on conflict (person_id) do update set mime = excluded.mime, data = excluded.data, last_update_date = now()`;
@@ -190,7 +209,7 @@ export async function uploadPhoto(kind: PersonKind, personId: string, fd: FormDa
 }
 
 export async function regenerateQr(kind: PersonKind, personId: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv(dirPriv(kind), 'WRITE');
   await act(backOf(fd), async () => {
     await guard(u, kind, personId, await getAsOf());
     await sql`update person set qr_token = ${crypto.randomBytes(12).toString('hex')} where id = ${personId}`;
@@ -199,7 +218,7 @@ export async function regenerateQr(kind: PersonKind, personId: string, fd: FormD
 }
 
 export async function saveContact(kind: PersonKind, personId: string, contactId: string | null, fd: FormData) {
-  const u = await requireUser(kind === 'STUDENT' ? 'INCHARGE' : 'ADMIN');
+  const u = await requirePriv(dirPriv(kind), 'WRITE');
   await act(backOf(fd), async () => {
     await guard(u, kind, personId, await getAsOf());
     const o = formObj(fd);
@@ -218,7 +237,7 @@ export async function saveContact(kind: PersonKind, personId: string, contactId:
 
 // ------------------------------------------------------ assignment actions
 export async function assignmentAction(kind: PersonKind, personId: string, fd: FormData) {
-  const u = await requireUser(kind === 'STUDENT' ? 'INCHARGE' : 'ADMIN');
+  const u = await requirePriv(actPriv(kind), 'WRITE');
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     const date = o.effective_date;
@@ -252,11 +271,63 @@ export async function assignmentAction(kind: PersonKind, personId: string, fd: F
 }
 
 export async function undoAssignment(kind: PersonKind, personId: string, fd: FormData) {
-  await requireUser('ADMIN');
+  await requirePriv(actPriv(kind), 'WRITE');
   await act(backOf(fd), async () => {
     const [a] = await sql`select id from assignment where person_id = ${personId} and assignment_type = ${kind}`;
     const { dtDeleteLatest } = await import('@/lib/dt');
     await sql.begin((tx) => dtDeleteLatest(tx, 'assignment', a.id));
     return { msg: 'Latest assignment change removed' };
+  });
+}
+
+/**
+ * Change the original admission / hire date. The first assignment version (and
+ * the personal record, if it started on the old date or later) move with it.
+ * Moving later is refused when attendance, payments or exams exist before the
+ * new date; unpaid fee lines that end before the new date are cancelled.
+ */
+export async function changeStartDate(kind: PersonKind, personId: string, fd: FormData) {
+  const u = await requirePriv(actPriv(kind), 'WRITE');
+  await act(backOf(fd), async () => {
+    const newDate = formObj(fd).new_date;
+    if (!newDate) throw new Error('Choose the new date');
+    await guard(u, kind, personId, newDate);
+    const [a] = await sql`select * from assignment where person_id = ${personId} and assignment_type = ${kind}`;
+    if (!a) throw new Error('No record found');
+    const oldDate = a.original_start_date as string;
+    if (newDate === oldDate) return { msg: 'Date unchanged' };
+    let cancelled = 0;
+    await sql.begin(async (tx) => {
+      const [first] = await tx`select * from assignment_f where id = ${a.id} order by effective_start_date limit 1`;
+      // everything the first version points at must exist on the new date
+      await assertAssignmentRefs(first, newDate);
+      if (first.class_id) await assertEffective(tx, 'class', first.class_id, newDate, 'Class');
+      if (first.business_unit_id) await assertEffective(tx, 'business_unit', first.business_unit_id, newDate, 'Business unit');
+      if (newDate > oldDate) {
+        const att = kind === 'STUDENT' ? 'student_attendance' : 'staff_attendance';
+        const [n] = await tx`select count(*)::int n from ${tx(att)} where person_id = ${personId} and attendance_date < ${newDate}`;
+        if (n.n) throw new Error(`${n.n} attendance record(s) exist before ${newDate}. Remove them first or choose an earlier date.`);
+        const [p] = await tx`select count(*)::int n from fee_payment where person_id = ${personId} and status_code = 'ACTIVE' and payment_date < ${newDate}`;
+        if (p.n) throw new Error(`${p.n} fee payment(s) were recorded before ${newDate}. Cancel them first or choose an earlier date.`);
+        const [e] = await tx`select count(*)::int n from exam_candidate c join exam x on x.id = c.exam_id where c.person_id = ${personId} and x.exam_date < ${newDate}`;
+        if (e.n) throw new Error(`${e.n} exam(s) before ${newDate} include this person.`);
+      }
+      await dtCorrectVersion(tx, 'assignment', a.id, first.effective_start_date, newDate, {}, u.username);
+      await tx`update assignment set original_start_date = ${newDate} where id = ${a.id}`;
+      // personal record: start no later than the hire date
+      const [pf] = await tx`select effective_start_date from person_f where id = ${personId} order by effective_start_date limit 1`;
+      if (pf && (newDate < pf.effective_start_date || pf.effective_start_date === oldDate)) {
+        const [other] = await tx`select min(original_start_date) d from assignment where person_id = ${personId} and id <> ${a.id}`;
+        const target = other?.d && other.d < newDate ? other.d : newDate;
+        if (target !== pf.effective_start_date) await dtCorrectVersion(tx, 'person', personId, pf.effective_start_date, target, {}, u.username);
+      }
+      if (kind === 'STUDENT' && newDate > oldDate) {
+        const lines = await tx`select id from fee_demand_v where person_id = ${personId} and cancelled_flag = 'N' and paid_amount = 0 and exempted_amount = 0
+          and coalesce(period_end, due_date) < ${newDate}`;
+        for (const l of lines) await tx`update fee_demand set cancelled_flag = 'Y', last_updated_by = ${u.username}, last_update_date = now() where id = ${l.id}`;
+        cancelled = lines.length;
+      }
+    });
+    return { msg: `${kind === 'STUDENT' ? 'Admission' : 'Hire'} date changed to ${newDate}${cancelled ? ` · ${cancelled} unpaid fee line(s) before that date cancelled` : ''}` };
   });
 }

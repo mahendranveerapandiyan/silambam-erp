@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { SessionUser } from '@/lib/auth';
-import { isAdmin } from '@/lib/auth';
+import { can } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { assignmentBase, assignmentFor, personDetail, type PersonKind } from '@/lib/people';
 import { datedRefOptions, nameOn } from '@/lib/dt';
@@ -12,7 +12,7 @@ import { PageHeader, Flash, Field, Badge, Back, Tabs, Empty, Select, STATUS_COLO
 import { ConfirmButton } from '../client';
 import { PhotoInput } from '../PhotoInput';
 import { PersonFields } from './PersonFields';
-import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment } from '@/app/(app)/people/actions';
+import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate } from '@/app/(app)/people/actions';
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -37,7 +37,8 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
     ? [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['contacts', 'Parents / Contacts'], ['attendance', 'Attendance'], ['fees', 'Fees'], ['exams', 'Exams'], ['events', 'Events']]
     : [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['contacts', 'Contacts'], ['attendance', 'Attendance'], ['classes', 'Classes (Incharge)']];
   const contacts = await sql`select * from person_contact where person_id = ${personId} order by primary_flag desc, id`;
-  const canEdit = stu || isAdmin(u);
+  const canEdit = can(u, stu ? 'CD_STUDENT_DIRECTORY_PRV' : 'CD_STAFF_DIRECTORY_PRV', 'WRITE');
+  const canAct = can(u, stu ? 'CD_STUDENT_ACTION_PRV' : 'CD_STAFF_ACTION_PRV', 'WRITE');
 
   return (
     <div className="max-w-7xl">
@@ -45,8 +46,8 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         title={p.full_name}
         subtitle={<>{stu ? 'Student' : 'Staff'} No. <b>{ab.assignment_number}</b> · Person No. {p.person_number} · {a ? <Badge color={STATUS_COLOR[a.system_status_code]}>{a.status_name}</Badge> : <Badge color="gray">No assignment on {fmtDate(asOf)}</Badge>}</>}
         actions={<>
-          {canEdit && <Link href={`${base}/${personId}/action`} className="btn btn-primary">Actions ▸</Link>}
-          {stu && <Link href={`/fees/students/${personId}`} className="btn">Fees</Link>}
+          {canAct && <Link href={`${base}/${personId}/action`} className="btn btn-primary">Actions ▸</Link>}
+          {stu && can(u, 'CD_FEE_COLLECT_PRV', 'READ') && <Link href={`/fees/students/${personId}`} className="btn">Fees</Link>}
           <Link href={`${base}/${personId}/card`} className="btn">ID Card</Link>
           <Link href={base} className="btn">Back</Link>
         </>}
@@ -96,7 +97,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
               <Back to={back} /><PhotoInput required /><button className="btn btn-sm">Upload</button>
             </form>
           )}
-          {isAdmin(u) && (
+          {canEdit && (
             <form action={regenerateQr.bind(null, kind, personId)}><Back to={back} />
               <ConfirmButton className="btn btn-sm" message="Issue a new QR code? Printed ID cards will stop working.">Re-issue QR code</ConfirmButton></form>
           )}
@@ -142,6 +143,15 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         </div>
         <div className="space-y-4">
           {feeBox}
+          {canAct && (
+            <form action={changeStartDate.bind(null, kind, personId)} className="card space-y-2">
+              <Back to={back} />
+              <h2 className="h2">Change {stu ? 'Admission' : 'Hire'} Date</h2>
+              <p className="muted">Currently <b>{fmtDate(ab!.original_start_date)}</b>. The first assignment version moves with it; the date must suit the class/branch and any attendance or payments.</p>
+              <div className="flex gap-2"><input type="date" name="new_date" defaultValue={ab!.original_start_date} required className="input" />
+                <ConfirmButton className="btn" message={`Change the ${stu ? 'admission' : 'hire'} date?`}>Change</ConfirmButton></div>
+            </form>
+          )}
           <div className="card">
             <h2 className="h2">{stu ? 'Parents / Guardian' : 'Contacts'}</h2>
             {contacts.length ? contacts.map((c) => (
@@ -168,7 +178,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
       <div className="card overflow-x-auto">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="h2 mb-0">Assignment History (date-effective)</h2>
-          {isAdmin(u) && rows.length > 1 && (
+          {canAct && rows.length > 1 && (
             <form action={undoAssignment.bind(null, kind, personId)}><Back to={back} /><ConfirmButton className="btn btn-sm" message="Remove the latest assignment change?">Undo latest change</ConfirmButton></form>
           )}
         </div>
@@ -205,7 +215,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
               <Field label="Effective Date"><input type="date" name="effective_date" defaultValue={asOf} required className="input" /></Field>
               <span className="muted pb-2">Current version: {fmtDate(p.effective_start_date)} → {fmtDate(p.effective_end_date)}</span>
             </div>
-            <div className="grid-form"><PersonFields p={p} asOf={asOf} /></div>
+            <div className="grid-form"><PersonFields p={p} asOf={asOf} enterpriseId={u.enterpriseId} kind={kind} dateField="effective_date" /></div>
             <button className="btn btn-primary mt-4">Save</button>
           </form>
         )}

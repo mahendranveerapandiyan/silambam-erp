@@ -9,7 +9,7 @@ export default async function PortalLayout({ children }: { children: React.React
   return (
     <div className="min-h-screen">
       <header className="flex h-12 items-center gap-3 px-4 no-print" style={{ background: 'var(--header-bg)', color: 'var(--header-text)' }}>
-        <Link href="/portal" className="font-semibold">{ent?.short_name || ent?.name} · Portal</Link>
+        <Link href="/portal" className="font-semibold">{ent?.short_name || ent?.name} · caMpus dAy</Link>
         <div className="ml-auto flex items-center gap-3 text-sm">
           <Link href="/portal/account" className="hover:underline">{u.displayName}</Link>
           <form action={logout}><button className="rounded px-2 py-1 hover:bg-white/10">Logout</button></form>

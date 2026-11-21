@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { myClasses, studentScopeSql } from '@/lib/scope';
 import { fullName, personAsOf } from '@/lib/people';
@@ -10,7 +10,7 @@ import { AutoSubmit, PrintButton } from '@/components/client';
 const COLORS: Record<string, string> = { P: 'bg-green-500', L: 'bg-amber-400', A: 'bg-red-500', LV: 'bg-blue-400', HD: 'bg-yellow-300', H: 'bg-gray-300' };
 
 export default async function Report({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv('CD_ATTENDANCE_REPORT_PRV');
   const sp = await searchParams;
   const month = s(sp.month) ?? todayISO().slice(0, 7);
   const start = `${month}-01`;

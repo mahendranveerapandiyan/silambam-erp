@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { fullName, personAsOf } from '@/lib/people';
 import { studentScopeSql } from '@/lib/scope';
@@ -7,7 +7,7 @@ import { PageHeader, Flash, Field, Back, type SP, s } from '@/components/ui';
 import { sellToStudent } from '../actions';
 
 export default async function Sale({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_INVENTORY_SALE_PRV');
   const sp = await searchParams;
   const today = todayISO();
   const items = await sql`select id, code, name, size_label, unit_price from item where enterprise_id = ${u.enterpriseId} and active_flag = 'Y' order by name, size_label`;

@@ -1,6 +1,7 @@
 'use server';
+import { imageToPng } from '@/lib/images';
 import { sql } from '@/lib/db';
-import { requireUser, hasRole, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { act, backOf, formObj, fileToBytes, todayISO } from '@/lib/util';
 import { assertStudentAccess } from '@/lib/scope';
@@ -10,7 +11,7 @@ const FREQS = ['MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUAL', 'ON
 
 // ------------------------------------------------------------ structures
 export async function saveStructure(id: string | null, fd: FormData) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_STRUCTURE_PRV', 'WRITE');
   await act(backOf(fd, '/fees/structures'), async () => {
     const o = formObj(fd);
     if (!o.academic_year_id || !o.fee_type_code || !o.name) throw new Error('Academic year, fee type and name are required');
@@ -36,7 +37,7 @@ export async function saveStructure(id: string | null, fd: FormData) {
 }
 
 export async function copyStructures(fd: FormData) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_STRUCTURE_PRV', 'WRITE');
   await act(backOf(fd, '/fees/structures'), async () => {
     const o = formObj(fd);
     if (!o.from_ay || !o.to_ay || o.from_ay === o.to_ay) throw new Error('Choose two different academic years');
@@ -68,7 +69,7 @@ export async function copyStructures(fd: FormData) {
 
 // ------------------------------------------------------------- generate
 export async function generateFees(fd: FormData) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_GENERATE_PRV', 'WRITE');
   await act(backOf(fd, '/fees/generate'), async () => {
     const o = formObj(fd);
     if (!o.academic_year_id) throw new Error('Academic year is required');
@@ -107,7 +108,7 @@ async function demandPerson(demandId: string) {
 
 /** Per-line status update: Paid / Partially paid / Exception full / Exception partial / Cancel. */
 export async function demandAction(demandId: string, fd: FormData) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_COLLECT_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     const personId = await demandPerson(demandId);
@@ -134,13 +135,13 @@ export async function demandAction(demandId: string, fd: FormData) {
         if (!(ex > 0)) throw new Error('Enter the exception amount');
         if (ex > open + 0.001) throw new Error(`Exception exceeds the open balance (${open})`);
         if (!o.reason_code) throw new Error('Exception reason is required');
-        const auto = hasRole(u, 'ACCOUNTANT');
+        const auto = can(u, 'CD_FEE_EXCEPTION_APPROVAL_PRV', 'WRITE');
         await sql`insert into fee_exemption (demand_id, amount, reason_code, remarks, status_code, requested_by, decided_by, decided_at)
           values (${demandId}, ${ex}, ${o.reason_code}, ${o.remarks}, ${auto ? 'APPROVED' : 'PENDING'}, ${u.username}, ${auto ? u.username : null}, ${auto ? new Date() : null})`;
         return { msg: auto ? 'Exception applied' : 'Exception submitted for administrator approval' };
       }
       case 'CANCEL': {
-        if (!isAdmin(u)) throw new Error('Only administrators can cancel fee lines');
+        if (!can(u, 'CD_FEE_CANCEL_PRV', 'WRITE')) throw new Error('You do not have permission to cancel fee lines');
         if (Number(d.paid_amount) > 0) throw new Error('This line has payments; cancel the payment receipts first');
         await sql`update fee_demand set cancelled_flag = 'Y', last_updated_by = ${u.username}, last_update_date = now() where id = ${demandId}`;
         return { msg: 'Fee line cancelled' };
@@ -152,7 +153,7 @@ export async function demandAction(demandId: string, fd: FormData) {
 
 /** One payment allocated across several selected lines (oldest first). */
 export async function bulkPayment(personId: string, fd: FormData) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_COLLECT_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     await assertStudentAccess(u, personId, await getAsOf());
     const o = formObj(fd);
@@ -168,7 +169,7 @@ export async function bulkPayment(personId: string, fd: FormData) {
 }
 
 export async function addCharge(personId: string, fd: FormData) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_CHARGE_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     if (!o.fee_type_code || !o.description || !o.amount || !o.due_date) throw new Error('Fee type, description, amount and due date are required');
@@ -179,7 +180,7 @@ export async function addCharge(personId: string, fd: FormData) {
 }
 
 export async function cancelPayment(paymentId: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_FEE_CANCEL_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     await sql`update fee_payment set status_code = 'CANCELLED', remarks = coalesce(remarks || ' · ', '') || ${'Cancelled by ' + u.username} where id = ${paymentId}`;
     return { msg: 'Receipt cancelled; the amounts are outstanding again' };
@@ -187,7 +188,7 @@ export async function cancelPayment(paymentId: string, fd: FormData) {
 }
 
 export async function changeFrequency(personId: string, fd: FormData) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_COLLECT_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     const date = o.effective_date ?? todayISO();
@@ -214,7 +215,7 @@ export async function changeFrequency(personId: string, fd: FormData) {
 
 // ----------------------------------------------------------- exemptions
 export async function decideExemption(id: string, decision: 'APPROVED' | 'REJECTED', fd: FormData) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_EXCEPTION_APPROVAL_PRV', 'WRITE');
   await act(backOf(fd, '/fees/exemptions'), async () => {
     const [e] = await sql`select e.*, d.balance_amount from fee_exemption e join fee_demand_v d on d.id = e.demand_id where e.id = ${id}`;
     if (!e || e.status_code !== 'PENDING') throw new Error('Request is no longer pending');
@@ -226,13 +227,13 @@ export async function decideExemption(id: string, decision: 'APPROVED' | 'REJECT
 
 // ------------------------------------------------------------ payment QR
 export async function uploadPaymentQr(fd: FormData) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_PAYMENT_QR_PRV', 'WRITE');
   await act('/fees/payment-qr', async () => {
     const o = formObj(fd);
-    const img = await fileToBytes(fd.get('image'));
+    const img = await imageToPng(fd.get('image'));
     if (!img) throw new Error('Choose the QR image');
     if (!o.label) throw new Error('Label is required (e.g. "GPay – Coach Ravi")');
-    const branchLevel = isAdmin(u) && o.business_unit_id;
+    const branchLevel = can(u, 'CD_ALL_STUDENTS_DATA_PRV') && o.business_unit_id;
     if (!branchLevel && !u.personId) throw new Error('Your login is not linked to a staff record');
     await sql`insert into payment_qr (person_id, business_unit_id, label, upi_id, mime, data, created_by)
       values (${branchLevel ? null : u.personId}, ${branchLevel ? o.business_unit_id : null}, ${o.label}, ${o.upi_id}, ${img.mime}, ${img.data}, ${u.username})`;
@@ -241,11 +242,11 @@ export async function uploadPaymentQr(fd: FormData) {
 }
 
 export async function togglePaymentQr(id: string, fd: FormData) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_PAYMENT_QR_PRV', 'WRITE');
   await act('/fees/payment-qr', async () => {
     const [q] = await sql`select * from payment_qr where id = ${id}`;
     if (!q) throw new Error('Not found');
-    if (!isAdmin(u) && String(q.person_id) !== String(u.personId)) throw new Error('You can only manage your own QR codes');
+    if (!can(u, 'CD_ALL_STUDENTS_DATA_PRV') && String(q.person_id) !== String(u.personId)) throw new Error('You can only manage your own QR codes');
     if (formObj(fd)._delete) await sql`delete from payment_qr where id = ${id}`;
     else await sql`update payment_qr set active_flag = case active_flag when 'Y' then 'N' else 'Y' end where id = ${id}`;
   });

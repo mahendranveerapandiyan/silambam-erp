@@ -6,6 +6,7 @@ import { myClassesDated } from '@/lib/scope';
 import { sql } from '@/lib/db';
 import { Field } from '../ui';
 import { DatedSelect } from '../DatedSelect';
+import { PositionAutofill } from '../PositionAutofill';
 
 /**
  * Student or staff assignment attributes. Every drop-down follows the date
@@ -45,7 +46,11 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
       <Field label="Location">{D('location_id', await datedRefOptions('locations', E), a.location_id)}</Field>
       <Field label="Department">{D('department_id', await datedRefOptions('departments', E), a.department_id)}</Field>
       <Field label="Job">{D('job_id', await datedRefOptions('jobs', E), a.job_id)}</Field>
-      <Field label="Position">{D('position_id', await datedRefOptions('positions', E), a.position_id)}</Field>
+      <Field label="Position" help="Choosing a position fills branch, department, job, grade and type">{D('position_id', await datedRefOptions('positions', E), a.position_id)}</Field>
+      <PositionAutofill dateField={dateField} positions={(await sql`select f.id, f.effective_start_date, f.effective_end_date, f.business_unit_id, f.department_id, f.job_id, f.staff_grade_id, f.full_time_flag
+        from position b join position_f f on f.id = b.id where b.enterprise_id = ${E}`).map((r) => ({ id: String(r.id), start: r.effective_start_date, end: r.effective_end_date,
+          business_unit_id: r.business_unit_id && String(r.business_unit_id), department_id: r.department_id && String(r.department_id), job_id: r.job_id && String(r.job_id),
+          staff_grade_id: r.staff_grade_id && String(r.staff_grade_id), full_time_flag: r.full_time_flag }))} />
       <Field label="Grade">{D('staff_grade_id', await datedRefOptions('staff-grades', E), a.staff_grade_id)}</Field>
       <Field label="Employment Type">{D('employment_type_code', await datedLookupOptions('EMPLOYMENT_TYPE'), a.employment_type_code)}</Field>
       <Field label="Employment Category">{D('employment_category_code', await datedLookupOptions('EMPLOYMENT_CATEGORY'), a.employment_category_code)}</Field>

@@ -1,11 +1,11 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { PersonView } from '@/components/people/PersonView';
 import { AccessGuard } from '@/components/people/AccessGuard';
 import type { SP } from '@/components/ui';
 
 export default async function Page({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_STAFF_DIRECTORY_PRV', 'READ');
   const { id } = await params;
   const asOf = await getAsOf();
   return (

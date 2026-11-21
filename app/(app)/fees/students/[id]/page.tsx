@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser, hasRole, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { assignmentFor, personDetail } from '@/lib/people';
@@ -13,7 +13,7 @@ import { AccessGuard } from '@/components/people/AccessGuard';
 import { demandAction, bulkPayment, addCharge, cancelPayment, changeFrequency } from '../../actions';
 
 export default async function StudentFees({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_COLLECT_PRV', 'READ');
   const { id } = await params;
   const sp = await searchParams;
   const asOf = await getAsOf();
@@ -44,7 +44,10 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
     const carriedAmt = carried.reduce((s, d) => s + Number(d.balance_amount), 0);
     const byYear = new Map<string, any[]>();
     for (const d of demands) byYear.set(d.ay_name ?? 'Other charges', [...(byYear.get(d.ay_name ?? 'Other charges') ?? []), d]);
-    const isAcct = hasRole(u, 'ACCOUNTANT');
+    const isAcct = can(u, 'CD_FEE_EXCEPTION_APPROVAL_PRV', 'WRITE');
+    const canCancel = can(u, 'CD_FEE_CANCEL_PRV', 'WRITE');
+    const canPay = can(u, 'CD_FEE_COLLECT_PRV', 'WRITE');
+    const canCharge = can(u, 'CD_FEE_CHARGE_PRV', 'WRITE');
 
     return (
       <div className="max-w-7xl">
@@ -103,7 +106,7 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
                         <td className="text-right">{money(d.exempted_amount)}{Number(d.pending_exempt) > 0 && <div className="text-[10px] text-amber-700">{money(d.pending_exempt)} pending</div>}</td>
                         <td className="text-right font-semibold">{money(d.balance_amount)}</td>
                         <td><Badge color={STATUS_COLOR[d.payment_status]}>{L('FEE_PAYMENT_STATUS', d.payment_status)}</Badge></td>
-                        <td>{(open || isAdmin(u)) && (
+                        <td>{canPay && (open || canCancel) && (
                           <details className="relative">
                             <summary className="btn btn-sm cursor-pointer list-none">Update ▾</summary>
                             <form action={demandAction.bind(null, d.id)} className="absolute right-0 z-10 mt-1 w-72 space-y-2 rounded-md border bg-white p-3 shadow-lg">
@@ -114,7 +117,7 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
                                 {open && <option value="PAY_PARTIAL">Partially Paid</option>}
                                 {open && <option value="EXEMPT_FULL">Exception – full balance</option>}
                                 {open && <option value="EXEMPT_PARTIAL">Exception – partial</option>}
-                                {isAdmin(u) && Number(d.paid_amount) === 0 && <option value="CANCEL">Cancel this line</option>}
+                                {canCancel && Number(d.paid_amount) === 0 && <option value="CANCEL">Cancel this line</option>}
                               </select>
                               <input name="amount" type="number" step="0.01" placeholder="Amount (partial)" className="input" />
                               <Select name="payment_mode_code" options={modes} value="CASH" empty={false} />
@@ -141,7 +144,7 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
                   <tr key={r.id} className={r.status_code === 'CANCELLED' ? 'line-through opacity-50' : ''}>
                     <td><Link className="link" href={`/fees/receipt/${r.id}`}>{r.receipt_number}</Link></td><td>{fmtDate(r.payment_date)}</td><td className="text-right">{money(r.amount)}</td>
                     <td>{L('PAYMENT_MODE', r.payment_mode_code)}</td><td>{r.reference}</td><td className="text-xs">{r.applied_to}</td><td className="text-xs">{r.collected_by}</td>
-                    <td>{isAdmin(u) && r.status_code === 'ACTIVE' && <form action={cancelPayment.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message="Cancel this receipt?">Cancel</ConfirmButton></form>}</td>
+                    <td>{canCancel && r.status_code === 'ACTIVE' && <form action={cancelPayment.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message="Cancel this receipt?">Cancel</ConfirmButton></form>}</td>
                   </tr>))}</tbody></table>
               {!payments.length && <Empty>No payments yet.</Empty>}
             </div>
@@ -172,7 +175,7 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
               <label className="flex items-start gap-2 text-xs"><input type="checkbox" name="regenerate" value="Y" defaultChecked /> Cancel future unpaid tuition lines and regenerate them at the new frequency</label>
               <button className="btn w-full">Change</button>
             </form>
-            {isAcct && (
+            {canCharge && (
               <form action={addCharge.bind(null, id)} className="card space-y-2">
                 <Back to={back} />
                 <h2 className="h2">Add Charge</h2>

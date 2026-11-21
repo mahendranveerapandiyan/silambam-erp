@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
@@ -12,7 +12,7 @@ import { ExamForm } from '@/components/ExamForm';
 import { saveExam } from './actions';
 
 export default async function Exams({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_EXAM_CANDIDATE_PRV']);
   const sp = await searchParams;
   const asOf = await getAsOf();
   const o = await examOptions(u.enterpriseId, asOf);
@@ -43,7 +43,7 @@ export default async function Exams({ searchParams }: { searchParams: SP }) {
               <td><Badge color={r.status_code === 'PUBLISHED' ? 'green' : r.status_code === 'CANCELLED' ? 'red' : 'blue'}>{L('EXAM_STATUS', r.status_code)}</Badge></td></tr>))}</tbody></table>
         {!rows.length && <Empty>No exams for this academic year.</Empty>}
       </div>
-      {isAdmin(u) && (<><h2 className="h2">Create Exam</h2><ExamForm action={saveExam.bind(null, null)} back="/exams" o={o} defaultAy={ay} /></>)}
+      {can(u, 'CD_EXAM_SETUP_PRV', 'WRITE') && (<><h2 className="h2">Create Exam</h2><ExamForm action={saveExam.bind(null, null)} back="/exams" o={o} defaultAy={ay} /></>)}
     </div>
   );
 }

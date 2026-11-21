@@ -27,7 +27,7 @@ if (!free) {
 }
 
 const env = { ...process.env, NODE_ENV: 'production', PORT: process.env.PORT || '3000', HOSTNAME: process.env.HOSTNAME_BIND || '0.0.0.0' };
-console.log(`Starting Silambam ERP on http://localhost:${env.PORT}`);
+console.log(`Starting caMpus dAy on http://localhost:${env.PORT}`);
 const child = spawn(process.execPath, [path.join(sa, 'server.js')], { env, stdio: 'inherit', cwd: sa });
 for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => child.kill(sig));
 child.on('exit', (code) => process.exit(code ?? 0));

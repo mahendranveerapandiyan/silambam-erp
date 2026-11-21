@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { fullName, personAsOf, nm } from '@/lib/people';
@@ -9,7 +9,7 @@ import { PageHeader, Flash, Back, Field, Badge, type SP } from '@/components/ui'
 import { saveIncharge } from '../actions';
 
 export default async function Incharges({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_CLASS_INCHARGE_PRV');
   const asOf = await getAsOf();
   const classes = await myClasses(u, asOf);
   const rows = await sql`

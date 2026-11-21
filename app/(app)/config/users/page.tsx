@@ -1,12 +1,12 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
 import { fmtDateTime } from '@/lib/util';
 import { PageHeader, Flash, Badge, type SP, s } from '@/components/ui';
 
 export default async function Users({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_USER_PRV');
   const sp = await searchParams;
   const q = s(sp.q), role = s(sp.role);
   const L = await lk();
@@ -25,7 +25,7 @@ export default async function Users({ searchParams }: { searchParams: SP }) {
       <div className="card overflow-x-auto">
         <form className="mb-3 flex gap-2">
           <input name="q" defaultValue={q ?? ''} placeholder="Search username or name" className="input max-w-xs" />
-          <select name="role" defaultValue={role ?? ''} className="input max-w-[12rem]"><option value="">All roles</option>{['ADMIN', 'INCHARGE', 'STAFF', 'ACCOUNTANT', 'PARENT', 'STUDENT'].map((r) => <option key={r} value={r}>{L('ROLE', r)}</option>)}</select>
+          <select name="role" defaultValue={role ?? ''} className="input max-w-[12rem]"><option value="">All roles</option>{(await sql`select code, name from app_role order by name`).map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}</select>
           <button className="btn">Filter</button>
         </form>
         <table className="tbl">
@@ -34,7 +34,7 @@ export default async function Users({ searchParams }: { searchParams: SP }) {
             <tr key={r.id}>
               <td><Link className="link" href={`/config/users/${r.id}`}>{r.username}</Link></td>
               <td>{r.display_name}</td>
-              <td className="space-x-1">{(r.roles ?? []).map((x: string) => <Badge key={x} color={x === 'ADMIN' ? 'red' : 'blue'}>{L('ROLE', x)}</Badge>)}</td>
+              <td className="space-x-1">{(r.roles ?? []).map((x: string) => <Badge key={x} color={x === 'ADMIN' ? 'red' : 'blue'}>{x}</Badge>)}</td>
               <td>{r.person_number}</td>
               <td>{r.active_flag === 'Y' ? <Badge color="green">Yes</Badge> : <Badge color="red">No</Badge>}</td>
               <td className="text-xs">{fmtDateTime(r.last_login)}</td>

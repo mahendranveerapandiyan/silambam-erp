@@ -58,7 +58,10 @@ export function ShowFor({ select }: { select: string }) {
     const apply = () => {
       document.querySelectorAll<HTMLElement>(`[data-show-for-${select}]`).forEach((n) => {
         const list = (n.getAttribute(`data-show-for-${select}`) || '').split(',');
-        n.style.display = list.includes(el.value) ? '' : 'none';
+        const show = list.includes(el.value);
+        n.style.display = show ? '' : 'none';
+        // hidden inputs are disabled so they are neither validated nor submitted
+        n.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea').forEach((i) => (i.disabled = !show));
       });
     };
     apply();

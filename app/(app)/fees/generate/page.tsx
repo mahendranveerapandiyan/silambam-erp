@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
@@ -8,7 +8,7 @@ import { PageHeader, Flash, Field, Select, Back, type SP } from '@/components/ui
 import { generateFees } from '../actions';
 
 export default async function Generate({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_GENERATE_PRV');
   const asOf = await getAsOf();
   const years = await sql`select * from academic_year where enterprise_id = ${u.enterpriseId} order by start_date desc`;
   const cur = await academicYearOn(u.enterpriseId, asOf);

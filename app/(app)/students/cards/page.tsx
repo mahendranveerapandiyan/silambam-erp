@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { myClasses, studentScopeSql } from '@/lib/scope';
@@ -7,7 +7,7 @@ import { PageHeader, Select, type SP, s } from '@/components/ui';
 import { AutoSubmit } from '@/components/client';
 
 export default async function Cards({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_STUDENT_ID_CARD_PRV');
   const asOf = await getAsOf();
   const cls = s((await searchParams).cls);
   const classes = await myClasses(u, asOf);

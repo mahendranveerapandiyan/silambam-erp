@@ -171,3 +171,27 @@ export async function actionByType(enterpriseId: string, category: PersonKind, t
     where a.enterprise_id = ${enterpriseId} and f.person_category = ${category} and f.action_type_code = ${type} and f.active_flag = 'Y' order by a.id limit 1`;
   return r;
 }
+
+/**
+ * Actions of a person category (optionally only hire-type or only non-hire) and
+ * the action reasons valid for each action: reasons whose parent is the
+ * action's type (or no parent) and whose tag is the category (or empty).
+ * Reason options carry the action id as `parent`, so the form filters them.
+ */
+export async function actionAndReasonOptions(enterpriseId: string, kind: PersonKind, which: 'HIRE' | 'OTHER') {
+  const acts = await sql`
+    select a.id, f.name, f.action_type_code, f.effective_start_date, f.effective_end_date from action a
+    join action_f f on f.id = a.id
+    where a.enterprise_id = ${enterpriseId} and f.person_category = ${kind} and f.active_flag = 'Y'
+      and ${which === 'HIRE' ? sql`f.action_type_code = 'HIRE'` : sql`f.action_type_code <> 'HIRE'`}
+    order by f.name`;
+  const reasons = await sql`select lookup_code, meaning, parent_code, tag, start_date, end_date, display_seq from lookup_value
+    where lookup_type = 'ACTION_REASON' and enabled_flag = 'Y' and (tag is null or tag = ${kind}) order by display_seq, meaning`;
+  const actions = acts.map((x) => ({ value: String(x.id), label: x.name as string, start: x.effective_start_date as string, end: x.effective_end_date as string }));
+  const reasonOpts: { value: string; label: string; start: string; end: string; parent: string }[] = [];
+  for (const a of acts)
+    for (const r of reasons)
+      if (!r.parent_code || r.parent_code === a.action_type_code)
+        reasonOpts.push({ value: r.lookup_code, label: r.meaning, start: r.start_date, end: r.end_date, parent: String(a.id) });
+  return { actions, reasons: reasonOpts };
+}

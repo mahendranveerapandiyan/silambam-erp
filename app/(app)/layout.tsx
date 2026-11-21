@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import { requireUser, can } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { menuFor } from '@/lib/menu';
 import { enterpriseInfo } from '@/lib/theme';
@@ -12,10 +12,10 @@ import { logout } from '../actions';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const u = await requireUser();
-  if (u.roles.every((r) => r === 'PARENT' || r === 'STUDENT') && u.roles.length) redirect('/portal');
-  const staffOnly = !u.roles.some((r) => ['ADMIN', 'INCHARGE', 'ACCOUNTANT'].includes(r));
+  // portal-only users (parents / students) use the separate portal layout
+  if (!can(u, 'CD_DASHBOARD_PRV') && !can(u, 'CD_MY_PROFILE_PRV') && can(u, 'CD_PORTAL_PRV')) redirect('/portal');
   const [asOf, ent] = [await getAsOf(), await enterpriseInfo(u.enterpriseId)];
-  const menu = staffOnly ? [{ label: 'Me', roles: [], items: [{ label: 'My Profile & QR', href: '/me' }, { label: 'My Account', href: '/account' }] }] : menuFor(u.roles);
+  const menu = menuFor(u.privs);
   return (
     <div className="min-h-screen">
       <input id="nav" type="checkbox" className="peer hidden" />
@@ -24,6 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Link href="/" className="flex items-center gap-2 font-semibold">
           {ent?.has_logo && <img src="/api/logo" alt="" className="h-8 w-8 rounded object-contain bg-white" />}
           <span className="truncate">{ent?.short_name || ent?.name}</span>
+          <span className="hidden rounded bg-white/15 px-1.5 py-0.5 text-[11px] font-bold tracking-tight sm:inline">caMpus dAy</span>
         </Link>
         <div className="ml-auto flex items-center gap-3">
           <Suspense><AsOfPicker value={asOf} today={todayISO()} /></Suspense>

@@ -1,13 +1,13 @@
 'use server';
 import { sql } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, todayISO } from '@/lib/util';
 import { addDemand } from '@/lib/fees';
 import { assertStudentAccess } from '@/lib/scope';
 import { academicYearOn } from '@/lib/people';
 
 export async function saveItem(id: string | null, fd: FormData) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_INVENTORY_ITEM_PRV', 'WRITE');
   await act(backOf(fd, '/inventory'), async () => {
     const o = formObj(fd);
     if (!o.code || !o.name || !o.category_code) throw new Error('Code, name and category are required');
@@ -20,7 +20,7 @@ export async function saveItem(id: string | null, fd: FormData) {
 }
 
 export async function stockEntry(fd: FormData) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_STOCK_ENTRY_PRV', 'WRITE');
   await act(backOf(fd, '/inventory/stock'), async () => {
     const o = formObj(fd);
     if (!o.item_id || !o.business_unit_id || !o.txn_type_code || !o.quantity) throw new Error('Item, branch, type and quantity are required');
@@ -40,7 +40,7 @@ export async function stockEntry(fd: FormData) {
 
 /** Sale to a student: reduces branch stock and adds the amount to the student's fee page. */
 export async function sellToStudent(fd: FormData) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_INVENTORY_SALE_PRV', 'WRITE');
   await act(backOf(fd, '/inventory/sale'), async () => {
     const o = formObj(fd);
     const date = o.txn_date ?? todayISO();

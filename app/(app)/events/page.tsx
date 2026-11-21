@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
@@ -10,7 +10,7 @@ import { EventForm } from '@/components/EventForm';
 import { saveEvent } from './actions';
 
 export default async function Events({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv(['CD_EVENT_SETUP_PRV', 'CD_EVENT_PARTICIPANT_PRV']);
   const asOf = await getAsOf();
   const L = await lk();
   const rows = await sql`select e.*, (select count(*) from event_participant p where p.event_id = e.id)::int n,
@@ -29,7 +29,7 @@ export default async function Events({ searchParams }: { searchParams: SP }) {
               <td>{Number(r.fee_amount) ? money(r.fee_amount) : 'Free'}</td><td>{r.n}</td><td><Badge color={r.status_code === 'COMPLETED' ? 'green' : r.status_code === 'CANCELLED' ? 'red' : 'blue'}>{L('EVENT_STATUS', r.status_code)}</Badge></td></tr>))}</tbody></table>
         {!rows.length && <Empty />}
       </div>
-      {isAdmin(u) && <><h2 className="h2">Create Event</h2><EventForm action={saveEvent.bind(null, null)} back="/events" o={o} /></>}
+      {can(u, 'CD_EVENT_SETUP_PRV', 'WRITE') && <><h2 className="h2">Create Event</h2><EventForm action={saveEvent.bind(null, null)} back="/events" o={o} /></>}
     </div>
   );
 }

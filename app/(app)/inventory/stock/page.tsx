@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
@@ -8,7 +8,7 @@ import { PageHeader, Flash, Field, Select, Back, Empty, type SP } from '@/compon
 import { stockEntry } from '../actions';
 
 export default async function Stock({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_STOCK_ENTRY_PRV');
   const asOf = await getAsOf();
   const L = await lk();
   const items = (await sql`select id, code, name, size_label from item where enterprise_id = ${u.enterpriseId} and active_flag = 'Y' order by name, size_label`).map((i) => ({ value: String(i.id), label: `${i.name}${i.size_label ? ' – ' + i.size_label : ''} (${i.code})` }));

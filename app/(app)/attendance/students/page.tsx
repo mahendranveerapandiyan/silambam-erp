@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { myClasses, studentScopeSql } from '@/lib/scope';
 import { fullName, personAsOf } from '@/lib/people';
@@ -9,7 +9,7 @@ import { AutoSubmit } from '@/components/client';
 import { saveStudentAttendance } from '../actions';
 
 export default async function StudentAttendance({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv('CD_STUDENT_ATTENDANCE_PRV');
   const sp = await searchParams;
   const date = s(sp.date) ?? todayISO();
   const classes = await myClasses(u, date);

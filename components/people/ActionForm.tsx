@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { SessionUser } from '@/lib/auth';
-import { assignmentBase, assignmentFor, assignmentFormOptions, personDetail, type PersonKind } from '@/lib/people';
+import { assignmentBase, assignmentFor, assignmentFormOptions, personDetail, actionAndReasonOptions, type PersonKind } from '@/lib/people';
 import { sql } from '@/lib/db';
 import { fmtDate } from '@/lib/util';
 import { PageHeader, Flash, Field, Back, Select, Badge, STATUS_COLOR } from '../ui';
@@ -14,10 +14,7 @@ export async function ActionForm({ u, kind, personId, asOf, sp }: { u: SessionUs
   if (!p || !ab) notFound();
   const a = (await assignmentFor(personId, kind, asOf)) ??
     (await sql`select af.* from assignment_f af where af.id = ${ab.id} order by effective_start_date desc limit 1`)[0];
-  const o = await assignmentFormOptions(u, kind, asOf);
-  const actions = (await sql`select a.id, f.name, f.effective_start_date, f.effective_end_date from action a join action_f f on f.id = a.id
-    where a.enterprise_id = ${u.enterpriseId} and f.person_category = ${kind} and f.active_flag = 'Y' and f.action_type_code <> 'HIRE' order by f.name`)
-    .map((x) => ({ value: String(x.id), label: x.name, start: x.effective_start_date, end: x.effective_end_date }));
+  const { actions, reasons } = await actionAndReasonOptions(u.enterpriseId, kind, 'OTHER');
   const base = kind === 'STUDENT' ? '/students' : '/staff';
   return (
     <div className="max-w-6xl">
@@ -31,7 +28,7 @@ export async function ActionForm({ u, kind, personId, asOf, sp }: { u: SessionUs
           <div className="grid-form">
             <Field label="Action *"><DatedSelect name="action_id" options={actions} dateField="effective_date" required /></Field>
             <Field label="Effective Date *"><input type="date" name="effective_date" defaultValue={asOf} required className="input" /></Field>
-            <Field label="Action Reason"><Select name="action_reason_code" options={o.reasons} /></Field>
+            <Field label="Action Reason"><DatedSelect name="action_reason_code" options={reasons} dateField="effective_date" parentField="action_id" /></Field>
             <Field label="Change Mode"><select name="mode" className="input"><option value="UPDATE">Update – new version from effective date</option><option value="CORRECT">Correct – fix the current version</option></select></Field>
             <Field label="Comments" className="sm:col-span-2"><input name="comments" className="input" /></Field>
           </div>

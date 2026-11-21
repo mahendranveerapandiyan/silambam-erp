@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
+import { lookupPrivs } from '@/lib/menu';
 import { PageHeader, Flash, Badge, Back, type SP } from '@/components/ui';
 import { ConfirmButton } from '@/components/client';
 import { saveLookupValue, deleteLookupValue, updateLookupType } from '../../actions';
@@ -9,7 +10,7 @@ import { saveLookupValue, deleteLookupValue, updateLookupType } from '../../acti
 const cols = 'grid grid-cols-[7rem_1fr_1fr_5rem_4rem_4.5rem_8.5rem_8.5rem_7rem_auto] gap-1.5 items-center';
 
 export default async function LookupValues({ params, searchParams }: { params: Promise<{ type: string }>; searchParams: SP }) {
-  await requireUser('ADMIN');
+  await requirePriv(lookupPrivs((await params).type));
   const { type } = await params;
   const sp = await searchParams;
   const [t] = await sql`select * from lookup_type where lookup_type = ${type}`;
@@ -29,7 +30,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
       <Flash sp={sp} />
       <form action={updateLookupType.bind(null, type)} className="card mb-4 flex flex-wrap items-end gap-2">
         <Back to={back} />
-        <label className="flex-1"><span className="label">Meaning</span><input name="meaning" defaultValue={t.meaning} className="input" /></label>
+        <label className="flex-1"><span className="label">Meaning (locked)</span><input value={t.meaning} disabled className="input" /></label>
         <label className="flex-[2]"><span className="label">Description</span><input name="description" defaultValue={t.description ?? ''} className="input" /></label>
         <button className="btn">Save</button>
       </form>

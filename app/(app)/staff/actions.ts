@@ -1,10 +1,10 @@
 'use server';
 import { sql } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj } from '@/lib/util';
 
 export async function saveIncharge(id: string | null, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_CLASS_INCHARGE_PRV', 'WRITE');
   await act(backOf(fd, '/staff/incharges'), async () => {
     const o = formObj(fd);
     if (o._end && id) {

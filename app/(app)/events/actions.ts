@@ -1,13 +1,13 @@
 'use server';
 import { sql } from '@/lib/db';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, todayISO } from '@/lib/util';
 import { addDemand, cancelDemandIfUnpaid } from '@/lib/fees';
 import { assertStudentAccess } from '@/lib/scope';
 import { academicYearOn } from '@/lib/people';
 
 export async function saveEvent(id: string | null, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_EVENT_SETUP_PRV', 'WRITE');
   await act(backOf(fd, '/events'), async () => {
     const o = formObj(fd);
     if (!o.name || !o.event_type_code || !o.start_date) throw new Error('Name, type and start date are required');
@@ -21,7 +21,7 @@ export async function saveEvent(id: string | null, fd: FormData) {
 }
 
 export async function addParticipants(eventId: string, fd: FormData) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv('CD_EVENT_PARTICIPANT_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const [ev] = await sql`select * from event where id = ${eventId} and enterprise_id = ${u.enterpriseId}`;
     if (!ev) throw new Error('Event not found');
@@ -57,7 +57,7 @@ export async function addParticipants(eventId: string, fd: FormData) {
 }
 
 export async function updateParticipant(eventId: string, rowId: string, fd: FormData) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv('CD_EVENT_PARTICIPANT_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const [r] = await sql`select * from event_participant where id = ${rowId} and event_id = ${eventId}`;
     if (!r) throw new Error('Not found');

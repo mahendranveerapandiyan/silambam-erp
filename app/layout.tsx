@@ -5,7 +5,7 @@ import { getUser } from '@/lib/auth';
 
 export async function generateMetadata(): Promise<Metadata> {
   const e = await enterpriseInfo();
-  return { title: e?.short_name || e?.name || 'Silambam ERP', description: 'Silambam training school ERP', manifest: '/manifest.webmanifest' };
+  return { title: e?.short_name ? `${e.short_name} · caMpus dAy` : 'caMpus dAy', description: 'caMpus dAy – school management', manifest: '/manifest.webmanifest' };
 }
 export const viewport: Viewport = { width: 'device-width', initialScale: 1, themeColor: '#7a1f1f' };
 

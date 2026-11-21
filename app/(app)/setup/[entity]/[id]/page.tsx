@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { getEntity, type Field as EField } from '@/lib/entities';
 import { entityRow, dtHistory, datedRefOptions, datedLookupOptions, nameOn, type DatedOpt } from '@/lib/dt';
 import { usages } from '@/lib/integrity';
+import { activeFields, fieldDisplay } from '@/lib/fields';
 import { fmtDate, fmtDateTime } from '@/lib/util';
 import { EntityFields } from '@/components/EntityFields';
 import { ConfirmButton } from '@/components/client';
@@ -13,7 +14,7 @@ import { PageHeader, Flash, Field, Back, Badge, type SP, here, s } from '@/compo
 import { updateEntity, correctVersion, endDateEntity, deleteLatestVersion, deleteEntity } from '../../actions';
 
 export default async function EntityDetail({ params, searchParams }: { params: Promise<{ entity: string; id: string }>; searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv(getEntity((await params).entity)?.priv ?? 'CD_NONE', 'READ');
   const { entity, id } = await params;
   const sp = await searchParams;
   const e = getEntity(entity);
@@ -40,6 +41,8 @@ export default async function EntityDetail({ params, searchParams }: { params: P
     if (f.type === 'color') return <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-3 rounded" style={{ background: v }} />{v}</span>;
     return String(v);
   };
+  const extra = await activeFields(u.enterpriseId, `setup:${entity}`);
+  const showExtra = await fieldDisplay(extra);
   const effective = !!row.effective_start_date;
   const prevOfVersion = version ? history.find((h) => h.effective_end_date < version.effective_start_date) : null;
 
@@ -103,7 +106,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
         <p className="muted mb-2">Names of related records are shown as they were on each version&apos;s start date. Use <b>Correct</b> to change any saved version, including its start date.</p>
         <div className="overflow-x-auto">
           <table className="tbl">
-            <thead><tr><th>From</th><th>To</th><th>Name</th>{e.fields.map((f) => <th key={f.name}>{f.label}</th>)}<th>Last Updated</th><th></th></tr></thead>
+            <thead><tr><th>From</th><th>To</th><th>Name</th>{e.fields.map((f) => <th key={f.name}>{f.label}</th>)}{extra.map((f) => <th key={f.field_code}>{f.label}</th>)}<th>Last Updated</th><th></th></tr></thead>
             <tbody>
               {history.map((h) => {
                 const cur = asOf >= h.effective_start_date && asOf <= h.effective_end_date;
@@ -114,6 +117,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
                     <td className="whitespace-nowrap">{fmtDate(h.effective_end_date)}</td>
                     <td>{h.name}</td>
                     {e.fields.map((f) => <td key={f.name}>{fmt(f, h[f.name], h.effective_start_date)}</td>)}
+                    {extra.map((f) => <td key={f.field_code}>{showExtra(f, h.attributes?.[f.field_code])}</td>)}
                     <td className="whitespace-nowrap text-xs text-gray-500">{h.last_updated_by} · {fmtDateTime(h.last_update_date)}</td>
                     <td><Link href={`/setup/${entity}/${id}?version=${h.effective_start_date}`} className="btn btn-sm">Correct</Link></td>
                   </tr>

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { fullName, personAsOf, nm } from '@/lib/people';
@@ -10,7 +10,7 @@ import { PageHeader, Flash, Select, Empty, type SP, s } from '@/components/ui';
 import { AutoSubmit } from '@/components/client';
 
 export default async function CollectFees({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_COLLECT_PRV');
   const sp = await searchParams;
   const asOf = await getAsOf();
   const today = todayISO();

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requirePriv } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { assignmentFor, personDetail } from '@/lib/people';
 import { lk } from '@/lib/lookups';
@@ -8,7 +8,7 @@ import { fmtDate, money, todayISO } from '@/lib/util';
 import { Badge, Empty, Flash, STATUS_COLOR, type SP, s } from '@/components/ui';
 
 export default async function Portal({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser();
+  const u = await requirePriv('CD_PORTAL_PRV');
   const sp = await searchParams;
   const today = todayISO();
   const ids = [

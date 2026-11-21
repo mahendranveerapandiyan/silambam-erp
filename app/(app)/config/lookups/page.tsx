@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { PageHeader, Flash, Field, Badge, Back, type SP, s } from '@/components/ui';
 import { AutoSubmit } from '@/components/client';
@@ -8,7 +8,7 @@ import { createLookupType } from '../actions';
 const ACCESS_COLOR: Record<string, string> = { SYSTEM: 'red', EXTENSIBLE: 'amber', USER: 'green' };
 
 export default async function Lookups({ searchParams }: { searchParams: SP }) {
-  await requireUser('ADMIN');
+  await requirePriv('CD_LOOKUP_PRV');
   const sp = await searchParams;
   const q = s(sp.q), mod = s(sp.module);
   const modules = await sql`select distinct module_code from lookup_type order by 1`;

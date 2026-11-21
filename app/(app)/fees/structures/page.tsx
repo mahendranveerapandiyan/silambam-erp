@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions, refNames } from '@/lib/dt';
@@ -12,7 +12,7 @@ import { saveStructure, copyStructures } from '../actions';
 const FREQS = ['MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUAL', 'ONE_TIME'];
 
 export default async function Structures({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_STRUCTURE_PRV');
   const sp = await searchParams;
   const asOf = await getAsOf();
   const years = await sql`select * from academic_year where enterprise_id = ${u.enterpriseId} order by start_date desc`;

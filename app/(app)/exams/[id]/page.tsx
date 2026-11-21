@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
 import { eligibleStudents, examFeeFor } from '@/lib/exams';
 import { examOptions } from '@/lib/examOptions';
-import { studentScopeSql } from '@/lib/scope';
+import { studentScopeSql, seesAllStudents } from '@/lib/scope';
 import { fmtDate, money, todayISO } from '@/lib/util';
 import { PageHeader, Flash, Back, Badge, Empty, Select, Tabs, STATUS_COLOR, type SP, here } from '@/components/ui';
 import { CheckAll, ConfirmButton } from '@/components/client';
@@ -14,7 +14,7 @@ import { ExamForm } from '@/components/ExamForm';
 import { saveExam, saveSubject, assignCandidates, removeCandidate, saveMarks, publishResults } from '../actions';
 
 export default async function ExamPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_EXAM_CANDIDATE_PRV'], 'READ');
   const { id } = await params;
   const sp = await searchParams;
   const [exam] = await sql`select e.*, y.name ay_name,
@@ -26,7 +26,8 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
   const L = await lk();
   const tab = typeof sp.tab === 'string' ? sp.tab : 'candidates';
   const back = here(`/exams/${id}`, sp);
-  const admin = isAdmin(u);
+  const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+  const canMarks = can(u, 'CD_EXAM_CANDIDATE_PRV', 'WRITE') || admin;
   const subjects = await sql`select es.*, (select name from subject_f s where s.id = es.subject_id order by effective_start_date desc limit 1) subject_name from exam_subject es where exam_id = ${id} order by display_seq, id`;
   const closed = ['PUBLISHED', 'CANCELLED'].includes(exam.status_code);
   const today = todayISO();
@@ -37,7 +38,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
     from exam_candidate c join assignment a on a.id = c.assignment_id
     left join assignment_f af on af.id = a.id and ${today}::date between af.effective_start_date and af.effective_end_date
     left join fee_demand_v d on d.id = c.fee_demand_id
-    where c.exam_id = ${id} ${admin ? sql`` : studentScopeSql(u, today)}
+    where c.exam_id = ${id} ${studentScopeSql(u, today)}
     order by full_name`;
   const rules = [
     exam.from_grade && `Grade: ${exam.from_grade}`, exam.min_attendance_pct !== null && `Attendance ≥ ${exam.min_attendance_pct}%`,
@@ -90,7 +91,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
     return (
       <form action={assignCandidates.bind(null, id)} className="card overflow-x-auto">
         <Back to={back} />
-        <p className="muted mb-2">{open.filter((s) => s.eligible).length} eligible of {open.length} active students{admin ? '' : ' in your classes'}. Selected students are assigned and their exam fee is added to their fee page.</p>
+        <p className="muted mb-2">{open.filter((s) => s.eligible).length} eligible of {open.length} active students{seesAllStudents(u) ? '' : ' in your classes'}. Selected students are assigned and their exam fee is added to their fee page.</p>
         <table className="tbl"><thead><tr><th><CheckAll name="person" /></th><th>Student</th><th>Grade</th>{list[0]?.checks.map((c) => <th key={c.label}>{c.label}</th>)}<th>Exam Fee</th></tr></thead>
           <tbody>{open.map((s) => (
             <tr key={s.person_id} className={s.eligible ? '' : 'bg-red-50/50'}>
@@ -112,7 +113,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
     if (!subjects.length) return <div className="card muted">Add subjects first.</div>;
     const marks = await sql`select m.* from exam_mark m join exam_candidate c on c.id = m.candidate_id where c.exam_id = ${id}`;
     const mk = new Map(marks.map((m) => [`${m.candidate_id}_${m.exam_subject_id}`, m]));
-    const locked = exam.status_code === 'PUBLISHED' && !admin;
+    const locked = (exam.status_code === 'PUBLISHED' && !admin) || !canMarks;
     return (
       <div className="space-y-4">
         <form action={saveMarks.bind(null, id)} className="card overflow-x-auto">

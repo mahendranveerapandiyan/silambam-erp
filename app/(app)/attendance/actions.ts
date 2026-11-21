@@ -1,16 +1,16 @@
 'use server';
 import { sql } from '@/lib/db';
-import { requireUser, hasRole, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, todayISO } from '@/lib/util';
 import { myClasses, studentScopeSql } from '@/lib/scope';
 
 export async function saveStudentAttendance(fd: FormData) {
-  const u = await requireUser('INCHARGE');
+  const u = await requirePriv('CD_STUDENT_ATTENDANCE_PRV', 'WRITE');
   await act(backOf(fd, '/attendance/students'), async () => {
     const o = formObj(fd);
     const date = o.date;
     if (!date || !o.cls) throw new Error('Date and class are required');
-    if (date > todayISO() && !isAdmin(u)) throw new Error('Attendance cannot be marked for a future date');
+    if (date > todayISO() && !can(u, 'CD_ALL_STUDENTS_DATA_PRV')) throw new Error('Attendance cannot be marked for a future date');
     const [classId, sectionId] = o.cls.split(':');
     if (!(await myClasses(u, date)).some((c) => String(c.class_id) === classId && String(c.section_id) === sectionId)) throw new Error('Not your class on this date');
     const students = await sql`select a.id assignment_id, a.person_id, af.business_unit_id from assignment a
@@ -35,7 +35,7 @@ export async function saveStudentAttendance(fd: FormData) {
 }
 
 export async function saveStaffAttendance(fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_STAFF_ATTENDANCE_PRV', 'WRITE');
   await act(backOf(fd, '/attendance/staff'), async () => {
     const o = formObj(fd);
     const date = o.date;
@@ -65,8 +65,8 @@ export type ScanResult = { ok: boolean; message: string; name?: string; number?:
 
 /** Called by the QR scanner page. `code` is the QR payload or a typed student/staff number. */
 export async function scanAttendance(mode: 'STUDENT' | 'STAFF', code: string): Promise<ScanResult> {
-  const u = await requireUser('INCHARGE');
-  if (mode === 'STAFF' && !hasRole(u, 'ADMIN')) return { ok: false, message: 'Only administrators can scan staff attendance.' };
+  const u = await requirePriv('CD_QR_SCAN_PRV', 'WRITE');
+  if (mode === 'STAFF' && !can(u, 'CD_STAFF_ATTENDANCE_PRV', 'WRITE')) return { ok: false, message: 'You do not have permission to mark staff attendance.' };
   const date = todayISO();
   const raw = code.trim();
   const token = raw.startsWith('SILAMBAM:') ? raw.slice(9) : null;

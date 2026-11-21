@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
@@ -9,7 +9,7 @@ import { AutoSubmit, ConfirmButton } from '@/components/client';
 import { saveTxn } from './actions';
 
 export default async function Finance({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FINANCE_TXN_PRV');
   const sp = await searchParams;
   const asOf = await getAsOf();
   const month = s(sp.month) ?? todayISO().slice(0, 7);

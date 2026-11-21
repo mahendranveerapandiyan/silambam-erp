@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
 import { fmtDateTime, money } from '@/lib/util';
@@ -7,7 +7,7 @@ import { PageHeader, Flash, Back, Badge, Empty, STATUS_COLOR, type SP, s } from 
 import { decideExemption } from '../actions';
 
 export default async function Exemptions({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_EXCEPTION_APPROVAL_PRV');
   const sp = await searchParams;
   const st = s(sp.status) ?? 'PENDING';
   const L = await lk();

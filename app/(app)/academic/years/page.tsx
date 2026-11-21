@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { lookupOptions } from '@/lib/lookups';
@@ -7,7 +7,7 @@ import { PageHeader, Flash, Back, Select, Badge, type SP } from '@/components/ui
 import { saveAcademicYear } from '../actions';
 
 export default async function Years({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_ACADEMIC_YEAR_PRV');
   const asOf = await getAsOf();
   const years = await sql`select y.*, (select count(*) from fee_structure f where f.academic_year_id = y.id)::int fees, (select count(*) from exam e where e.academic_year_id = y.id)::int exams
     from academic_year y where enterprise_id = ${u.enterpriseId} order by start_date desc`;
@@ -16,7 +16,7 @@ export default async function Years({ searchParams }: { searchParams: SP }) {
   const Row = ({ y }: { y?: any }) => (
     <form action={saveAcademicYear.bind(null, y?.id ?? null)} className={`${cols} border-b border-black/5 py-1.5 ${y ? '' : 'rounded bg-green-50 px-1'}`}>
       <Back to="/academic/years" />
-      <input name="code" defaultValue={y?.code} placeholder="AY2026" className="input uppercase" required />
+      {y ? <input value={y.code} disabled title="Code cannot be changed" className="input" /> : <input name="code" placeholder="AY2026" className="input uppercase" required />}
       <input name="name" defaultValue={y?.name} placeholder="Academic Year 2026-27" className="input" required />
       <input type="date" name="start_date" defaultValue={y?.start_date} className="input" required />
       <input type="date" name="end_date" defaultValue={y?.end_date} className="input" required />
@@ -28,7 +28,7 @@ export default async function Years({ searchParams }: { searchParams: SP }) {
   const cur = years.find((y) => asOf >= y.start_date && asOf <= y.end_date);
   return (
     <div className="max-w-6xl">
-      <PageHeader title="Academic Years" subtitle={<>Defined at enterprise level; years cannot overlap. Current year on {fmtDate(asOf)}: {cur ? <Badge color="green">{cur.name}</Badge> : <Badge color="red">none</Badge>}</>} />
+      <PageHeader title="Academic Years" subtitle={<>Defined at enterprise level; years cannot overlap; the code is locked once created. Current year on {fmtDate(asOf)}: {cur ? <Badge color="green">{cur.name}</Badge> : <Badge color="red">none</Badge>}</>} />
       <Flash sp={await searchParams} />
       <div className="card overflow-x-auto">
         <div className="min-w-[900px]">

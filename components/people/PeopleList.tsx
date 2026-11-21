@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { SessionUser } from '@/lib/auth';
-import { isAdmin } from '@/lib/auth';
+import { can } from '@/lib/auth';
+import { seesAllStudents } from '@/lib/scope';
 import { peopleList, type PersonKind } from '@/lib/people';
 import { refOptions } from '@/lib/dt';
 import { lk } from '@/lib/lookups';
@@ -20,8 +21,8 @@ export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: 
   const base = stu ? '/students' : '/staff';
   return (
     <div>
-      <PageHeader title={stu ? 'Student Directory' : 'Staff Directory'} subtitle={`${total} record(s) as of ${fmtDate(asOf)}${stu && !isAdmin(u) && !u.roles.includes('ACCOUNTANT') ? ' · your classes only' : ''}`}
-        actions={<><Link href={`${base}/new`} className="btn btn-primary">{stu ? '+ New Admission' : '+ Hire Staff'}</Link></>} />
+      <PageHeader title={stu ? 'Student Directory' : 'Staff Directory'} subtitle={`${total} record(s) as of ${fmtDate(asOf)}${stu && !seesAllStudents(u) ? ' · your classes only' : ''}`}
+        actions={can(u, stu ? 'CD_STUDENT_ADMISSION_PRV' : 'CD_STAFF_HIRE_PRV', 'WRITE') ? <Link href={`${base}/new`} className="btn btn-primary">{stu ? '+ New Admission' : '+ Hire Staff'}</Link> : null} />
       <Flash sp={sp} />
       <div className="card">
         <form className="mb-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">

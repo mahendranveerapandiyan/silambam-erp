@@ -1,10 +1,10 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getTheme, THEME_KEYS } from '@/lib/theme';
 import { PageHeader, Flash, Field, type SP } from '@/components/ui';
 import { saveTheme } from '../actions';
 
 export default async function ThemePage({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_THEME_PRV');
   const t = await getTheme(u.enterpriseId);
   return (
     <div className="max-w-4xl">

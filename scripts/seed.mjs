@@ -33,7 +33,13 @@ const LOOKUPS = {
   LOCATION_TYPE: ['Location Type', 'GEOGRAPHY', 'USER', null, [['TRAINING_CENTER', 'Training Center'], ['OFFICE', 'Office'], ['GROUND', 'Ground / Open Field'], ['SCHOOL', 'Partner School'], ['WAREHOUSE', 'Store / Warehouse']]],
   PERSON_CATEGORY: ['Person Category', 'SYSTEM', 'SYSTEM', null, [['STUDENT', 'Student'], ['STAFF', 'Staff']]],
   ACTION_TYPE: ['Action Type', 'SYSTEM', 'SYSTEM', null, [['HIRE', 'Hire / Admission'], ['PROMOTION', 'Promotion'], ['TRANSFER', 'Transfer'], ['ASSIGNMENT_CHANGE', 'Assignment Change'], ['SUSPENSION', 'Suspension'], ['REINSTATE', 'Reinstate'], ['TERMINATION', 'Termination / Withdrawal'], ['REHIRE', 'Rehire / Re-admission']]],
-  ACTION_REASON: ['Action Reason', 'COMMON', 'USER', null, [['NEW_JOINER', 'New Joiner'], ['GRADE_EXAM_PASSED', 'Grade Exam Passed'], ['PERFORMANCE', 'Performance'], ['RELOCATION', 'Relocation'], ['BATCH_CHANGE', 'Batch Change'], ['PERSONAL', 'Personal Reasons'], ['FEES_DUE', 'Fees Due'], ['DISCIPLINARY', 'Disciplinary'], ['OTHER', 'Other']]],
+  ACTION_REASON: ['Action Reason', 'COMMON', 'USER', 'ACTION_TYPE', [
+    // [code, meaning, tag (STUDENT/STAFF/empty = both), parent action type]
+    ['NEW_ADMISSION', 'New Admission', 'STUDENT', 'HIRE'], ['HIRE', 'Hire', 'STAFF', 'HIRE'], ['NEW_JOINER', 'New Joiner', 'STUDENT', 'HIRE'],
+    ['GRADE_EXAM_PASSED', 'Grade Exam Passed', 'STUDENT', 'PROMOTION'], ['PERFORMANCE', 'Performance', null, 'PROMOTION'], ['GRADE_CHANGE', 'Grade / Pay Change', 'STAFF', 'PROMOTION'],
+    ['RELOCATION', 'Relocation', null, 'TRANSFER'], ['BATCH_CHANGE', 'Batch Change', 'STUDENT', 'TRANSFER'], ['PERSONAL', 'Personal Reasons', null, 'TERMINATION'],
+    ['RESIGNATION', 'Resignation', 'STAFF', 'TERMINATION'], ['FEES_DUE', 'Fees Due', 'STUDENT', 'SUSPENSION'], ['DISCIPLINARY', 'Disciplinary', null, 'SUSPENSION'],
+    ['REJOINED', 'Rejoined', null, 'REHIRE'], ['RETURN', 'Returned', null, 'REINSTATE'], ['OTHER', 'Other']]],
   SYSTEM_ASSIGNMENT_STATUS: ['System Assignment Status', 'SYSTEM', 'SYSTEM', null, [['ACTIVE', 'Active'], ['SUSPENDED', 'Suspended'], ['INACTIVE', 'Inactive']]],
   EMPLOYMENT_TYPE: ['Employment Type', 'WORKFORCE', 'EXTENSIBLE', null, [['FULL_TIME', 'Full Time'], ['PART_TIME', 'Part Time'], ['CONTRACT', 'Contract'], ['VOLUNTEER', 'Volunteer']]],
   EMPLOYMENT_CATEGORY: ['Employment Category', 'WORKFORCE', 'EXTENSIBLE', null, [['PERMANENT', 'Permanent'], ['PROBATION', 'Probation'], ['TEMPORARY', 'Temporary'], ['VISITING', 'Visiting Master']]],
@@ -90,7 +96,7 @@ try {
     // codes the application logic relies on are locked even in extensible lookups
     await tx`update lookup_value set system_flag = 'Y' where (lookup_type, lookup_code) in
       (('FEE_TYPE','TUITION'),('FEE_TYPE','ADMISSION'),('FEE_TYPE','GRADE_EXAM'),('FEE_TYPE','ASSESSMENT'),('FEE_TYPE','TERM_EXAM'),('FEE_TYPE','EVENT'),('FEE_TYPE','INVENTORY'),
-       ('ATTENDANCE_STATUS','P'),('ATTENDANCE_STATUS','A'))`;
+       ('ATTENDANCE_STATUS','P'),('ATTENDANCE_STATUS','A'),('ACTION_REASON','HIRE'),('ACTION_REASON','NEW_ADMISSION'))`;
 
     const [ent] = await tx`insert into enterprise (code, name, short_name, country_code, currency_code, created_by)
       values ('SA', 'Silambam Academy', 'Silambam Academy', 'IN', 'INR', ${BY}) returning id`;
@@ -147,8 +153,8 @@ try {
     }
     const classes = [];
     for (const [bi, bu] of bus.entries()) {
-      for (const [ci, [cn, timing]] of [['Kids Batch', '6:00 AM - 7:00 AM'], ['Adults Batch', '6:00 PM - 7:30 PM']].entries()) {
-        const c = await dt(tx, 'class', E, `BR${bi + 1}-C${ci + 1}`, cn, { business_unit_id: bu, batch_timing: timing, training_days: 'MON,WED,FRI', capacity: 40 });
+      for (const [ci, [cn, tIn, tOut]] of [['Kids Batch', '06:00', '07:00'], ['Adults Batch', '18:00', '19:30']].entries()) {
+        const c = await dt(tx, 'class', E, `BR${bi + 1}-C${ci + 1}`, cn, { business_unit_id: bu, duration_type_code: 'FIXED', start_time: tIn, end_time: tOut, training_days: 'MON,WED,FRI', capacity: 40 });
         const s = await dt(tx, 'section', E, `BR${bi + 1}-C${ci + 1}-A`, 'Section A', { class_id: c, capacity: 20 });
         classes.push({ bu, c, s });
       }

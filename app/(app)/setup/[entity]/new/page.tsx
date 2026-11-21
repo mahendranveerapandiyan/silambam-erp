@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { getEntity } from '@/lib/entities';
 import { EntityFields } from '@/components/EntityFields';
@@ -8,7 +8,7 @@ import { PageHeader, Flash, Field, Back, type SP } from '@/components/ui';
 import { createEntity } from '../../actions';
 
 export default async function NewEntity({ params, searchParams }: { params: Promise<{ entity: string }>; searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv(getEntity((await params).entity)?.priv ?? 'CD_NONE', 'WRITE');
   const { entity } = await params;
   const e = getEntity(entity);
   if (!e) notFound();

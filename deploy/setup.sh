@@ -63,7 +63,7 @@ docker compose exec -T app node scripts/seed.mjs $DEMO || echo "(already seeded 
 
 echo
 echo "=========================================================="
-echo " Silambam ERP is running at:  https://$DOMAIN"
+echo " caMpus dAy is running at:  https://$DOMAIN"
 echo " First login: admin / admin123  (you will be asked to change it)"
 echo " Backups: deploy/backups (daily at 02:00, kept $BACKUP_KEEP_DAYS days)"
 echo " Update later with: sudo bash deploy/deploy.sh"

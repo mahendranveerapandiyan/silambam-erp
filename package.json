@@ -1,5 +1,5 @@
 {
-  "name": "silambam-erp",
+  "name": "campus-day",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -21,7 +21,8 @@
     "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "sharp": "^0.34.3"
   },
   "devDependencies": {
     "@types/node": "^22.18.0",

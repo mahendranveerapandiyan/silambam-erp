@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { fullName, personAsOf, nm } from '@/lib/people';
 import { lookupOptions } from '@/lib/lookups';
@@ -11,7 +11,7 @@ import { saveStaffAttendance } from '../actions';
 const hhmm = (t: any) => (t ? new Date(t).toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' }) : '');
 
 export default async function StaffAttendance({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_STAFF_ATTENDANCE_PRV');
   const sp = await searchParams;
   const date = s(sp.date) ?? todayISO();
   const bu = s(sp.bu);

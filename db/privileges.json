@@ -1,0 +1,539 @@
+[
+ {
+  "code": "CD_DASHBOARD_PRV",
+  "name": "Dashboard",
+  "module": "Home",
+  "defaults": {
+   "INCHARGE": "R",
+   "ACCOUNTANT": "R"
+  },
+  "seq": 10
+ },
+ {
+  "code": "CD_MY_PROFILE_PRV",
+  "name": "My Profile & QR",
+  "module": "Home",
+  "defaults": {
+   "INCHARGE": "R",
+   "ACCOUNTANT": "R",
+   "STAFF": "R"
+  },
+  "seq": 20
+ },
+ {
+  "code": "CD_PORTAL_PRV",
+  "name": "Parent / Student Portal",
+  "module": "Home",
+  "defaults": {
+   "PARENT": "R",
+   "STUDENT": "R"
+  },
+  "seq": 30
+ },
+ {
+  "code": "CD_STUDENT_DIRECTORY_PRV",
+  "name": "Student Directory & Profile",
+  "module": "Students",
+  "defaults": {
+   "INCHARGE": "W",
+   "ACCOUNTANT": "R"
+  },
+  "seq": 40
+ },
+ {
+  "code": "CD_STUDENT_ADMISSION_PRV",
+  "name": "New Admission",
+  "module": "Students",
+  "defaults": {
+   "INCHARGE": "W"
+  },
+  "seq": 50
+ },
+ {
+  "code": "CD_STUDENT_ACTION_PRV",
+  "name": "Student Actions (promote, transfer, withdraw, dates)",
+  "module": "Students",
+  "defaults": {
+   "INCHARGE": "W"
+  },
+  "seq": 60
+ },
+ {
+  "code": "CD_STUDENT_ID_CARD_PRV",
+  "name": "Student QR ID Cards",
+  "module": "Students",
+  "defaults": {
+   "INCHARGE": "R",
+   "ACCOUNTANT": "R"
+  },
+  "seq": 70
+ },
+ {
+  "code": "CD_ALL_STUDENTS_DATA_PRV",
+  "name": "Data access: all students (without it: own classes only)",
+  "module": "Students",
+  "defaults": {
+   "ACCOUNTANT": "V"
+  },
+  "seq": 80
+ },
+ {
+  "code": "CD_ACADEMIC_YEAR_PRV",
+  "name": "Academic Years",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 90
+ },
+ {
+  "code": "CD_STUDENT_GRADE_PRV",
+  "name": "Grades / Levels",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 100
+ },
+ {
+  "code": "CD_HOUSE_PRV",
+  "name": "Houses",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 110
+ },
+ {
+  "code": "CD_CLUB_PRV",
+  "name": "Clubs",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 120
+ },
+ {
+  "code": "CD_COMMUNITY_PRV",
+  "name": "Communities",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 130
+ },
+ {
+  "code": "CD_SUBJECT_PRV",
+  "name": "Subjects",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 140
+ },
+ {
+  "code": "CD_SUBJECT_TYPE_PRV",
+  "name": "Subject Types",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 150
+ },
+ {
+  "code": "CD_STUDENT_ACTIONS_SETUP_PRV",
+  "name": "Student Actions (setup)",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 160
+ },
+ {
+  "code": "CD_ACTION_REASON_PRV",
+  "name": "Action Reasons",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 170
+ },
+ {
+  "code": "CD_STUDENT_STATUS_PRV",
+  "name": "Student Statuses",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 180
+ },
+ {
+  "code": "CD_STUDENT_PERSON_TYPE_PRV",
+  "name": "Student Person Types",
+  "module": "Academic Structure",
+  "defaults": {},
+  "seq": 190
+ },
+ {
+  "code": "CD_STAFF_DIRECTORY_PRV",
+  "name": "Staff Directory & Profile",
+  "module": "Staff",
+  "defaults": {},
+  "seq": 200
+ },
+ {
+  "code": "CD_STAFF_HIRE_PRV",
+  "name": "Hire Staff",
+  "module": "Staff",
+  "defaults": {},
+  "seq": 210
+ },
+ {
+  "code": "CD_STAFF_ACTION_PRV",
+  "name": "Staff Actions (promote, transfer, terminate, dates)",
+  "module": "Staff",
+  "defaults": {},
+  "seq": 220
+ },
+ {
+  "code": "CD_CLASS_INCHARGE_PRV",
+  "name": "Class Incharges",
+  "module": "Staff",
+  "defaults": {},
+  "seq": 230
+ },
+ {
+  "code": "CD_JOB_PRV",
+  "name": "Jobs",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 240
+ },
+ {
+  "code": "CD_STAFF_GRADE_PRV",
+  "name": "Staff Grades",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 250
+ },
+ {
+  "code": "CD_DEPARTMENT_PRV",
+  "name": "Departments",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 260
+ },
+ {
+  "code": "CD_POSITION_PRV",
+  "name": "Positions",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 270
+ },
+ {
+  "code": "CD_EMPLOYMENT_TYPE_PRV",
+  "name": "Employment Types",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 280
+ },
+ {
+  "code": "CD_EMPLOYMENT_CATEGORY_PRV",
+  "name": "Employment Categories",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 290
+ },
+ {
+  "code": "CD_STAFF_PERSON_TYPE_PRV",
+  "name": "Staff Person Types",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 300
+ },
+ {
+  "code": "CD_STAFF_STATUS_PRV",
+  "name": "Assignment Statuses",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 310
+ },
+ {
+  "code": "CD_PAYROLL_STATUS_PRV",
+  "name": "Payroll Statuses",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 320
+ },
+ {
+  "code": "CD_STAFF_ACTIONS_SETUP_PRV",
+  "name": "Staff Assignment Actions (setup)",
+  "module": "Workforce Structure",
+  "defaults": {},
+  "seq": 330
+ },
+ {
+  "code": "CD_STUDENT_ATTENDANCE_PRV",
+  "name": "Student Attendance",
+  "module": "Attendance",
+  "defaults": {
+   "INCHARGE": "W"
+  },
+  "seq": 340
+ },
+ {
+  "code": "CD_QR_SCAN_PRV",
+  "name": "QR Attendance Scan",
+  "module": "Attendance",
+  "defaults": {
+   "INCHARGE": "W"
+  },
+  "seq": 350
+ },
+ {
+  "code": "CD_STAFF_ATTENDANCE_PRV",
+  "name": "Staff Attendance",
+  "module": "Attendance",
+  "defaults": {},
+  "seq": 360
+ },
+ {
+  "code": "CD_ATTENDANCE_REPORT_PRV",
+  "name": "Attendance Report",
+  "module": "Attendance",
+  "defaults": {
+   "INCHARGE": "R"
+  },
+  "seq": 370
+ },
+ {
+  "code": "CD_FEE_COLLECT_PRV",
+  "name": "Collect Fees (payments, exceptions)",
+  "module": "Fees",
+  "defaults": {
+   "INCHARGE": "W",
+   "ACCOUNTANT": "W"
+  },
+  "seq": 380
+ },
+ {
+  "code": "CD_FEE_STRUCTURE_PRV",
+  "name": "Fee Structures",
+  "module": "Fees",
+  "defaults": {
+   "ACCOUNTANT": "W"
+  },
+  "seq": 390
+ },
+ {
+  "code": "CD_FEE_GENERATE_PRV",
+  "name": "Generate Fees",
+  "module": "Fees",
+  "defaults": {
+   "ACCOUNTANT": "W"
+  },
+  "seq": 400
+ },
+ {
+  "code": "CD_FEE_EXCEPTION_APPROVAL_PRV",
+  "name": "Fee Exception Approval (own exceptions auto-approved)",
+  "module": "Fees",
+  "defaults": {
+   "ACCOUNTANT": "W"
+  },
+  "seq": 410
+ },
+ {
+  "code": "CD_FEE_CHARGE_PRV",
+  "name": "Add Manual Fee Charges",
+  "module": "Fees",
+  "defaults": {
+   "ACCOUNTANT": "W"
+  },
+  "seq": 420
+ },
+ {
+  "code": "CD_FEE_CANCEL_PRV",
+  "name": "Cancel Fee Lines & Receipts",
+  "module": "Fees",
+  "defaults": {},
+  "seq": 430
+ },
+ {
+  "code": "CD_FEE_SUMMARY_PRV",
+  "name": "Fee Summary",
+  "module": "Fees",
+  "defaults": {
+   "INCHARGE": "R",
+   "ACCOUNTANT": "R"
+  },
+  "seq": 440
+ },
+ {
+  "code": "CD_PAYMENT_QR_PRV",
+  "name": "Payment QR Codes",
+  "module": "Fees",
+  "defaults": {
+   "INCHARGE": "W",
+   "ACCOUNTANT": "W"
+  },
+  "seq": 450
+ },
+ {
+  "code": "CD_EXAM_SETUP_PRV",
+  "name": "Exams \u2013 create, subjects, publish results",
+  "module": "Exams",
+  "defaults": {},
+  "seq": 460
+ },
+ {
+  "code": "CD_EXAM_CANDIDATE_PRV",
+  "name": "Exams \u2013 assign students, enter marks",
+  "module": "Exams",
+  "defaults": {
+   "INCHARGE": "W"
+  },
+  "seq": 470
+ },
+ {
+  "code": "CD_EXAM_FEE_PRV",
+  "name": "Exam Fees",
+  "module": "Exams",
+  "defaults": {},
+  "seq": 480
+ },
+ {
+  "code": "CD_EVENT_SETUP_PRV",
+  "name": "Events \u2013 create & edit",
+  "module": "Events",
+  "defaults": {},
+  "seq": 490
+ },
+ {
+  "code": "CD_EVENT_PARTICIPANT_PRV",
+  "name": "Events \u2013 assign students & results",
+  "module": "Events",
+  "defaults": {
+   "INCHARGE": "W"
+  },
+  "seq": 500
+ },
+ {
+  "code": "CD_INVENTORY_ITEM_PRV",
+  "name": "Items & Stock",
+  "module": "Inventory",
+  "defaults": {
+   "INCHARGE": "V",
+   "ACCOUNTANT": "W"
+  },
+  "seq": 510
+ },
+ {
+  "code": "CD_INVENTORY_SALE_PRV",
+  "name": "Sell to Student",
+  "module": "Inventory",
+  "defaults": {
+   "INCHARGE": "W",
+   "ACCOUNTANT": "W"
+  },
+  "seq": 520
+ },
+ {
+  "code": "CD_STOCK_ENTRY_PRV",
+  "name": "Stock Entry",
+  "module": "Inventory",
+  "defaults": {
+   "ACCOUNTANT": "W"
+  },
+  "seq": 530
+ },
+ {
+  "code": "CD_FINANCE_TXN_PRV",
+  "name": "Income & Expenses",
+  "module": "Finance",
+  "defaults": {
+   "ACCOUNTANT": "W"
+  },
+  "seq": 540
+ },
+ {
+  "code": "CD_FINANCE_REPORT_PRV",
+  "name": "Finance Reports",
+  "module": "Finance",
+  "defaults": {
+   "ACCOUNTANT": "R"
+  },
+  "seq": 550
+ },
+ {
+  "code": "CD_ENTERPRISE_PRV",
+  "name": "Enterprise",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 560
+ },
+ {
+  "code": "CD_LOCATION_PRV",
+  "name": "Locations",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 570
+ },
+ {
+  "code": "CD_DIVISION_PRV",
+  "name": "Divisions",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 580
+ },
+ {
+  "code": "CD_LEGAL_EMPLOYER_PRV",
+  "name": "Legal Employers",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 590
+ },
+ {
+  "code": "CD_BUSINESS_UNIT_PRV",
+  "name": "Business Units",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 600
+ },
+ {
+  "code": "CD_CLASS_PRV",
+  "name": "Classes",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 610
+ },
+ {
+  "code": "CD_SECTION_PRV",
+  "name": "Sections",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 620
+ },
+ {
+  "code": "CD_LOOKUP_PRV",
+  "name": "Lookups (all)",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 630
+ },
+ {
+  "code": "CD_NUMBERING_PRV",
+  "name": "Number Generation",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 640
+ },
+ {
+  "code": "CD_THEME_PRV",
+  "name": "UI Theme",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 650
+ },
+ {
+  "code": "CD_USER_PRV",
+  "name": "Users",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 660
+ },
+ {
+  "code": "CD_ROLE_PRV",
+  "name": "Roles & Privileges",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 670
+ },
+ {
+  "code": "CD_ADDITIONAL_FIELD_PRV",
+  "name": "Additional Fields",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 680
+ }
+]

@@ -1,9 +1,8 @@
 import { Field, Back } from './ui';
 import type { Row } from '@/lib/db';
 
-const ROLES: [string, string][] = [['ADMIN', 'Administrator – full access'], ['INCHARGE', 'Class Incharge – own classes only'], ['STAFF', 'Staff – own profile & attendance'], ['ACCOUNTANT', 'Accountant – fees, inventory, finance'], ['PARENT', 'Parent – portal for linked students'], ['STUDENT', 'Student – own portal']];
 
-export function UserForm({ action, user, roles = [], students = [], back }: { action: (fd: FormData) => Promise<void>; user?: Row; roles?: string[]; students?: Row[]; back: string }) {
+export function UserForm({ action, user, roles = [], students = [], back, allRoles }: { action: (fd: FormData) => Promise<void>; user?: Row; roles?: string[]; students?: Row[]; back: string; allRoles: Row[] }) {
   return (
     <form action={action} className="card">
       <Back to={back} />
@@ -17,7 +16,7 @@ export function UserForm({ action, user, roles = [], students = [], back }: { ac
       <div className="mt-4">
         <span className="label">Roles *</span>
         <div className="grid gap-1 sm:grid-cols-2 lg:grid-cols-3">
-          {ROLES.map(([r, l]) => <label key={r} className="flex items-center gap-2 text-sm"><input type="checkbox" name="roles" value={r} defaultChecked={roles.includes(r)} /> {l}</label>)}
+          {allRoles.map((r) => <label key={r.code} className="flex items-start gap-2 text-sm"><input type="checkbox" name="roles" value={r.code} defaultChecked={roles.includes(r.code)} className="mt-1" /> <span>{r.name}{r.active_flag === 'N' && ' (inactive)'}<span className="block text-xs text-gray-500">{r.description}</span></span></label>)}
         </div>
       </div>
       <div className="mt-4">

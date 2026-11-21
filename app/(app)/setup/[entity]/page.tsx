@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { getEntity } from '@/lib/entities';
 import { entityList, entityNotEffective, refNames } from '@/lib/dt';
@@ -9,7 +9,7 @@ import { fmtDate } from '@/lib/util';
 import { PageHeader, Flash, Badge, Empty, type SP, s } from '@/components/ui';
 
 export default async function EntityList({ params, searchParams }: { params: Promise<{ entity: string }>; searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv(getEntity((await params).entity)?.priv ?? 'CD_NONE');
   const { entity } = await params;
   const sp = await searchParams;
   const e = getEntity(entity);
@@ -26,6 +26,7 @@ export default async function EntityList({ params, searchParams }: { params: Pro
     if (f.type === 'multilookup') return String(v).split(',').map((c) => L(f.lookup!, c)).join(', ');
     if (f.type === 'yesno') return v === 'Y' ? <Badge color="green">Yes</Badge> : <Badge color="gray">No</Badge>;
     if (f.type === 'ref') return refMaps[f.name][String(v)] ?? v;
+    if (f.type === 'time') return String(v).slice(0, 5);
     if (f.type === 'color') return <span className="inline-flex items-center gap-1"><span className="inline-block h-3 w-3 rounded" style={{ background: v }} />{v}</span>;
     return String(v);
   };
@@ -57,6 +58,7 @@ export default async function EntityList({ params, searchParams }: { params: Pro
           {!rows.length && <Empty />}
         </div>
       </div>
+      {entity === 'positions' && rows.length > 0 && <PositionTree rows={rows} />}
       {others.length > 0 && (
         <div className="card mt-4">
           <h2 className="h2">Not effective on {fmtDate(asOf)} (future-dated or ended)</h2>
@@ -68,6 +70,32 @@ export default async function EntityList({ params, searchParams }: { params: Pro
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Position hierarchy as of the date (parent → children). */
+function PositionTree({ rows }: { rows: any[] }) {
+  const byParent = new Map<string, any[]>();
+  const ids = new Set(rows.map((r) => String(r.id)));
+  for (const r of rows) {
+    const p = r.parent_position_id && ids.has(String(r.parent_position_id)) ? String(r.parent_position_id) : 'ROOT';
+    byParent.set(p, [...(byParent.get(p) ?? []), r]);
+  }
+  const Node = ({ r, depth }: { r: any; depth: number }): React.ReactNode => (
+    <li>
+      <div className="flex items-center gap-2 py-0.5" style={{ paddingLeft: depth * 20 }}>
+        <span className="text-gray-400">{depth ? '└' : '•'}</span>
+        <Link className="link" href={`/setup/positions/${r.id}`}>{r.name}</Link>
+        <span className="text-xs text-gray-500">{r.code} · headcount {r.headcount}</span>
+      </div>
+      {(byParent.get(String(r.id)) ?? []).length > 0 && <ul>{byParent.get(String(r.id))!.map((c) => <Node key={c.id} r={c} depth={depth + 1} />)}</ul>}
+    </li>
+  );
+  return (
+    <div className="card mt-4">
+      <h2 className="h2">Position Hierarchy</h2>
+      <ul className="text-sm">{(byParent.get('ROOT') ?? []).map((r) => <Node key={r.id} r={r} depth={0} />)}</ul>
     </div>
   );
 }

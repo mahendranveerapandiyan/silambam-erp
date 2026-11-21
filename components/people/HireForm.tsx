@@ -3,7 +3,10 @@ import type { SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { isManual } from '@/lib/numbering';
 import type { PersonKind } from '@/lib/people';
-import { lookupOptions } from '@/lib/lookups';
+import { actionAndReasonOptions } from '@/lib/people';
+import { DatedSelect } from '../DatedSelect';
+import { NumberPreview } from '../NumberPreview';
+import { numberPreviews } from '@/lib/numbering';
 import { PageHeader, Flash, Field, Back } from '../ui';
 import { PersonFields } from './PersonFields';
 import { PhotoInput } from '../PhotoInput';
@@ -13,7 +16,9 @@ import { hirePerson } from '@/app/(app)/people/actions';
 export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: PersonKind; asOf: string; sp: Record<string, any> }) {
   const stu = kind === 'STUDENT';
   const [manualPerson, manualAsg] = [await isManual(sql, u.enterpriseId, 'PERSON'), await isManual(sql, u.enterpriseId, kind)];
-  const reasons = await lookupOptions('ACTION_REASON', asOf);
+  const { actions, reasons } = await actionAndReasonOptions(u.enterpriseId, kind, 'HIRE');
+  const defaultAction = actions[0]?.value;
+  const previews = await numberPreviews(u.enterpriseId, kind, asOf);
   return (
     <div className="max-w-6xl">
       <PageHeader title={stu ? 'New Student Admission' : 'Hire Staff'} actions={<Link href={stu ? '/students' : '/staff'} className="btn">Back</Link>} />
@@ -24,9 +29,12 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
           <h2 className="h2">{stu ? 'Admission' : 'Hire'} Details</h2>
           <div className="grid-form">
             <Field label={`${stu ? 'Admission' : 'Hire'} Date *`}><input type="date" name="hire_date" defaultValue={asOf} required className="input" /></Field>
-            {manualAsg && <Field label={`${stu ? 'Student' : 'Staff'} Number *`}><input name="assignment_number" required className="input" /></Field>}
+            {manualAsg
+              ? <Field label={`${stu ? 'Student' : 'Staff'} Number *`}><input name="assignment_number" required className="input" /></Field>
+              : <Field label={`${stu ? 'Student' : 'Staff'} Number`} help="Generated automatically when you save"><NumberPreview previews={previews} watch={stu ? 'class_section' : 'business_unit_id'} /></Field>}
+            <Field label="Action *"><DatedSelect name="action_id" options={actions} dateField="hire_date" value={defaultAction} required empty={false} /></Field>
             {manualPerson && <Field label="Person Number *"><input name="person_number" className="input" /></Field>}
-            <Field label="Action Reason"><select name="action_reason_code" defaultValue="NEW_JOINER" className="input">{reasons.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select></Field>
+            <Field label="Action Reason"><DatedSelect name="action_reason_code" options={reasons} dateField="hire_date" parentField="action_id" value={stu ? 'NEW_ADMISSION' : 'HIRE'} /></Field>
             <Field label="Existing Person No. (optional)" help={stu ? 'If this person is already in the system (e.g. a staff member\'s record)' : 'e.g. a senior student joining as staff – reuses their personal record'}>
               <input name="existing_person_number" className="input" placeholder="Leave empty for a new person" />
             </Field>
@@ -40,7 +48,7 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
           <h2 className="h2">Personal Details</h2>
           <p className="muted mb-3">Ignored when an existing person number is given.</p>
           <div className="grid-form">
-            <PersonFields asOf={asOf} />
+            <PersonFields asOf={asOf} enterpriseId={u.enterpriseId} kind={kind} dateField="hire_date" />
             <Field label="Photo"><PhotoInput /></Field>
           </div>
         </div>

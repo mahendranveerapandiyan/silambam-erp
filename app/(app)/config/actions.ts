@@ -1,13 +1,15 @@
 'use server';
+import { imageToPng } from '@/lib/images';
 import bcrypt from 'bcryptjs';
 import { sql } from '@/lib/db';
-import { requireUser, type Role } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, fileToBytes } from '@/lib/util';
 import { THEME_KEYS } from '@/lib/theme';
+import { lookupPrivs } from '@/lib/menu';
 
 // ---------------- Lookups ----------------
 export async function createLookupType(fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_LOOKUP_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     if (!o.lookup_type || !o.meaning) throw new Error('Lookup type and meaning are required');
@@ -19,11 +21,10 @@ export async function createLookupType(fd: FormData) {
 }
 
 export async function updateLookupType(type: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_LOOKUP_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const o = formObj(fd);
-    if (!o.meaning) throw new Error('Meaning is required');
-    await sql`update lookup_type set meaning = ${o.meaning}, description = ${o.description}, last_updated_by = ${u.username}, last_update_date = now() where lookup_type = ${type}`;
+    await sql`update lookup_type set description = ${o.description}, last_updated_by = ${u.username}, last_update_date = now() where lookup_type = ${type}`;
   });
 }
 
@@ -34,7 +35,7 @@ async function typeAccess(type: string) {
 }
 
 export async function saveLookupValue(type: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv(lookupPrivs(type), 'WRITE');
   await act(backOf(fd), async () => {
     const o = formObj(fd);
     const access = await typeAccess(type);
@@ -58,7 +59,7 @@ export async function saveLookupValue(type: string, fd: FormData) {
 }
 
 export async function deleteLookupValue(type: string, code: string, fd: FormData) {
-  await requireUser('ADMIN');
+  await requirePriv(lookupPrivs(type), 'WRITE');
   await act(backOf(fd), async () => {
     const [cur] = await sql`select system_flag from lookup_value where lookup_type = ${type} and lookup_code = ${code}`;
     if (cur?.system_flag === 'Y' || (await typeAccess(type)) === 'SYSTEM') throw new Error('System values cannot be deleted.');
@@ -69,11 +70,11 @@ export async function deleteLookupValue(type: string, code: string, fd: FormData
 
 // ---------------- Enterprise ----------------
 export async function saveEnterprise(fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_ENTERPRISE_PRV', 'WRITE');
   await act('/config/enterprise', async () => {
     const o = formObj(fd);
     if (!o.name) throw new Error('Name is required');
-    const logo = await fileToBytes(fd.get('logo'));
+    const logo = await imageToPng(fd.get('logo'), 400);
     const [cur] = await sql`select code, code_locked_flag from enterprise where id = ${u.enterpriseId}`;
     let code = cur.code;
     if (cur.code_locked_flag !== 'Y') {
@@ -98,7 +99,7 @@ export async function saveEnterprise(fd: FormData) {
 
 // ---------------- Number generation ----------------
 export async function saveNumberRule(id: string, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_NUMBERING_PRV', 'WRITE');
   await act('/config/numbering', async () => {
     const o = formObj(fd);
     const padding = Number(o.padding || 4);
@@ -116,7 +117,7 @@ export async function saveNumberRule(id: string, fd: FormData) {
 
 // ---------------- Theme ----------------
 export async function saveTheme(fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_THEME_PRV', 'WRITE');
   await act('/config/theme', async () => {
     const o = formObj(fd);
     if (o._reset) {
@@ -136,13 +137,13 @@ export async function saveTheme(fd: FormData) {
 }
 
 // ---------------- Users ----------------
-const ROLES: Role[] = ['ADMIN', 'INCHARGE', 'STAFF', 'ACCOUNTANT', 'PARENT', 'STUDENT'];
 
 export async function saveUser(id: string | null, fd: FormData) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_USER_PRV', 'WRITE');
   await act(backOf(fd, '/config/users'), async () => {
     const o = formObj(fd);
-    const roles = fd.getAll('roles').map(String).filter((r): r is Role => ROLES.includes(r as Role));
+    const valid = new Set((await sql`select code from app_role`).map((r) => r.code as string));
+    const roles = fd.getAll('roles').map(String).filter((r) => valid.has(r));
     const students = fd.getAll('students').map(String).filter(Boolean);
     if (!o.display_name) throw new Error('Display name is required');
     const resolve = async (num: string) => {
@@ -177,5 +178,68 @@ export async function saveUser(id: string | null, fd: FormData) {
       for (const p of students) await tx`insert into user_student_access values (${uid}, ${p}) on conflict do nothing`;
     });
     return { to: `/config/users/${uid}`, msg: id ? 'User saved' : 'User created' };
+  });
+}
+
+// ---------------- Roles & privileges ----------------
+export async function saveRole(code: string | null, fd: FormData) {
+  const u = await requirePriv('CD_ROLE_PRV', 'WRITE');
+  await act(backOf(fd, '/config/roles'), async () => {
+    const o = formObj(fd);
+    if (!o.name) throw new Error('Role name is required');
+    let rc = code;
+    await sql.begin(async (tx) => {
+      if (!rc) {
+        if (!o.code) throw new Error('Role code is required');
+        rc = o.code.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+        await tx`insert into app_role (code, name, description, created_by) values (${rc}, ${o.name}, ${o.description}, ${u.username})`;
+      } else {
+        await tx`update app_role set name = ${o.name}, description = ${o.description}, active_flag = ${rc === 'ADMIN' ? 'Y' : o.active_flag === 'N' ? 'N' : 'Y'},
+          last_updated_by = ${u.username}, last_update_date = now() where code = ${rc}`;
+      }
+      if (rc === 'ADMIN') return; // Administrator always keeps every privilege
+      await tx`delete from role_privilege where role_code = ${rc}`;
+      for (const p of await tx`select code from privilege`) {
+        const lvl = fd.get(`p_${p.code}`);
+        if (!lvl || lvl === 'NONE') continue;
+        await tx`insert into role_privilege values (${rc}, ${p.code}, 'Y', ${lvl === 'READ' || lvl === 'WRITE' ? 'Y' : 'N'}, ${lvl === 'WRITE' ? 'Y' : 'N'})`;
+      }
+    });
+    return { to: `/config/roles/${rc}`, msg: code ? 'Role saved' : 'Role created' };
+  });
+}
+
+export async function deleteRole(code: string, fd: FormData) {
+  await requirePriv('CD_ROLE_PRV', 'WRITE');
+  await act(backOf(fd, '/config/roles'), async () => {
+    const [r] = await sql`select system_flag from app_role where code = ${code}`;
+    if (r?.system_flag === 'Y') throw new Error('Built-in roles cannot be deleted (you can change their privileges or deactivate them).');
+    const [n] = await sql`select count(*)::int n from user_role where role_code = ${code}`;
+    if (n.n > 0) throw new Error(`This role is assigned to ${n.n} user(s); remove it from them first.`);
+    await sql`delete from app_role where code = ${code}`;
+    return { to: '/config/roles', msg: 'Role deleted' };
+  });
+}
+
+// ---------------- Additional fields ----------------
+export async function saveField(id: string | null, fd: FormData) {
+  const u = await requirePriv('CD_ADDITIONAL_FIELD_PRV', 'WRITE');
+  const o = formObj(fd);
+  await act(backOf(fd, '/config/fields'), async () => {
+    if (!o.label) throw new Error('Label is required');
+    const v = {
+      label: o.label, required_flag: o.required_flag === 'Y' ? 'Y' : 'N', active_flag: o.active_flag === 'N' ? 'N' : 'Y',
+      display_seq: Number(o.display_seq || 0), help_text: o.help_text, last_updated_by: u.username, last_update_date: new Date(),
+    };
+    if (id) {
+      await sql`update additional_field set ${sql(v)} where id = ${id} and enterprise_id = ${u.enterpriseId}`;
+      return { msg: 'Field saved' };
+    }
+    if (!o.context_code || !o.field_code || !o.data_type) throw new Error('Page, field code and data type are required');
+    if (o.data_type === 'LOOKUP' && !o.lookup_type) throw new Error('Choose the lookup that supplies the values');
+    const code = o.field_code.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+    await sql`insert into additional_field ${sql({ ...v, enterprise_id: u.enterpriseId, context_code: o.context_code, field_code: code, data_type: o.data_type,
+      lookup_type: o.data_type === 'LOOKUP' ? o.lookup_type : null, created_by: u.username })}`;
+    return { to: `/config/fields?context=${encodeURIComponent(o.context_code)}`, msg: `Field ${code} added` };
   });
 }

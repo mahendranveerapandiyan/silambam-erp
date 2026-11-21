@@ -1,4 +1,4 @@
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { getAsOf } from '@/lib/asof';
 import { lookupOptions } from '@/lib/lookups';
@@ -6,7 +6,7 @@ import { PageHeader, Flash, Field, Select, type SP } from '@/components/ui';
 import { saveEnterprise } from '../actions';
 
 export default async function EnterprisePage({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('ADMIN');
+  const u = await requirePriv('CD_ENTERPRISE_PRV');
   const asOf = await getAsOf();
   const [e] = await sql`select *, logo_data is not null has_logo from enterprise where id = ${u.enterpriseId}`;
   const [countries, currencies, zones] = [await lookupOptions('COUNTRY', asOf), await lookupOptions('CURRENCY', asOf), await lookupOptions('TIMEZONE', asOf)];

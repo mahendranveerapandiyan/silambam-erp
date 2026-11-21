@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { requireUser } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
@@ -11,7 +11,7 @@ import { PageHeader, Select, Badge, Empty, STATUS_COLOR, type SP, s } from '@/co
 import { AutoSubmit, PrintButton } from '@/components/client';
 
 export default async function FeeSummary({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_FEE_SUMMARY_PRV');
   const sp = await searchParams;
   const asOf = await getAsOf();
   const today = todayISO();

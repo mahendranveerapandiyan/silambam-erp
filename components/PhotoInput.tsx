@@ -21,7 +21,12 @@ export function PhotoInput({ name = 'photo', required, maxSide = 480, quality = 
       canvas.width = Math.round(bmp.width * scale);
       canvas.height = Math.round(bmp.height * scale);
       canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-      const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', quality));
+      // lower the quality until the photo is small (the server compresses again anyway)
+      let blob: Blob | null = null;
+      for (const q of [quality, 0.7, 0.6, 0.5]) {
+        blob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', q));
+        if (blob && blob.size <= 100_000) break;
+      }
       if (!blob) return;
       const small = new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' });
       const dt = new DataTransfer();
@@ -30,7 +35,7 @@ export function PhotoInput({ name = 'photo', required, maxSide = 480, quality = 
       setInfo(`${Math.round(file.size / 1024)} KB → ${Math.round(small.size / 1024)} KB`);
       setPreview(URL.createObjectURL(small));
     } catch {
-      setInfo(null); // browser could not resize: original is uploaded (server limit 2 MB)
+      setInfo('Will be compressed on upload'); // browser could not resize: the server compresses it
     }
   }
 

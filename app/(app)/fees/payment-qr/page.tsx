@@ -1,4 +1,4 @@
-import { requireUser, isAdmin } from '@/lib/auth';
+import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
@@ -7,9 +7,9 @@ import { ConfirmButton } from '@/components/client';
 import { uploadPaymentQr, togglePaymentQr } from '../actions';
 
 export default async function PaymentQr({ searchParams }: { searchParams: SP }) {
-  const u = await requireUser('INCHARGE', 'ACCOUNTANT');
+  const u = await requirePriv('CD_PAYMENT_QR_PRV');
   const asOf = await getAsOf();
-  const admin = isAdmin(u);
+  const admin = can(u, 'CD_ALL_STUDENTS_DATA_PRV');
   const rows = await sql`select q.id, q.label, q.upi_id, q.active_flag, q.person_id, q.business_unit_id, q.created_by,
       (select name from business_unit_f b where b.id = q.business_unit_id order by effective_start_date desc limit 1) bu_name
     from payment_qr q where ${admin} or q.person_id = ${u.personId ?? '0'} order by q.id desc`;

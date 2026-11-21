@@ -1,4 +1,4 @@
-# Going live – low-cost deployment (≈ ₹0–900 / month)
+# caMpus dAy – going live (low-cost deployment) (≈ ₹0–900 / month)
 
 Everything runs on **one small Linux server**: the app, PostgreSQL, automatic HTTPS and nightly backups.
 Measured: the app uses ~130 MB RAM, so a **1 GB** server is enough for 5 branches / ~1,000 students / 500 staff.
