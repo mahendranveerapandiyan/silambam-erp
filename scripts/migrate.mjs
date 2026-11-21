@@ -14,7 +14,7 @@ const dir = path.join(process.cwd(), 'db', 'migrations');
  */
 async function syncPrivileges() {
   const list = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'db', 'privileges.json'), 'utf8'));
-  const lvl = { V: ['Y', 'N', 'N'], R: ['Y', 'Y', 'N'], W: ['Y', 'Y', 'Y'] };
+  const lvl = { V: ['Y', 'Y', 'N'], R: ['Y', 'Y', 'N'], W: ['Y', 'Y', 'Y'] }; // View only = view + read
   let added = 0;
   await sql.begin(async (tx) => {
     for (const p of list) {

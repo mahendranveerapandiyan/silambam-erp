@@ -8,6 +8,7 @@ import { saveAcademicYear } from '../actions';
 
 export default async function Years({ searchParams }: { searchParams: SP }) {
   const u = await requirePriv('CD_ACADEMIC_YEAR_PRV');
+  const write = can(u, 'CD_ACADEMIC_YEAR_PRV', 'WRITE');
   const asOf = await getAsOf();
   const years = await sql`select y.*, (select count(*) from fee_structure f where f.academic_year_id = y.id)::int fees, (select count(*) from exam e where e.academic_year_id = y.id)::int exams
     from academic_year y where enterprise_id = ${u.enterpriseId} order by start_date desc`;
@@ -22,7 +23,7 @@ export default async function Years({ searchParams }: { searchParams: SP }) {
       <input type="date" name="end_date" defaultValue={y?.end_date} className="input" required />
       <Select name="status_code" options={statuses} value={y?.status_code ?? 'OPEN'} empty={false} />
       <span className="text-xs text-gray-500">{y && <>{y.fees} fees · {y.exams} exams</>}</span>
-      <button className={`btn btn-sm ${y ? '' : 'btn-primary'}`}>{y ? 'Save' : 'Add'}</button>
+      {write ? <button className={`btn btn-sm ${y ? '' : 'btn-primary'}`}>{y ? 'Save' : 'Add'}</button> : <span />}
     </form>
   );
   const cur = years.find((y) => asOf >= y.start_date && asOf <= y.end_date);
@@ -34,7 +35,7 @@ export default async function Years({ searchParams }: { searchParams: SP }) {
         <div className="min-w-[900px]">
           <div className={`${cols} border-b pb-1 text-xs font-semibold uppercase text-gray-600`}><div>Code</div><div>Name</div><div>Start</div><div>End</div><div>Status</div><div>Usage</div><div /></div>
           {years.map((y) => <Row key={y.id} y={y} />)}
-          <Row />
+          {write && <Row />}
         </div>
       </div>
       <p className="muted mt-3">Fee structures and exams are defined per academic year. Use <b>Fees › Fee Structures › Copy</b> to carry fees into a new year.</p>

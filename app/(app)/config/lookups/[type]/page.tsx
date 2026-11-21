@@ -10,7 +10,8 @@ import { saveLookupValue, deleteLookupValue, updateLookupType } from '../../acti
 const cols = 'grid grid-cols-[7rem_1fr_1fr_5rem_4rem_4.5rem_8.5rem_8.5rem_7rem_auto] gap-1.5 items-center';
 
 export default async function LookupValues({ params, searchParams }: { params: Promise<{ type: string }>; searchParams: SP }) {
-  await requirePriv(lookupPrivs((await params).type));
+  const u = await requirePriv(lookupPrivs((await params).type));
+  const write = canAny(u, lookupPrivs((await params).type), 'WRITE');
   const { type } = await params;
   const sp = await searchParams;
   const [t] = await sql`select * from lookup_type where lookup_type = ${type}`;
@@ -18,7 +19,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
   const values = await sql`select * from lookup_value where lookup_type = ${type} order by display_seq, meaning`;
   const parents = t.parent_lookup_type ? await sql`select lookup_code, meaning from lookup_value where lookup_type = ${t.parent_lookup_type} order by display_seq, meaning` : [];
   const back = `/config/lookups/${type}`;
-  const sys = t.access_level === 'SYSTEM';
+  const sys = t.access_level === 'SYSTEM' || !write;
   const ParentSel = ({ v, form }: { v?: string; form: string }) =>
     t.parent_lookup_type ? (
       <select name="parent_code" form={form} defaultValue={v ?? ''} className="input"><option value="" />{parents.map((p) => <option key={p.lookup_code} value={p.lookup_code}>{p.meaning}</option>)}</select>
@@ -32,7 +33,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
         <Back to={back} />
         <label className="flex-1"><span className="label">Meaning (locked)</span><input value={t.meaning} disabled className="input" /></label>
         <label className="flex-[2]"><span className="label">Description</span><input name="description" defaultValue={t.description ?? ''} className="input" /></label>
-        <button className="btn">Save</button>
+        {write && <button className="btn">Save</button>}
       </form>
       <div className="card overflow-x-auto">
         <div className="min-w-[1100px]">
@@ -53,7 +54,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
                 <input name="end_date" form={fid} type="date" defaultValue={v.end_date} className="input" />
                 <ParentSel v={v.parent_code} form={fid} />
                 <div className="flex gap-1">
-                  <form id={fid} action={saveLookupValue.bind(null, type)}><Back to={back} /><input type="hidden" name="lookup_code" value={v.lookup_code} /><button className="btn btn-sm">Save</button></form>
+                  {write && <form id={fid} action={saveLookupValue.bind(null, type)}><Back to={back} /><input type="hidden" name="lookup_code" value={v.lookup_code} /><button className="btn btn-sm">Save</button></form>}
                   {!sys && v.system_flag !== 'Y' && (
                     <form action={deleteLookupValue.bind(null, type, v.lookup_code)}><Back to={back} /><ConfirmButton className="btn btn-sm" message={`Delete ${v.lookup_code}? Prefer disabling values already in use.`}>✕</ConfirmButton></form>
                   )}

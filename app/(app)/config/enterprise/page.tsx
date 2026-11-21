@@ -7,6 +7,7 @@ import { saveEnterprise } from '../actions';
 
 export default async function EnterprisePage({ searchParams }: { searchParams: SP }) {
   const u = await requirePriv('CD_ENTERPRISE_PRV');
+  const write = can(u, 'CD_ENTERPRISE_PRV', 'WRITE');
   const asOf = await getAsOf();
   const [e] = await sql`select *, logo_data is not null has_logo from enterprise where id = ${u.enterpriseId}`;
   const [countries, currencies, zones] = [await lookupOptions('COUNTRY', asOf), await lookupOptions('CURRENCY', asOf), await lookupOptions('TIMEZONE', asOf)];
@@ -15,7 +16,7 @@ export default async function EnterprisePage({ searchParams }: { searchParams: S
     <div className="max-w-4xl">
       <PageHeader title="Enterprise" subtitle="Top of the enterprise structure: Enterprise → Division → Legal Employer → Business Unit → Class → Section. Academic years are defined at this level." />
       <Flash sp={await searchParams} />
-      <form action={saveEnterprise} className="card">
+      <form action={saveEnterprise} className="card"><fieldset disabled={!write} className="contents">
         <div className="grid-form">
           <Field label={locked ? 'Code (locked)' : 'Code *'} help={locked ? 'Cannot be changed once saved' : 'Locked after you save'}>
             {locked ? <input value={e.code} disabled className="input" /> : <input name="code" defaultValue={e.code} required pattern="[A-Za-z0-9_-]{2,20}" className="input uppercase" />}
@@ -37,7 +38,8 @@ export default async function EnterprisePage({ searchParams }: { searchParams: S
               <label className="flex items-center gap-1 text-sm"><input type="checkbox" name="remove_logo" value="Y" /> Remove logo</label></div>
           )}
         </div>
-        <button className="btn btn-primary mt-4">Save</button>
+        </fieldset>
+        {write ? <button className="btn btn-primary mt-4">Save</button> : <p className="muted mt-4">View only – you cannot change these details.</p>}
       </form>
     </div>
   );

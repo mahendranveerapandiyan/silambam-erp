@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { SignJWT, jwtVerify } from 'jose';
 import { cache } from 'react';
 import { sql } from './db';
+import { MENU } from './menu';
 
 const COOKIE = 'erp_session';
 const secret = () => {
@@ -100,11 +101,10 @@ export function assertPriv(u: SessionUser, codes: string | string[], level: Leve
   if (!canAny(u, Array.isArray(codes) ? codes : [codes], level)) throw new Error('You do not have permission for this action.');
 }
 
-/** Where a user lands after login. */
+/** Where a user lands after login: the first menu task they may view. */
 export function homeFor(u: SessionUser) {
   if (can(u, 'CD_DASHBOARD_PRV')) return '/';
-  if (can(u, 'CD_PORTAL_PRV')) return '/portal';
-  if (can(u, 'CD_MY_PROFILE_PRV')) return '/me';
-  const first = Object.keys(u.privs)[0];
-  return first ? '/' : '/forbidden';
+  if (can(u, 'CD_PORTAL_PRV') && !can(u, 'CD_MY_PROFILE_PRV')) return '/portal';
+  for (const g of MENU) for (const i of g.items) if (i.priv.split('|').some((c) => can(u, c))) return i.href;
+  return '/account';
 }

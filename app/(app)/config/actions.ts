@@ -202,7 +202,7 @@ export async function saveRole(code: string | null, fd: FormData) {
       for (const p of await tx`select code from privilege`) {
         const lvl = fd.get(`p_${p.code}`);
         if (!lvl || lvl === 'NONE') continue;
-        await tx`insert into role_privilege values (${rc}, ${p.code}, 'Y', ${lvl === 'READ' || lvl === 'WRITE' ? 'Y' : 'N'}, ${lvl === 'WRITE' ? 'Y' : 'N'})`;
+        await tx`insert into role_privilege values (${rc}, ${p.code}, 'Y', 'Y', ${lvl === 'WRITE' ? 'Y' : 'N'})`;
       }
     });
     return { to: `/config/roles/${rc}`, msg: code ? 'Role saved' : 'Role created' };

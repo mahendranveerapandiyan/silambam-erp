@@ -6,7 +6,7 @@ import { PageHeader, Flash, Field, Back, Badge, type SP } from '@/components/ui'
 import { ConfirmButton } from '@/components/client';
 import { saveRole, deleteRole } from '../../actions';
 
-const LEVELS = [['NONE', 'None'], ['VIEW', 'View'], ['READ', 'Read'], ['WRITE', 'Write']] as const;
+const LEVELS = [['NONE', 'None'], ['VIEW', 'View only'], ['WRITE', 'Read & Write']] as const;
 
 export default async function RolePage({ params, searchParams }: { params: Promise<{ code: string }>; searchParams: SP }) {
   const u = await requirePriv('CD_ROLE_PRV', 'READ');
@@ -19,7 +19,7 @@ export default async function RolePage({ params, searchParams }: { params: Promi
     order by p.display_seq`;
   const users = await sql`select ua.id, ua.username, ua.display_name from user_role ur join user_account ua on ua.id = ur.user_id where ur.role_code = ${code} order by ua.username`;
   const modules = [...new Set(privs.map((p) => p.module as string))];
-  const level = (p: any) => (p.can_write === 'Y' ? 'WRITE' : p.can_read === 'Y' ? 'READ' : p.can_view === 'Y' ? 'VIEW' : 'NONE');
+  const level = (p: any) => (p.can_write === 'Y' ? 'WRITE' : p.can_view === 'Y' ? 'VIEW' : 'NONE');
   const admin = code === 'ADMIN';
   const editable = can(u, 'CD_ROLE_PRV', 'WRITE') && !admin;
   const back = `/config/roles/${code}`;
@@ -38,7 +38,7 @@ export default async function RolePage({ params, searchParams }: { params: Promi
         <div className="card">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <h2 className="h2 mb-0">Privileges</h2>
-            <span className="text-xs text-gray-500"><b>View</b> = task in menu, lists · <b>Read</b> = open records &amp; details · <b>Write</b> = create, edit, delete</span>
+            <span className="text-xs text-gray-500"><b>View only</b> = see the task, lists and records (no changes) · <b>Read &amp; Write</b> = also create, edit and delete</span>
           </div>
           {admin && <p className="mb-3 rounded bg-amber-50 p-2 text-sm">The Administrator role always has every privilege with Write access, so you can never lock yourself out.</p>}
           {modules.map((m) => (

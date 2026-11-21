@@ -5,6 +5,7 @@ import { saveTheme } from '../actions';
 
 export default async function ThemePage({ searchParams }: { searchParams: SP }) {
   const u = await requirePriv('CD_THEME_PRV');
+  const write = can(u, 'CD_THEME_PRV', 'WRITE');
   const t = await getTheme(u.enterpriseId);
   return (
     <div className="max-w-4xl">
@@ -27,8 +28,8 @@ export default async function ThemePage({ searchParams }: { searchParams: SP }) 
           ))}
         </div>
         <div className="mt-4 flex gap-2">
-          <button className="btn btn-primary">Save Theme</button>
-          <button name="_reset" value="1" className="btn">Reset to Defaults</button>
+          {write && <><button className="btn btn-primary">Save Theme</button>
+          <button name="_reset" value="1" className="btn">Reset to Defaults</button></>}
         </div>
       </form>
     </div>

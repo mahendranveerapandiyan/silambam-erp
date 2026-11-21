@@ -20,7 +20,7 @@ export default async function Users({ searchParams }: { searchParams: SP }) {
     order by u.username limit 500`;
   return (
     <div>
-      <PageHeader title="Users & Roles" subtitle="Logins for administrators, incharges, staff, accountants, parents and students." actions={<Link href="/config/users/new" className="btn btn-primary">+ New User</Link>} />
+      <PageHeader title="Users & Roles" subtitle="Logins for administrators, incharges, staff, accountants, parents and students." actions={can(u, 'CD_USER_PRV', 'WRITE') ? <Link href="/config/users/new" className="btn btn-primary">+ New User</Link> : null} />
       <Flash sp={sp} />
       <div className="card overflow-x-auto">
         <form className="mb-3 flex gap-2">

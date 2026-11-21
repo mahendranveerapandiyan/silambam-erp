@@ -26,6 +26,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
   const versionStart = s(sp.version);
   const version = versionStart ? history.find((h) => h.effective_start_date === versionStart) : null;
   const back = here(`/setup/${entity}/${id}`, sp);
+  const write = can(u, e.priv, 'WRITE');
   const used = await usages(sql, e.table, id);
 
   // names as they were on each history row's date
@@ -53,7 +54,9 @@ export default async function EntityDetail({ params, searchParams }: { params: P
         actions={<Link href={`/setup/${entity}`} className="btn">Back to list</Link>} />
       <Flash sp={sp} />
 
-      {version ? (
+      {!write ? (
+        <div className="card mb-4 text-sm">View only – you can see this record and its history but not change it.</div>
+      ) : version ? (
         <form action={correctVersion.bind(null, entity, id, version.effective_start_date)} className="card mb-4 border-blue-300">
           <Back to={back} />
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-blue-50 p-3 text-sm">
@@ -119,7 +122,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
                     {e.fields.map((f) => <td key={f.name}>{fmt(f, h[f.name], h.effective_start_date)}</td>)}
                     {extra.map((f) => <td key={f.field_code}>{showExtra(f, h.attributes?.[f.field_code])}</td>)}
                     <td className="whitespace-nowrap text-xs text-gray-500">{h.last_updated_by} · {fmtDateTime(h.last_update_date)}</td>
-                    <td><Link href={`/setup/${entity}/${id}?version=${h.effective_start_date}`} className="btn btn-sm">Correct</Link></td>
+                    <td>{write && <Link href={`/setup/${entity}/${id}?version=${h.effective_start_date}`} className="btn btn-sm">Correct</Link>}</td>
                   </tr>
                 );
               })}
@@ -128,7 +131,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      {write && <div className="grid gap-4 md:grid-cols-3">
         <form action={endDateEntity.bind(null, entity, id)} className="card">
           <Back to={back} />
           <h2 className="h2">End Date (Inactivate)</h2>
@@ -156,7 +159,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
             </>
           )}
         </form>
-      </div>
+      </div>}
     </div>
   );
 }

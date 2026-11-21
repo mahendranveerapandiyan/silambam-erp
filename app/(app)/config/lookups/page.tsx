@@ -8,7 +8,8 @@ import { createLookupType } from '../actions';
 const ACCESS_COLOR: Record<string, string> = { SYSTEM: 'red', EXTENSIBLE: 'amber', USER: 'green' };
 
 export default async function Lookups({ searchParams }: { searchParams: SP }) {
-  await requirePriv('CD_LOOKUP_PRV');
+  const u = await requirePriv('CD_LOOKUP_PRV');
+  const write = can(u, 'CD_LOOKUP_PRV', 'WRITE');
   const sp = await searchParams;
   const q = s(sp.q), mod = s(sp.module);
   const modules = await sql`select distinct module_code from lookup_type order by 1`;
@@ -45,7 +46,7 @@ export default async function Lookups({ searchParams }: { searchParams: SP }) {
             </tbody>
           </table>
         </div>
-        <form action={createLookupType} className="card h-fit space-y-3">
+        {write && <form action={createLookupType} className="card h-fit space-y-3">
           <Back to="/config/lookups" />
           <h2 className="h2">New Lookup Type</h2>
           <Field label="Lookup Type Code *"><input name="lookup_type" className="input uppercase" required placeholder="e.g. TSHIRT_SIZE" /></Field>
@@ -56,7 +57,7 @@ export default async function Lookups({ searchParams }: { searchParams: SP }) {
           </Field>
           <Field label="Description"><textarea name="description" className="input" rows={2} /></Field>
           <button className="btn btn-primary">Create</button>
-        </form>
+        </form>}
       </div>
     </div>
   );

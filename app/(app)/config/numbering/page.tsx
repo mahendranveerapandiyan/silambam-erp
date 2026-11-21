@@ -8,6 +8,7 @@ import { saveNumberRule } from '../actions';
 
 export default async function Numbering({ searchParams }: { searchParams: SP }) {
   const u = await requirePriv('CD_NUMBERING_PRV');
+  const write = can(u, 'CD_NUMBERING_PRV', 'WRITE');
   const asOf = await getAsOf();
   const rules = await sql`select r.*, (select max(last_value) from number_sequence s where s.rule_id = r.id) last_used from number_rule r where enterprise_id = ${u.enterpriseId} order by id`;
   const [methods, scopes, yn, L] = [await lookupOptions('NUMBER_METHOD', asOf), await lookupOptions('NUMBER_SCOPE', asOf), await lookupOptions('YES_NO', asOf), await lk()];
@@ -33,7 +34,7 @@ export default async function Numbering({ searchParams }: { searchParams: SP }) 
               <Field label="Include LE/BU Code"><Select name="include_scope_code_flag" options={yn} value={r.include_scope_code_flag} empty={false} /></Field>
               <Field label="Include Year"><Select name="include_year_flag" options={yn} value={r.include_year_flag} empty={false} /></Field>
               <Field label="Reset Every Year"><Select name="reset_yearly_flag" options={yn} value={r.reset_yearly_flag} empty={false} /></Field>
-              <div className="flex items-end"><button className="btn btn-primary">Save</button></div>
+              <div className="flex items-end">{write && <button className="btn btn-primary">Save</button>}</div>
               <div className="muted flex items-end">Last used: {r.last_used ?? '—'}</div>
             </div>
           </form>

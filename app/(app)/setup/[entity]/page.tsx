@@ -33,7 +33,7 @@ export default async function EntityList({ params, searchParams }: { params: Pro
   return (
     <div>
       <PageHeader title={e.plural} subtitle={<>{e.description} Showing records effective on <b>{fmtDate(asOf)}</b>.</>}
-        actions={<Link href={`/setup/${entity}/new`} className="btn btn-primary">+ Create {e.label}</Link>} />
+        actions={can(u, e.priv, 'WRITE') ? <Link href={`/setup/${entity}/new`} className="btn btn-primary">+ Create {e.label}</Link> : null} />
       <Flash sp={sp} />
       <div className="card">
         <form className="mb-3 flex gap-2">
