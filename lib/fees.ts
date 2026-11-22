@@ -132,7 +132,9 @@ export async function recordPayment(tx: Tx, p: {
   const totalOpen = open.reduce((a, r) => a + Number(r.balance_amount), 0);
   if (p.amount > totalOpen + 0.001) throw new Error(`Amount exceeds the outstanding balance (${totalOpen.toFixed(2)}).`);
   const buId = p.buId ?? open[0]?.business_unit_id ?? null;
-  const receipt = (await nextNumber(tx, p.enterpriseId, 'RECEIPT', { buId, date: p.date })) ?? `R-${Date.now()}`;
+  const [br] = await tx`select af.branch_id from assignment a join assignment_f af on af.id = a.id and ${p.date}::date between af.effective_start_date and af.effective_end_date
+    where a.person_id = ${p.personId} and a.assignment_type = 'STUDENT'`;
+  const receipt = (await nextNumber(tx, p.enterpriseId, 'RECEIPT', { buId, branchId: br?.branch_id ?? null, date: p.date })) ?? `R-${Date.now()}`;
   const [pay] = await tx`insert into fee_payment ${tx({
     enterprise_id: p.enterpriseId, receipt_number: receipt, person_id: p.personId, business_unit_id: buId, payment_date: p.date,
     amount: p.amount, payment_mode_code: p.mode, reference: p.reference ?? null, remarks: p.remarks ?? null, collected_by: p.by, created_by: p.by,

@@ -19,7 +19,7 @@ export default async function Numbering({ searchParams }: { searchParams: SP }) 
 
   return (
     <div className="max-w-6xl">
-      <PageHeader title="Number Generation" subtitle="How person, student, staff and receipt numbers are generated: automatic or manual, at Enterprise, Legal Employer or Business Unit level, with prefix, suffix, year and yearly reset." />
+      <PageHeader title="Number Generation" subtitle="How person, student, staff and receipt numbers are generated: automatic or manual, at Enterprise, Legal Employer, Business Unit or Branch level, with prefix, suffix, year and yearly reset." />
       <Flash sp={await searchParams} />
       <div className="space-y-6">
         {rules.map((r, i) => {
@@ -40,7 +40,7 @@ export default async function Numbering({ searchParams }: { searchParams: SP }) 
                   <Field label="Separator"><input name="separator" defaultValue={r.separator} maxLength={3} className="input" /></Field>
                   <Field label="Digits (padding)"><input name="padding" type="number" min={1} max={12} defaultValue={r.padding} className="input" /></Field>
                   <Field label="Start Number" help="First number of a new counter"><input name="start_number" type="number" min={0} defaultValue={r.start_number} className="input" /></Field>
-                  <Field label="Include LE/BU Code" help="Required for LE / BU level"><Select name="include_scope_code_flag" options={yn} value={r.include_scope_code_flag} empty={false} /></Field>
+                  <Field label="Include LE/BU/Branch Code" help="Required below Enterprise level"><Select name="include_scope_code_flag" options={yn} value={r.include_scope_code_flag} empty={false} /></Field>
                   <Field label="Include Year"><Select name="include_year_flag" options={yn} value={r.include_year_flag} empty={false} /></Field>
                   <Field label="Reset Every Year" help="Needs Include Year"><Select name="reset_yearly_flag" options={yn} value={r.reset_yearly_flag} empty={false} /></Field>
                 </div>
@@ -49,7 +49,7 @@ export default async function Numbering({ searchParams }: { searchParams: SP }) 
                 <div className="card">
                   <h3 className="mb-2 text-sm font-semibold">Counters</h3>
                   <table className="tbl">
-                    <thead><tr><th>{r.scope_code === 'BU' ? 'Business Unit' : r.scope_code === 'LE' ? 'Legal Employer' : 'Level'}</th>{r.reset_yearly_flag === 'Y' && <th>Year</th>}<th>Highest in Use</th><th>Next Number</th>{write && <th>Continue From</th>}</tr></thead>
+                    <thead><tr><th>{r.scope_code === 'BU' ? 'Business Unit' : r.scope_code === 'LE' ? 'Legal Employer' : r.scope_code === 'BRANCH' ? 'Branch' : 'Level'}</th>{r.reset_yearly_flag === 'Y' && <th>Year</th>}<th>Highest in Use</th><th>Next Number</th>{write && <th>Continue From</th>}</tr></thead>
                     <tbody>{cs.map((c) => (
                       <tr key={`${c.scopeId}|${c.period}`}>
                         <td>{c.name}{c.scopeCode && <span className="text-xs text-slate-400"> ({c.scopeCode})</span>}</td>

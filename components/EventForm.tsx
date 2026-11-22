@@ -10,7 +10,7 @@ export function EventForm({ action, ev = {}, back, o }: { action: (fd: FormData)
       <div className="grid-form">
         <Field label="Name *"><input name="name" defaultValue={ev.name} className="input" required /></Field>
         <Field label="Type *"><Select name="event_type_code" options={o.types} value={ev.event_type_code} required /></Field>
-        <Field label="Branch"><Select name="business_unit_id" options={o.bus} value={ev.business_unit_id} empty="All branches" /></Field>
+        <Field label="Business Unit"><Select name="business_unit_id" options={o.bus} value={ev.business_unit_id} empty="All business units" /></Field>
         <Field label="Start Date *"><input type="date" name="start_date" defaultValue={ev.start_date} className="input" required /></Field>
         <Field label="End Date"><input type="date" name="end_date" defaultValue={ev.end_date} className="input" /></Field>
         <Field label="Venue"><input name="venue" defaultValue={ev.venue ?? ''} className="input" /></Field>

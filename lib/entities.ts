@@ -27,6 +27,7 @@ export type Entity = {
   fields: Field[];
   fixed?: Record<string, string>; // fixed column values (e.g. person_category)
   parentRef?: { field: string; entity: string }; // used to label options "Parent › Name"
+  parentInLabel?: boolean; // false = options show the own name only (the parent is still used for filtering)
   priv: string; // privilege controlling this setup task
 };
 
@@ -67,8 +68,8 @@ const E: Entity[] = [
     ],
   },
   {
-    key: 'business-units', table: 'business_unit', priv: 'CD_BUSINESS_UNIT_PRV', label: 'Business Unit', plural: 'Business Units (Branches)', group: 'Enterprise Structure',
-    description: 'Branches. Each belongs to a legal employer.',
+    key: 'business-units', table: 'business_unit', priv: 'CD_BUSINESS_UNIT_PRV', label: 'Business Unit', plural: 'Business Units', group: 'Enterprise Structure',
+    description: 'Business units. Each belongs to a legal employer and holds one or more branches.',
     fields: [
       { name: 'legal_employer_id', label: 'Legal Employer', type: 'ref', ref: 'legal-employers', required: true, list: true },
       { name: 'location_id', label: 'Location', type: 'ref', ref: 'locations', list: true },
@@ -78,10 +79,21 @@ const E: Entity[] = [
     ],
   },
   {
-    key: 'classes', table: 'class', priv: 'CD_CLASS_PRV', label: 'Class', plural: 'Classes / Batches', group: 'Enterprise Structure',
-    description: 'Training batches within a business unit.', parentRef: { field: 'business_unit_id', entity: 'business-units' },
+    key: 'branches', table: 'branch', priv: 'CD_BRANCH_PRV', label: 'Branch', plural: 'Branches', group: 'Enterprise Structure',
+    description: 'Training branches. Each belongs to a business unit and holds the classes.', parentRef: { field: 'business_unit_id', entity: 'business-units' }, parentInLabel: false,
     fields: [
-      { name: 'business_unit_id', label: 'Business Unit', type: 'ref', ref: 'business-units', required: true, list: true },
+      { name: 'business_unit_id', label: 'Business Unit', type: 'ref', ref: 'business-units', required: true, list: true, lockOnUpdate: true, help: 'Cannot be changed after the branch is created' },
+      { name: 'location_id', label: 'Location', type: 'ref', ref: 'locations', list: true },
+      { name: 'phone', label: 'Phone', type: 'text' },
+      { name: 'email', label: 'Email', type: 'text' },
+      active,
+    ],
+  },
+  {
+    key: 'classes', table: 'class', priv: 'CD_CLASS_PRV', label: 'Class', plural: 'Classes / Batches', group: 'Enterprise Structure',
+    description: 'Training batches within a branch.', parentRef: { field: 'branch_id', entity: 'branches' },
+    fields: [
+      { name: 'branch_id', label: 'Branch', type: 'ref', ref: 'branches', required: true, list: true },
       { name: 'duration_type_code', label: 'Class Duration', type: 'lookup', lookup: 'CLASS_DURATION_TYPE', required: true, list: true, help: 'Fixed: in & out time · Flexible: min & max duration · Hybrid: training days only' },
       { name: 'start_time', label: 'In Time', type: 'time', required: true, list: true, showWhen: { field: 'duration_type_code', values: ['FIXED'] } },
       { name: 'end_time', label: 'Out Time', type: 'time', required: true, list: true, showWhen: { field: 'duration_type_code', values: ['FIXED'] } },

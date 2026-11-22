@@ -12,7 +12,7 @@ import { assertStudentAccess, myClasses, seesAllStudents } from '@/lib/scope';
 
 const dirPriv = (k: PersonKind) => (k === 'STUDENT' ? 'CD_STUDENT_DIRECTORY_PRV' : 'CD_STAFF_DIRECTORY_PRV');
 const actPriv = (k: PersonKind) => (k === 'STUDENT' ? 'CD_STUDENT_ACTION_PRV' : 'CD_STAFF_ACTION_PRV');
-import { actionByType, actionInfo, academicYearOn, buLegalEmployer, classHierarchy, type PersonKind } from '@/lib/people';
+import { actionByType, actionInfo, academicYearOn, branchBusinessUnit, buLegalEmployer, classHierarchy, type PersonKind } from '@/lib/people';
 import { generateStudentFees } from '@/lib/fees';
 import { assertEffective } from '@/lib/integrity';
 import { parseAttributes } from '@/lib/fields';
@@ -67,11 +67,12 @@ async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string
       if (!allowed) throw new Error('You can only place students in your own classes.');
     }
     const h = await classHierarchy(classId, date);
-    if (o.business_unit_id && String(o.business_unit_id) !== String(h.business_unit_id)) throw new Error('That class does not belong to the chosen branch on this date.');
+    if (o.branch_id && String(o.branch_id) !== String(h.branch_id)) throw new Error('That class does not belong to the chosen branch on this date.');
+    if (o.business_unit_id && String(o.business_unit_id) !== String(h.business_unit_id)) throw new Error('That class does not belong to the chosen business unit on this date.');
     let ay = o.academic_year_id;
     if (!ay) ay = (await academicYearOn(u.enterpriseId, date))?.id ?? null;
     const sv = {
-      class_id: classId, section_id: sectionId || null, business_unit_id: h.business_unit_id, legal_employer_id: h.legal_employer_id,
+      class_id: classId, section_id: sectionId || null, branch_id: h.branch_id, business_unit_id: h.business_unit_id, legal_employer_id: h.legal_employer_id,
       academic_year_id: ay, student_grade_id: o.student_grade_id, house_id: o.house_id, club_id: o.club_id, community_id: o.community_id,
       fee_frequency_code: o.fee_frequency_code ?? 'MONTHLY', person_type_id: o.person_type_id, comments: o.comments,
     };
@@ -89,11 +90,17 @@ async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string
       o.employment_type_code ??= pf.full_time_flag === 'N' ? 'PART_TIME' : 'FULL_TIME';
     }
   }
+  // a branch decides its business unit
+  if (o.branch_id) {
+    const bu = await branchBusinessUnit(o.branch_id, date);
+    if (o.business_unit_id && String(o.business_unit_id) !== bu) throw new Error('That branch does not belong to the chosen business unit on this date.');
+    o.business_unit_id = bu;
+  }
   if (!o.business_unit_id) throw new Error('Business unit is required');
   const le = await buLegalEmployer(o.business_unit_id, date);
   if (o.legal_employer_id && String(o.legal_employer_id) !== String(le)) throw new Error('That business unit does not belong to the chosen legal employer on this date.');
   const fv = {
-    business_unit_id: o.business_unit_id, legal_employer_id: le, location_id: o.location_id,
+    business_unit_id: o.business_unit_id, branch_id: o.branch_id, legal_employer_id: le, location_id: o.location_id,
     job_id: o.job_id, staff_grade_id: o.staff_grade_id, department_id: o.department_id, position_id: o.position_id,
     employment_type_code: o.employment_type_code, employment_category_code: o.employment_category_code, payroll_status_code: o.payroll_status_code,
     person_type_id: o.person_type_id, comments: o.comments,
@@ -163,7 +170,7 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
       }
       const hire = o.action_id ? await actionInfo(o.action_id, date) : await actionByType(u.enterpriseId, kind, 'HIRE', date);
       if (!hire) throw new Error(`No ${kind === 'STUDENT' ? 'admission' : 'hire'} action is configured`);
-      const anum = (await nextNumber(tx, u.enterpriseId, kind, { buId: av.business_unit_id, leId: av.legal_employer_id, date })) ?? o.assignment_number;
+      const anum = (await nextNumber(tx, u.enterpriseId, kind, { buId: av.business_unit_id, leId: av.legal_employer_id, branchId: av.branch_id, date })) ?? o.assignment_number;
       if (!anum) throw new Error(`${kind === 'STUDENT' ? 'Student' : 'Staff'} number is required (manual numbering)`);
       const [taken] = await tx`select a.person_id, (select trim(concat_ws(' ', first_name, last_name)) from person_f x where x.id = a.person_id order by effective_start_date desc limit 1) who
         from assignment a where a.enterprise_id = ${u.enterpriseId} and a.assignment_type = ${kind} and upper(a.assignment_number) = upper(${anum})`;

@@ -69,7 +69,7 @@ const LOOKUPS = {
   ROLE: ['Application Role', 'SYSTEM', 'SYSTEM', null, [['ADMIN', 'Administrator'], ['INCHARGE', 'Class Incharge'], ['STAFF', 'Staff'], ['ACCOUNTANT', 'Accountant'], ['PARENT', 'Parent / Guardian'], ['STUDENT', 'Student']]],
   NUMBER_OBJECT: ['Number Generation Object', 'SYSTEM', 'SYSTEM', null, [['PERSON', 'Person Number'], ['STUDENT', 'Student Number'], ['STAFF', 'Staff Number'], ['RECEIPT', 'Fee Receipt Number']]],
   NUMBER_METHOD: ['Number Generation Method', 'SYSTEM', 'SYSTEM', null, [['AUTO', 'Automatic'], ['MANUAL', 'Manual']]],
-  NUMBER_SCOPE: ['Number Generation Level', 'SYSTEM', 'SYSTEM', null, [['ENTERPRISE', 'Enterprise'], ['LE', 'Legal Employer'], ['BU', 'Business Unit']]],
+  NUMBER_SCOPE: ['Number Generation Level', 'SYSTEM', 'SYSTEM', null, [['ENTERPRISE', 'Enterprise'], ['LE', 'Legal Employer'], ['BU', 'Business Unit'], ['BRANCH', 'Branch']]],
 };
 
 async function dt(tx, table, ent, code, name, attrs = {}, start = SOT) {
@@ -147,14 +147,17 @@ try {
     const div = await dt(tx, 'division', E, 'SOUTH', 'South Region');
     const le = await dt(tx, 'legal_employer', E, 'SAT', 'Silambam Academy Trust', { country_code: 'IN', division_id: div, location_id: loc, currency_code: 'INR' });
     const bus = [];
+    const branches = {};
     for (const [i, city] of ['Madurai', 'Chennai', 'Coimbatore', 'Trichy', 'Tirunelveli'].entries()) {
       const l = await dt(tx, 'location', E, `LOC${i + 1}`, `${city} Training Center`, { location_type_code: 'TRAINING_CENTER', city, state_code: 'IN-TN', country_code: 'IN' });
-      bus.push(await dt(tx, 'business_unit', E, `BR${i + 1}`, `${city} Branch`, { legal_employer_id: le, location_id: l }));
+      const bu = await dt(tx, 'business_unit', E, `BR${i + 1}`, `${city} Branch`, { legal_employer_id: le, location_id: l });
+      bus.push(bu);
+      branches[bu] = await dt(tx, 'branch', E, `BR${i + 1}`, `${city} Branch`, { business_unit_id: bu, location_id: l });
     }
     const classes = [];
     for (const [bi, bu] of bus.entries()) {
       for (const [ci, [cn, tIn, tOut]] of [['Kids Batch', '06:00', '07:00'], ['Adults Batch', '18:00', '19:30']].entries()) {
-        const c = await dt(tx, 'class', E, `BR${bi + 1}-C${ci + 1}`, cn, { business_unit_id: bu, duration_type_code: 'FIXED', start_time: tIn, end_time: tOut, training_days: 'MON,WED,FRI', capacity: 40 });
+        const c = await dt(tx, 'class', E, `BR${bi + 1}-C${ci + 1}`, cn, { business_unit_id: bu, branch_id: branches[bu], duration_type_code: 'FIXED', start_time: tIn, end_time: tOut, training_days: 'MON,WED,FRI', capacity: 40 });
         const s = await dt(tx, 'section', E, `BR${bi + 1}-C${ci + 1}-A`, 'Section A', { class_id: c, capacity: 20 });
         classes.push({ bu, c, s });
       }
@@ -215,7 +218,7 @@ try {
       const [a] = await tx`insert into assignment (enterprise_id, person_id, assignment_type, assignment_number, original_start_date, created_by)
         values (${E}, ${pid}, 'STAFF', ${`EMP-${String(++sn).padStart(4, '0')}`}, ${ayStart}, ${BY}) returning id`;
       await tx`insert into assignment_f ${tx({ id: a.id, effective_start_date: ayStart, action_id: staffAction, assignment_status_id: st.STF_ACTIVE, person_type_id: ptInstr,
-        legal_employer_id: le, business_unit_id: cl.bu, job_id: i % 2 ? jobs.INSTRUCTOR : jobs.MASTER, staff_grade_id: sg, department_id: dept,
+        legal_employer_id: le, business_unit_id: cl.bu, branch_id: branches[cl.bu], job_id: i % 2 ? jobs.INSTRUCTOR : jobs.MASTER, staff_grade_id: sg, department_id: dept,
         employment_type_code: 'FULL_TIME', employment_category_code: 'PERMANENT', payroll_status_code: 'PROCESS', created_by: BY })}`;
       await tx`insert into class_incharge (person_id, class_id, section_id, academic_year_id, start_date, end_date, created_by) values (${pid}, ${cl.c}, ${null}, ${ay.id}, ${ayStart}, ${`${ayStartYear + 1}-05-31`}, ${BY})`;
       const uname = `incharge${i + 1}`;
@@ -239,7 +242,7 @@ try {
         const [a] = await tx`insert into assignment (enterprise_id, person_id, assignment_type, assignment_number, original_start_date, created_by)
           values (${E}, ${pid}, 'STUDENT', ${num}, ${ayStart}, ${BY}) returning id`;
         await tx`insert into assignment_f ${tx({ id: a.id, effective_start_date: ayStart, action_id: stuAction, assignment_status_id: st.STU_ACTIVE, person_type_id: ptStudent,
-          legal_employer_id: le, business_unit_id: cl.bu, academic_year_id: ay.id, class_id: cl.c, section_id: cl.s, student_grade_id: grades[k % 3],
+          legal_employer_id: le, business_unit_id: cl.bu, branch_id: branches[cl.bu], academic_year_id: ay.id, class_id: cl.c, section_id: cl.s, student_grade_id: grades[k % 3],
           fee_frequency_code: freqs[k % freqs.length], created_by: BY })}`;
         await tx`insert into person_contact (person_id, relationship_code, name, phone, primary_flag, created_by)
           values (${pid}, 'FATHER', ${'Mr. ' + last[(k * 3) % 8]}, ${'97' + String(10000000 + pid).slice(-8)}, 'Y', ${BY})`;

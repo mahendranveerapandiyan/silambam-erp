@@ -25,7 +25,7 @@ export default async function Finance({ searchParams }: { searchParams: SP }) {
     <div className="max-w-6xl">
       <PageHeader title="Income & Expenses" subtitle="Fee collections are included automatically. Record other income and all expenses here." />
       <Flash sp={sp} />
-      <form className="card mb-4 flex flex-wrap gap-2"><input type="month" name="month" defaultValue={month} className="input w-44" /><Select name="bu" options={bus} value={bu} empty="All branches" className="input max-w-xs" /><AutoSubmit /></form>
+      <form className="card mb-4 flex flex-wrap gap-2"><input type="month" name="month" defaultValue={month} className="input w-44" /><Select name="bu" options={bus} value={bu} empty="All business units" className="input max-w-xs" /><AutoSubmit /></form>
       <div className="mb-4 grid gap-3 sm:grid-cols-4">
         <div className="card"><div className="text-xs font-semibold uppercase text-gray-500">Fee Collections</div><div className="text-xl font-bold">{money(fees.a)}</div></div>
         <div className="card"><div className="text-xs font-semibold uppercase text-gray-500">Total Income</div><div className="text-xl font-bold text-green-700">{money(income)}</div></div>
@@ -43,13 +43,13 @@ export default async function Finance({ searchParams }: { searchParams: SP }) {
         </Field>
         <Field label="Date"><input type="date" name="txn_date" defaultValue={todayISO()} className="input" /></Field>
         <Field label="Amount *"><input name="amount" type="number" step="0.01" min="0.01" className="input" required /></Field>
-        <Field label="Branch"><Select name="business_unit_id" options={bus} empty="Head office" /></Field>
+        <Field label="Business Unit"><Select name="business_unit_id" options={bus} empty="Head office" /></Field>
         <Field label="Mode"><Select name="payment_mode_code" options={modes} value="CASH" empty={false} /></Field>
         <Field label="Description"><input name="description" className="input" /></Field>
         <button className="btn btn-primary">Add</button>
       </form>
       <div className="card overflow-x-auto">
-        <table className="tbl"><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Branch</th><th>Description</th><th className="text-right">Amount</th><th>By</th><th></th></tr></thead>
+        <table className="tbl"><thead><tr><th>Date</th><th>Type</th><th>Category</th><th>Business Unit</th><th>Description</th><th className="text-right">Amount</th><th>By</th><th></th></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.id}><td>{fmtDate(r.txn_date)}</td><td><Badge color={r.txn_kind === 'INCOME' ? 'green' : 'red'}>{r.txn_kind === 'INCOME' ? 'Income' : 'Expense'}</Badge></td>
               <td>{L(r.txn_kind === 'INCOME' ? 'INCOME_CATEGORY' : 'EXPENSE_CATEGORY', r.category_code)}</td><td>{r.bu_name ?? 'Head office'}</td><td>{r.description}</td>

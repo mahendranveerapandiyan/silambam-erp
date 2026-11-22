@@ -122,7 +122,10 @@ export async function saveNumberRule(id: string, fd: FormData) {
     // per-branch / per-employer counters each start from the start number, so the
     // number must contain the branch / employer code or numbers would repeat
     if (scope !== 'ENTERPRISE' && o.include_scope_code_flag !== 'Y' && (o.method_code ?? 'AUTO') === 'AUTO')
-      throw new Error(`With numbering at ${scope === 'BU' ? 'Business Unit' : 'Legal Employer'} level each ${scope === 'BU' ? 'branch' : 'employer'} counts from ${start}, so "Include LE/BU Code" must be Yes – otherwise two people would get the same number. Or use Enterprise level.`);
+    {
+      const lvl = ({ BU: ['Business Unit', 'business unit'], LE: ['Legal Employer', 'employer'], BRANCH: ['Branch', 'branch'] } as Record<string, string[]>)[scope] ?? [scope, scope];
+      throw new Error(`With numbering at ${lvl[0]} level each ${lvl[1]} counts from ${start}, so "Include LE/BU/Branch Code" must be Yes – otherwise two people would get the same number. Or use Enterprise level.`);
+    }
     if (o.reset_yearly_flag === 'Y' && o.include_year_flag !== 'Y' && (o.method_code ?? 'AUTO') === 'AUTO')
       throw new Error('"Reset Every Year" needs "Include Year" = Yes, otherwise the numbers of different years would repeat.');
     await sql`update number_rule set method_code = ${o.method_code ?? 'AUTO'}, scope_code = ${scope}, prefix = ${o.prefix}, suffix = ${o.suffix},

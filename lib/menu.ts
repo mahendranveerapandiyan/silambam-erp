@@ -91,7 +91,7 @@ export const MENU: MenuGroup[] = [
     items: [
       { label: 'Enterprise', href: '/config/enterprise', priv: 'CD_ENTERPRISE_PRV' }, st('locations', 'Locations', 'CD_LOCATION_PRV'),
       st('divisions', 'Divisions', 'CD_DIVISION_PRV'), st('legal-employers', 'Legal Employers', 'CD_LEGAL_EMPLOYER_PRV'),
-      st('business-units', 'Business Units', 'CD_BUSINESS_UNIT_PRV'), st('classes', 'Classes', 'CD_CLASS_PRV'), st('sections', 'Sections', 'CD_SECTION_PRV'),
+      st('business-units', 'Business Units', 'CD_BUSINESS_UNIT_PRV'), st('branches', 'Branches', 'CD_BRANCH_PRV'), st('classes', 'Classes', 'CD_CLASS_PRV'), st('sections', 'Sections', 'CD_SECTION_PRV'),
       { label: 'Lookups', href: '/config/lookups', priv: 'CD_LOOKUP_PRV' },
       { label: 'Additional Fields', href: '/config/fields', priv: 'CD_ADDITIONAL_FIELD_PRV' },
       { label: 'Number Generation', href: '/config/numbering', priv: 'CD_NUMBERING_PRV' },

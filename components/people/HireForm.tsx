@@ -33,7 +33,7 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
             <Field label={`${stu ? 'Admission' : 'Hire'} Date *`}><input type="date" name="hire_date" defaultValue={asOf} required className="input" /></Field>
             {manualAsg
               ? <Field label={`${stu ? 'Student' : 'Staff'} Number *`}><input name="assignment_number" required className="input" /></Field>
-              : <Field label={`${stu ? 'Student' : 'Staff'} Number`} help="Generated automatically when you save"><NumberPreview previews={previews} watch="business_unit_id" dateField="hire_date" /></Field>}
+              : <Field label={`${stu ? 'Student' : 'Staff'} Number`} help="Generated automatically when you save"><NumberPreview previews={previews} dateField="hire_date" /></Field>}
             <Field label="Action *"><DatedSelect name="action_id" options={actions} dateField="hire_date" value={defaultAction} required empty={false} /></Field>
             {manualPerson && <Field label="Person Number *"><input name="person_number" className="input" /></Field>}
             <Field label="Action Reason"><DatedSelect name="action_reason_code" options={reasons} dateField="hire_date" parentField="action_id" value={stu ? 'NEW_ADMISSION' : 'HIRE'} /></Field>

@@ -63,9 +63,9 @@ export default async function Reports({ searchParams }: { searchParams: SP }) {
       <form className="card mb-4 no-print"><Select name="ay" options={years.map((y) => ({ value: String(y.id), label: y.name }))} value={ayId} empty={false} className="input max-w-xs" /><AutoSubmit /></form>
 
       <div className="card mb-4">
-        <h2 className="h2">Branch Dashboard – {MON[+month.slice(5) - 1]} {month.slice(0, 4)}</h2>
+        <h2 className="h2">Business Unit Dashboard – {MON[+month.slice(5) - 1]} {month.slice(0, 4)}</h2>
         <div className="overflow-x-auto">
-          <table className="tbl"><thead><tr><th>Branch</th><th className="text-right">Active Students</th><th className="text-right">Staff</th><th className="text-right">Collected this month</th><th className="text-right">Overdue dues</th><th className="text-right">Expenses this month</th><th className="text-right">Attendance today</th></tr></thead>
+          <table className="tbl"><thead><tr><th>Business Unit</th><th className="text-right">Active Students</th><th className="text-right">Staff</th><th className="text-right">Collected this month</th><th className="text-right">Overdue dues</th><th className="text-right">Expenses this month</th><th className="text-right">Attendance today</th></tr></thead>
             <tbody>{branches.map((b) => (
               <tr key={b.id}><td className="font-medium">{b.name}</td><td className="text-right">{b.students}</td><td className="text-right">{b.staff}</td><td className="text-right">{money(b.collected)}</td>
                 <td className="text-right">{money(b.overdue)}</td><td className="text-right">{money(b.expense)}</td><td className="text-right">{b.att === null ? '—' : `${Math.round(b.att)}%`}</td></tr>))}</tbody></table>
@@ -106,7 +106,7 @@ export default async function Reports({ searchParams }: { searchParams: SP }) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card overflow-x-auto lg:col-span-2">
-          <h2 className="h2">Monthly Fee Collection by Branch</h2>
+          <h2 className="h2">Monthly Fee Collection by Business Unit</h2>
           <table className="tbl"><thead><tr><th>Month</th>{buList.map((b) => <th key={b} className="text-right">{b}</th>)}<th className="text-right">Total</th></tr></thead>
             <tbody>{months.map((m) => {
               const cells = buList.map((b) => collByBu.find((r) => (r.bu ?? '—') === b && r.m === m.m)?.a ?? 0);

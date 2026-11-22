@@ -22,7 +22,7 @@ export default async function PaymentQr({ searchParams }: { searchParams: SP }) 
         <Field label="QR Image *"><input type="file" name="image" accept="image/*" required className="input" /></Field>
         <Field label="Label *"><input name="label" placeholder="GPay – Coach name" required className="input" /></Field>
         <Field label="UPI ID"><input name="upi_id" placeholder="name@bank" className="input" /></Field>
-        {admin && <Field label="Branch-level (admin)"><Select name="business_unit_id" options={bus} empty="No – my own QR" /></Field>}
+        {admin && <Field label="Business-unit level (admin)"><Select name="business_unit_id" options={bus} empty="No – my own QR" /></Field>}
         <button className="btn btn-primary">Upload</button>
       </form>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -30,7 +30,7 @@ export default async function PaymentQr({ searchParams }: { searchParams: SP }) 
           <div key={q.id} className="card text-center">
             <img src={`/api/payment-qr/${q.id}`} alt="" className={`mx-auto max-h-48 ${q.active_flag === 'N' ? 'opacity-30' : ''}`} />
             <div className="mt-2 font-semibold">{q.label}</div>
-            <div className="text-xs">{q.upi_id} {q.bu_name ? <Badge color="blue">Branch: {q.bu_name}</Badge> : <Badge>{q.created_by}</Badge>}</div>
+            <div className="text-xs">{q.upi_id} {q.bu_name ? <Badge color="blue">Business Unit: {q.bu_name}</Badge> : <Badge>{q.created_by}</Badge>}</div>
             <div className="mt-2 flex justify-center gap-2">
               <form action={togglePaymentQr.bind(null, q.id)}><button className="btn btn-sm">{q.active_flag === 'Y' ? 'Disable' : 'Enable'}</button></form>
               <form action={togglePaymentQr.bind(null, q.id)}><input type="hidden" name="_delete" value="1" /><ConfirmButton className="btn btn-sm" message="Delete this QR?">Delete</ConfirmButton></form>

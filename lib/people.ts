@@ -23,7 +23,7 @@ export async function peopleList(
   u: SessionUser,
   kind: PersonKind,
   asOf: string,
-  f: { q?: string | null; bu?: string | null; cls?: string | null; grade?: string | null; status?: string | null },
+  f: { q?: string | null; bu?: string | null; branch?: string | null; cls?: string | null; grade?: string | null; status?: string | null },
   page = 1,
   pageSize = 100,
 ) {
@@ -34,6 +34,7 @@ export async function peopleList(
       ${fullName()} as full_name, pf.phone, pf.gender_code, af.*,
       st.system_status_code, st.name status_name,
       ${nm('business_unit', 'af.business_unit_id', asOf)} bu_name,
+      ${nm('branch', 'af.branch_id', asOf)} branch_name,
       ${nm('class', 'af.class_id', asOf)} class_name,
       ${nm('section', 'af.section_id', asOf)} section_name,
       ${nm('student_grade', 'af.student_grade_id', asOf)} grade_name,
@@ -52,6 +53,7 @@ export async function peopleList(
       ${kind === 'STUDENT' ? studentScopeSql(u, asOf) : sql``}
       ${status !== 'ALL' ? sql`and st.system_status_code = ${status}` : sql``}
       ${f.bu ? sql`and af.business_unit_id = ${f.bu}` : sql``}
+      ${f.branch ? sql`and af.branch_id = ${f.branch}` : sql``}
       ${f.cls ? sql`and af.class_id = ${f.cls}` : sql``}
       ${f.grade ? sql`and af.student_grade_id = ${f.grade}` : sql``}
       ${like ? sql`and (a.assignment_number ilike ${like} or p.person_number ilike ${like} or ${fullName()} ilike ${like} or pf.phone ilike ${like}
@@ -75,6 +77,7 @@ export async function assignmentFor(personId: string, kind: PersonKind, asOf: st
       ${nm('action', 'af.action_id', asOf)} action_name,
       ${nm('legal_employer', 'af.legal_employer_id', asOf)} le_name,
       ${nm('business_unit', 'af.business_unit_id', asOf)} bu_name,
+      ${nm('branch', 'af.branch_id', asOf)} branch_name,
       ${nm('location', 'af.location_id', asOf)} location_name,
       ${nm('class', 'af.class_id', asOf)} class_name,
       ${nm('section', 'af.section_id', asOf)} section_name,
@@ -145,14 +148,21 @@ export async function assignmentFormOptions(u: SessionUser, kind: PersonKind, as
   };
 }
 
-/** Resolve class -> BU -> LE on a date. */
+/** Branch -> BU on a date. */
+export async function branchBusinessUnit(branchId: string, asOf: string) {
+  const [r] = await sql`select business_unit_id from branch_f where id = ${branchId} and ${asOf}::date between effective_start_date and effective_end_date`;
+  if (!r) throw new Error('Branch is not effective on this date.');
+  return String(r.business_unit_id);
+}
+
+/** Resolve class -> branch -> BU -> LE on a date. */
 export async function classHierarchy(classId: string, asOf: string) {
   const [r] = await sql`
-    select cf.business_unit_id, bf.legal_employer_id from class_f cf
+    select cf.branch_id, cf.business_unit_id, bf.legal_employer_id from class_f cf
     join business_unit_f bf on bf.id = cf.business_unit_id and ${asOf}::date between bf.effective_start_date and bf.effective_end_date
     where cf.id = ${classId} and ${asOf}::date between cf.effective_start_date and cf.effective_end_date`;
   if (!r) throw new Error('Class is not effective on this date.');
-  return r as { business_unit_id: string; legal_employer_id: string };
+  return r as { branch_id: string; business_unit_id: string; legal_employer_id: string };
 }
 
 export async function buLegalEmployer(buId: string, asOf: string) {

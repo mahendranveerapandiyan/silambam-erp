@@ -14,7 +14,7 @@ export function ExamForm({ action, exam, back, o, defaultAy }: { action: (fd: Fo
         <Field label="Exam Type *"><Select name="exam_type_code" options={o.types} value={e.exam_type_code ?? 'GRADE_EXAM'} empty={false} /><ShowFor select="exam_type_code" /></Field>
         <Field label="Name *"><input name="name" defaultValue={e.name} className="input" required /></Field>
         <Field label="Exam Date *"><input type="date" name="exam_date" defaultValue={e.exam_date} className="input" required /></Field>
-        <Field label="Branch (optional)"><Select name="business_unit_id" options={o.bus} value={e.business_unit_id} empty="All branches" /></Field>
+        <Field label="Business Unit (optional)"><Select name="business_unit_id" options={o.bus} value={e.business_unit_id} empty="All business units" /></Field>
         <Field label="Class (optional)"><Select name="class_id" options={o.classes} value={e.class_id} empty="All classes" /></Field>
         <Field label="Eligible Current Grade"><Select name="from_grade_id" options={o.grades} value={e.from_grade_id} empty="Any grade" /></Field>
         <div data-show-for-exam_type_code="GRADE_EXAM"><Field label="Target Grade (promote to)" help="Empty = next grade of the eligible grade"><Select name="target_grade_id" options={o.grades} value={e.target_grade_id} /></Field></div>

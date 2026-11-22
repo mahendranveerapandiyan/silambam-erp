@@ -10,13 +10,13 @@ import { PageHeader, Flash, Badge, Empty, Select, STATUS_COLOR, s } from '../ui'
 import { AutoSubmit } from '../client';
 
 export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: PersonKind; asOf: string; sp: Record<string, any> }) {
-  const f = { q: s(sp.q), bu: s(sp.bu), cls: s(sp.cls), grade: s(sp.grade), status: s(sp.status) };
+  const f = { q: s(sp.q), bu: s(sp.bu), branch: s(sp.branch), cls: s(sp.cls), grade: s(sp.grade), status: s(sp.status) };
   const page = Math.max(1, Number(s(sp.page)) || 1);
   const rows = await peopleList(u, kind, asOf, f, page);
   const total = Number(rows[0]?.total_count ?? 0);
   const pages = Math.max(1, Math.ceil(total / 100));
   const pageHref = (n: number) => '?' + new URLSearchParams({ ...Object.fromEntries(Object.entries(f).filter(([, v]) => v)) as Record<string, string>, page: String(n) }).toString();
-  const [bus, classes, grades, L] = [await refOptions('business-units', u.enterpriseId, asOf), await refOptions('classes', u.enterpriseId, asOf), await refOptions('student-grades', u.enterpriseId, asOf), await lk()];
+  const [bus, branches, classes, grades, L] = [await refOptions('business-units', u.enterpriseId, asOf), await refOptions('branches', u.enterpriseId, asOf), await refOptions('classes', u.enterpriseId, asOf), await refOptions('student-grades', u.enterpriseId, asOf), await lk()];
   const stu = kind === 'STUDENT';
   const base = stu ? '/students' : '/staff';
   return (
@@ -25,9 +25,10 @@ export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: 
         actions={can(u, stu ? 'CD_STUDENT_ADMISSION_PRV' : 'CD_STAFF_HIRE_PRV', 'WRITE') ? <Link href={`${base}/new`} className="btn btn-primary">{stu ? '+ New Admission' : '+ Hire Staff'}</Link> : null} />
       <Flash sp={sp} />
       <div className="card">
-        <form className="mb-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <form className="mb-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-7">
           <input name="q" defaultValue={f.q ?? ''} placeholder="Name, number, phone or ID number" className="input lg:col-span-2" />
-          <Select name="bu" options={bus} value={f.bu} empty="All branches" />
+          <Select name="bu" options={bus} value={f.bu} empty="All business units" />
+          <Select name="branch" options={branches.filter((b) => !f.bu || String(b.parent) === f.bu)} value={f.branch} empty="All branches" />
           {stu && <Select name="cls" options={classes} value={f.cls} empty="All classes" />}
           {stu && <Select name="grade" options={grades} value={f.grade} empty="All grades" />}
           <select name="status" defaultValue={f.status ?? 'ACTIVE'} className="input">
@@ -49,7 +50,7 @@ export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: 
                   <td><Link className="link" href={`${base}/${r.person_id}`}>{r.assignment_number}</Link></td>
                   <td>{r.full_name}</td>
                   <td>{r.phone}</td>
-                  <td>{r.bu_name}</td>
+                  <td>{r.branch_name ?? r.bu_name}</td>
                   {stu ? <><td>{r.class_name}{r.section_name && ` › ${r.section_name}`}</td><td>{r.grade_name}</td><td>{L('FEE_FREQUENCY', r.fee_frequency_code)}</td></>
                     : <><td>{r.job_name}</td><td>{r.department_name}</td><td>{L('EMPLOYMENT_TYPE', r.employment_type_code)}</td></>}
                   <td><Badge color={STATUS_COLOR[r.system_status_code]}>{r.status_name}</Badge></td>

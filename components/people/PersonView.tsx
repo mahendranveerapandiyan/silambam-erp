@@ -127,7 +127,8 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
               <Info label={stu ? 'Admission Date' : 'Hire Date'}>{fmtDate(ab!.original_start_date)}</Info>
               <Info label="Last Action">{a.action_name} ({fmtDate(a.effective_start_date)})</Info>
               <Info label="Legal Employer">{a.le_name}</Info>
-              <Info label="Branch">{a.bu_name}</Info>
+              <Info label="Business Unit">{a.bu_name}</Info>
+              <Info label="Branch">{a.branch_name}</Info>
               {stu ? <>
                 <Info label="Class › Section">{a.class_name}{a.section_name && ` › ${a.section_name}`}</Info>
                 <Info label="Grade">{a.grade_name}</Info>
@@ -196,7 +197,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
     const V = async (k: string) => datedRefOptions(k, E);
     const o = {
       action: await V(stu ? 'student-actions' : 'staff-actions'), status: await V(stu ? 'student-statuses' : 'staff-statuses'),
-      bu: await V('business-units'), cls: await V('classes'), sec: await V('sections'), grade: await V('student-grades'),
+      bu: await V('business-units'), br: await V('branches'), cls: await V('classes'), sec: await V('sections'), grade: await V('student-grades'),
       job: await V('jobs'), dept: await V('departments'), sgrade: await V('staff-grades'), pos: await V('positions'),
     };
     // names as they were on each row's start date
@@ -210,7 +211,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
           )}
         </div>
         <table className="tbl">
-          <thead><tr><th>From</th><th>To</th><th>Action</th><th>Reason</th><th>Status</th><th>Branch</th>
+          <thead><tr><th>From</th><th>To</th><th>Action</th><th>Reason</th><th>Status</th><th>Business Unit</th><th>Branch</th>
             {stu ? <><th>Class › Section</th><th>Grade</th><th>Fee Freq.</th></> : <><th>Job</th><th>Position</th><th>Department</th><th>Grade</th><th>Payroll</th></>}
             <th>Comments</th><th>By</th></tr></thead>
           <tbody>{rows.map((r) => {
@@ -218,7 +219,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
             return (
             <tr key={d} className={asOf >= r.effective_start_date && asOf <= r.effective_end_date ? 'bg-amber-50' : ''}>
               <td className="whitespace-nowrap">{fmtDate(r.effective_start_date)}</td><td className="whitespace-nowrap">{fmtDate(r.effective_end_date)}</td>
-              <td>{at('action', r.action_id, d)}</td><td>{L('ACTION_REASON', r.action_reason_code)}</td><td>{at('status', r.assignment_status_id, d)}</td><td>{at('bu', r.business_unit_id, d)}</td>
+              <td>{at('action', r.action_id, d)}</td><td>{L('ACTION_REASON', r.action_reason_code)}</td><td>{at('status', r.assignment_status_id, d)}</td><td>{at('bu', r.business_unit_id, d)}</td><td>{at('br', r.branch_id, d)}</td>
               {stu ? <><td>{at('cls', r.class_id, d)}{r.section_id && ` › ${at('sec', r.section_id, d)}`}</td><td>{at('grade', r.student_grade_id, d)}</td><td>{L('FEE_FREQUENCY', r.fee_frequency_code)}</td></>
                 : <><td>{at('job', r.job_id, d)}</td><td>{at('pos', r.position_id, d)}</td><td>{at('dept', r.department_id, d)}</td><td>{at('sgrade', r.staff_grade_id, d)}</td><td>{L('PAYROLL_STATUS', r.payroll_status_code)}</td></>}
               <td>{r.comments}</td><td className="text-xs text-gray-500">{r.last_updated_by}<br />{fmtDateTime(r.last_update_date)}</td>

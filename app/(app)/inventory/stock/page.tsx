@@ -23,7 +23,7 @@ export default async function Stock({ searchParams }: { searchParams: SP }) {
       <form action={stockEntry} className="card mb-4 grid items-end gap-3 sm:grid-cols-4 lg:grid-cols-8">
         <Back to="/inventory/stock" />
         <Field label="Item *" className="sm:col-span-2"><Select name="item_id" options={items} required /></Field>
-        <Field label="Branch *"><Select name="business_unit_id" options={bus} required /></Field>
+        <Field label="Business Unit *"><Select name="business_unit_id" options={bus} required /></Field>
         <Field label="Type *"><Select name="txn_type_code" options={types} value="RECEIPT" empty={false} /></Field>
         <Field label="Quantity *"><input name="quantity" type="number" step="1" className="input" required /></Field>
         <Field label="Unit Cost"><input name="unit_price" type="number" step="0.01" className="input" /></Field>
@@ -34,7 +34,7 @@ export default async function Stock({ searchParams }: { searchParams: SP }) {
       </form>
       <div className="card overflow-x-auto">
         <h2 className="h2">Stock Ledger (latest 200)</h2>
-        <table className="tbl"><thead><tr><th>Date</th><th>Item</th><th>Branch</th><th>Type</th><th className="text-right">Qty</th><th className="text-right">Price</th><th>Student</th><th>Reference</th><th>By</th></tr></thead>
+        <table className="tbl"><thead><tr><th>Date</th><th>Item</th><th>Business Unit</th><th>Type</th><th className="text-right">Qty</th><th className="text-right">Price</th><th>Student</th><th>Reference</th><th>By</th></tr></thead>
           <tbody>{txns.map((t) => (
             <tr key={t.id}><td>{fmtDate(t.txn_date)}</td><td>{t.name} {t.size_label}</td><td>{t.bu_name}</td><td>{L('STOCK_TXN_TYPE', t.txn_type_code)}</td>
               <td className={`text-right ${Number(t.quantity) < 0 ? 'text-red-700' : 'text-green-700'}`}>{Number(t.quantity)}</td><td className="text-right">{t.unit_price && money(t.unit_price)}</td>

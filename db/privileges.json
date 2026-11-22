@@ -361,14 +361,14 @@
  },
  {
   "code": "CD_EXAM_SETUP_PRV",
-  "name": "Exams \u2013 create, subjects, publish results",
+  "name": "Exams – create, subjects, publish results",
   "module": "Exams",
   "defaults": {},
   "seq": 460
  },
  {
   "code": "CD_EXAM_CANDIDATE_PRV",
-  "name": "Exams \u2013 assign students, enter marks",
+  "name": "Exams – assign students, enter marks",
   "module": "Exams",
   "defaults": {
    "INCHARGE": "W"
@@ -384,14 +384,14 @@
  },
  {
   "code": "CD_EVENT_SETUP_PRV",
-  "name": "Events \u2013 create & edit",
+  "name": "Events – create & edit",
   "module": "Events",
   "defaults": {},
   "seq": 490
  },
  {
   "code": "CD_EVENT_PARTICIPANT_PRV",
-  "name": "Events \u2013 assign students & results",
+  "name": "Events – assign students & results",
   "module": "Events",
   "defaults": {
    "INCHARGE": "W"
@@ -479,6 +479,13 @@
   "module": "Configuration",
   "defaults": {},
   "seq": 600
+ },
+ {
+  "code": "CD_BRANCH_PRV",
+  "name": "Branches",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 605
  },
  {
   "code": "CD_CLASS_PRV",

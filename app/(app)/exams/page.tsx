@@ -36,7 +36,7 @@ export default async function Exams({ searchParams }: { searchParams: SP }) {
         <AutoSubmit />
       </form>
       <div className="card mb-4 overflow-x-auto">
-        <table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Branch</th><th>Grade</th><th>Candidates</th><th>Passed</th><th>Status</th></tr></thead>
+        <table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Business Unit</th><th>Grade</th><th>Candidates</th><th>Passed</th><th>Status</th></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.id}><td>{fmtDate(r.exam_date)}</td><td><Link className="link" href={`/exams/${r.id}`}>{r.name}</Link></td><td>{L('EXAM_TYPE', r.exam_type_code)}</td>
               <td>{r.bu_name ?? 'All'}</td><td>{r.from_grade ?? 'Any'}{r.target_grade && <> → <b>{r.target_grade}</b></>}</td><td>{r.candidates}</td><td>{r.passed}</td>

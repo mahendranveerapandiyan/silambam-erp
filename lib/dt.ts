@@ -110,7 +110,7 @@ export async function refOptions(entityKey: string, enterpriseId: string, asOf: 
   const e = ENTITIES[entityKey];
   const rows = await entityList(e, enterpriseId, asOf);
   let parentNames: Record<string, string> = {};
-  if (e.parentRef) {
+  if (e.parentRef && e.parentInLabel !== false) {
     const p = await refOptions(e.parentRef.entity, enterpriseId, asOf);
     parentNames = Object.fromEntries(p.map((o) => [o.value, o.label]));
   }
@@ -186,8 +186,9 @@ export async function datedRefOptions(entityKey: string, enterpriseId: string, o
     select b.id, f.* from ${sql(e.table)} b join ${sql(e.table + '_f')} f on f.id = b.id
     where b.enterprise_id = ${enterpriseId} ${fixedWhere(e)}
     order by ${e.fields.some((x) => x.name === 'sequence_no') ? sql`f.sequence_no,` : sql``} f.name, f.effective_start_date`;
-  if (!e.parentRef) {
-    return rows.map((r) => ({ value: String(r.id), label: r.name, start: r.effective_start_date, end: r.effective_end_date, inactive: r.active_flag === 'N' }));
+  if (!e.parentRef || e.parentInLabel === false) {
+    const pf = e.parentRef?.field;
+    return rows.map((r) => ({ value: String(r.id), label: r.name, start: r.effective_start_date, end: r.effective_end_date, parent: pf && r[pf] ? String(r[pf]) : null, inactive: r.active_flag === 'N' }));
   }
   // label "Parent › Name": split each version by the parent's versions
   const parents = await datedRefOptions(e.parentRef.entity, enterpriseId);

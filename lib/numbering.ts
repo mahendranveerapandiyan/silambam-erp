@@ -1,7 +1,7 @@
 import 'server-only';
 import type { Tx, Row } from './db';
 
-export type NumberCtx = { leId?: string | null; buId?: string | null; date: string };
+export type NumberCtx = { leId?: string | null; buId?: string | null; branchId?: string | null; date: string };
 
 export function formatNumber(rule: Row, n: number | string, scopeCode: string | null, year: string) {
   const parts = [
@@ -30,19 +30,25 @@ export async function isManual(tx: Tx, enterpriseId: string, objectCode: string)
  * honouring the configured level (Enterprise / LE / BU), prefix, suffix,
  * year and yearly reset. Returns null when the rule is MANUAL.
  */
-/** Which counter (Enterprise / LE / BU) a number belongs to, and the code shown in it. */
+const SCOPE_TABLE: Record<string, { table: string; label: string }> = {
+  LE: { table: 'legal_employer', label: 'Legal Employer' }, BU: { table: 'business_unit', label: 'Business Unit' }, BRANCH: { table: 'branch', label: 'Branch' },
+};
+
+/** Which counter (Enterprise / LE / BU / Branch) a number belongs to, and the code shown in it. */
 async function resolveScope(tx: Tx, rule: Row, objectCode: string, ctx: NumberCtx) {
   let scopeId = '0';
   let scopeCode: string | null = null;
-  if (rule.scope_code === 'LE' || rule.scope_code === 'BU') {
+  if (rule.scope_code !== 'ENTERPRISE') {
     let leId = ctx.leId;
     if (rule.scope_code === 'LE' && !leId && ctx.buId) {
       const [b] = await tx`select legal_employer_id from business_unit_f where id = ${ctx.buId} and ${ctx.date}::date between effective_start_date and effective_end_date`;
       leId = b?.legal_employer_id;
     }
-    scopeId = (rule.scope_code === 'LE' ? leId : ctx.buId) ?? '';
-    if (!scopeId) throw new Error(`Numbering for ${objectCode} is set at ${rule.scope_code} level, but no ${rule.scope_code} was given.`);
-    const [s] = await tx`select code from ${tx(rule.scope_code === 'LE' ? 'legal_employer' : 'business_unit')} where id = ${scopeId}`;
+    const level = SCOPE_TABLE[rule.scope_code];
+    if (!level) throw new Error(`Unknown numbering level ${rule.scope_code}`);
+    scopeId = (rule.scope_code === 'LE' ? leId : rule.scope_code === 'BRANCH' ? ctx.branchId : ctx.buId) ?? '';
+    if (!scopeId) throw new Error(`Numbering for ${objectCode} is set at ${level.label} level, but no ${level.label.toLowerCase()} was given.`);
+    const [s] = await tx`select code from ${tx(level.table)} where id = ${scopeId}`;
     scopeCode = s?.code ?? null;
   }
   const year = ctx.date.slice(0, 4);
@@ -137,10 +143,11 @@ export type CounterState = { scopeId: string; scopeCode: string | null; name: st
  * numbers yet.
  */
 export async function counterStates(tx: Tx, enterpriseId: string, rule: Row, year: string): Promise<CounterState[]> {
-  const targets = rule.scope_code === 'ENTERPRISE'
+  const level = SCOPE_TABLE[rule.scope_code];
+  const targets = !level
     ? [{ id: '0', code: null as string | null, name: 'Whole enterprise' }]
-    : (await tx`select b.id, b.code, (select name from ${tx(rule.scope_code === 'LE' ? 'legal_employer_f' : 'business_unit_f')} f where f.id = b.id order by effective_start_date desc limit 1) name
-        from ${tx(rule.scope_code === 'LE' ? 'legal_employer' : 'business_unit')} b where b.enterprise_id = ${enterpriseId} order by b.code`)
+    : (await tx`select b.id, b.code, (select name from ${tx(level.table + '_f')} f where f.id = b.id order by effective_start_date desc limit 1) name
+        from ${tx(level.table)} b where b.enterprise_id = ${enterpriseId} order by b.code`)
       .map((b) => ({ id: String(b.id), code: b.code as string, name: b.name as string }));
   const seqs = await tx`select scope_id, period, next_min from number_sequence where rule_id = ${rule.id}`;
   const yearly = rule.reset_yearly_flag === 'Y' && rule.include_year_flag === 'Y';
@@ -163,7 +170,8 @@ export type NumberPreviews = {
     reset_yearly_flag: string; scope_code: string; start_number: number };
   counters: Record<string, number>; // "<scopeId>|<period>" -> next number - 1
   scopeCodes: Record<string, string>; // scopeId -> code shown in the number
-  buToScope: Record<string, string>; classToScope: Record<string, string>;
+  watch: string; // form field that decides the counter (business_unit_id or branch_id)
+  selToScope: Record<string, string>; // value of that field -> counter
 } | null;
 
 /**
@@ -174,24 +182,21 @@ export async function numberPreviews(enterpriseId: string, kind: 'STUDENT' | 'ST
   const { sql } = await import('./db');
   const rule = await getRule(sql, enterpriseId, kind);
   if (!rule || rule.method_code === 'MANUAL') return null;
-  // "<scopeId>|<period>" -> next number - 1 (the browser adds one)
-  const counters = Object.fromEntries((await counterStates(sql, enterpriseId, rule, date.slice(0, 4))).map((c) => [`${c.scopeId}|${c.period}`, c.next - 1]));
-  const bus = await sql`select b.id, b.code, f.legal_employer_id from business_unit b
+  const bus = await sql`select b.id, f.legal_employer_id from business_unit b
     join lateral (select * from business_unit_f x where x.id = b.id order by (${date}::date between x.effective_start_date and x.effective_end_date) desc, x.effective_start_date desc limit 1) f on true
     where b.enterprise_id = ${enterpriseId}`;
-  const les = await sql`select id, code from legal_employer where enterprise_id = ${enterpriseId}`;
-  const scopeCodes: Record<string, string> = {};
-  const buToScope: Record<string, string> = {};
-  if (rule.scope_code === 'BU') for (const b of bus) { scopeCodes[String(b.id)] = b.code; buToScope[String(b.id)] = String(b.id); }
-  else if (rule.scope_code === 'LE') { for (const l of les) scopeCodes[String(l.id)] = l.code; for (const b of bus) buToScope[String(b.id)] = String(b.legal_employer_id); }
-  else for (const b of bus) buToScope[String(b.id)] = '0';
-  const classes = await sql`select c.id, f.business_unit_id from class c
-    join lateral (select * from class_f x where x.id = c.id order by (${date}::date between x.effective_start_date and x.effective_end_date) desc, x.effective_start_date desc limit 1) f on true
-    where c.enterprise_id = ${enterpriseId}`;
-  const classToScope = Object.fromEntries(classes.map((c) => [String(c.id), buToScope[String(c.business_unit_id)]]));
+  const states = await counterStates(sql, enterpriseId, rule, date.slice(0, 4));
+  const scopeCodes: Record<string, string> = Object.fromEntries(states.filter((c) => c.scopeCode).map((c) => [c.scopeId, c.scopeCode!]));
+  const selToScope: Record<string, string> = {};
+  let watch = 'business_unit_id';
+  if (rule.scope_code === 'BRANCH') { watch = 'branch_id'; for (const c of states) selToScope[c.scopeId] = c.scopeId; }
+  else if (rule.scope_code === 'BU') for (const b of bus) selToScope[String(b.id)] = String(b.id);
+  else if (rule.scope_code === 'LE') for (const b of bus) selToScope[String(b.id)] = String(b.legal_employer_id);
+  else for (const b of bus) selToScope[String(b.id)] = '0';
   return {
     rule: { prefix: rule.prefix, suffix: rule.suffix, separator: rule.separator ?? '', padding: Number(rule.padding), include_scope_code_flag: rule.include_scope_code_flag,
       include_year_flag: rule.include_year_flag, reset_yearly_flag: rule.reset_yearly_flag, scope_code: rule.scope_code, start_number: Number(rule.start_number) },
-    counters, scopeCodes, buToScope, classToScope,
+    counters: Object.fromEntries(states.map((c) => [`${c.scopeId}|${c.period}`, c.next - 1])), // "<scopeId>|<period>" -> next number - 1
+    scopeCodes, watch, selToScope,
   };
 }

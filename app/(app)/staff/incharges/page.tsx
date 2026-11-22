@@ -28,7 +28,7 @@ export default async function Incharges({ searchParams }: { searchParams: SP }) 
   const classes = await myClasses(u, onDate);
   const rows = await sql`
     select ci.*, a.assignment_number, ${fullName()} full_name, ${nm('class', 'ci.class_id', onDate)} class_name, ${nm('section', 'ci.section_id', onDate)} section_name,
-      (select bf.name from class_f cf join business_unit_f bf on bf.id = cf.business_unit_id and ${onDate}::date between bf.effective_start_date and bf.effective_end_date
+      (select bf.name from class_f cf join branch_f bf on bf.id = cf.branch_id and ${onDate}::date between bf.effective_start_date and bf.effective_end_date
         where cf.id = ci.class_id and ${onDate}::date between cf.effective_start_date and cf.effective_end_date) bu_name,
       exists (select 1 from user_account ua where ua.person_id = ci.person_id) has_login,
       ci.id = (select x.id from class_incharge x where x.person_id = ci.person_id order by x.start_date desc, x.id desc limit 1) is_latest

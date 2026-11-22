@@ -54,7 +54,7 @@ export default async function Structures({ searchParams }: { searchParams: SP })
             <Field label="Academic Year *"><Select name="academic_year_id" options={yearOpts} value={editing?.academic_year_id ?? ay} required /></Field>
             <Field label="Fee Type *"><Select name="fee_type_code" options={feeTypes} value={editing?.fee_type_code} required /></Field>
             <Field label="Name *"><input name="name" defaultValue={editing?.name} className="input" required /></Field>
-            <Field label="Branch (optional)"><Select name="business_unit_id" options={bus} value={editing?.business_unit_id} empty="All branches" /></Field>
+            <Field label="Business Unit (optional)"><Select name="business_unit_id" options={bus} value={editing?.business_unit_id} empty="All business units" /></Field>
             <Field label="Class (optional)"><Select name="class_id" options={classes} value={editing?.class_id} empty="All classes" /></Field>
             <Field label="Grade (optional)"><Select name="student_grade_id" options={grades} value={editing?.student_grade_id} empty="All grades" /></Field>
           </div>

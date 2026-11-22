@@ -49,7 +49,7 @@ export default async function FeeSummary({ searchParams }: { searchParams: SP })
       <PageHeader title="Fee Summary" subtitle={`${year?.name ?? ''} · ${tot.students} student(s)`} actions={<PrintButton />} />
       <form className="card mb-4 flex flex-wrap gap-2 no-print">
         <Select name="ay" options={years.map((y) => ({ value: String(y.id), label: y.name }))} value={ay} empty={false} className="input max-w-xs" />
-        <Select name="bu" options={bus} value={bu} empty="All branches" className="input max-w-xs" />
+        <Select name="bu" options={bus} value={bu} empty="All business units" className="input max-w-xs" />
         <select name="ft" defaultValue={ft ?? ''} className="input max-w-xs"><option value="">All fee types</option>{byType.map((t) => <option key={t.fee_type_code} value={t.fee_type_code}>{L('FEE_TYPE', t.fee_type_code)}</option>)}</select>
         <AutoSubmit />
       </form>
@@ -59,8 +59,8 @@ export default async function FeeSummary({ searchParams }: { searchParams: SP })
         ))}
       </div>
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
-        <div className="card overflow-x-auto lg:col-span-2"><h2 className="h2">By Branch</h2>
-          <table className="tbl"><thead><tr><th>Branch</th><H /></tr></thead><tbody>{byBu.map((r) => <tr key={r.name}><td>{r.name ?? '—'}</td><T r={r} /></tr>)}</tbody></table></div>
+        <div className="card overflow-x-auto lg:col-span-2"><h2 className="h2">By Business Unit</h2>
+          <table className="tbl"><thead><tr><th>Business Unit</th><H /></tr></thead><tbody>{byBu.map((r) => <tr key={r.name}><td>{r.name ?? '—'}</td><T r={r} /></tr>)}</tbody></table></div>
         <div className="card"><h2 className="h2">By Status</h2>
           <table className="tbl"><thead><tr><th>Status</th><th>Lines</th><th className="text-right">Amount</th></tr></thead>
             <tbody>{byStatus.map((r) => <tr key={r.payment_status}><td><Badge color={STATUS_COLOR[r.payment_status]}>{L('FEE_PAYMENT_STATUS', r.payment_status)}</Badge></td><td>{r.n}</td><td className="text-right">{money(r.amt)}</td></tr>)}</tbody></table></div>

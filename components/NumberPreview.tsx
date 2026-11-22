@@ -9,7 +9,8 @@ function fmt(rule: NonNullable<NumberPreviews>['rule'], n: number, scopeCode: st
 }
 
 /** Shows the auto-generated number the new student / staff member will get, for the chosen branch and date. */
-export function NumberPreview({ previews, watch, dateField }: { previews: NumberPreviews; watch: string; dateField: string }) {
+export function NumberPreview({ previews, dateField }: { previews: NumberPreviews; dateField: string }) {
+  const watch = previews?.watch ?? 'business_unit_id';
   const [bu, setBu] = useState('');
   const [date, setDate] = useState('');
   useEffect(() => {
@@ -23,8 +24,8 @@ export function NumberPreview({ previews, watch, dateField }: { previews: Number
   let text = 'Auto-generated';
   if (previews) {
     const r = previews.rule;
-    const scope = r.scope_code === 'ENTERPRISE' ? '0' : previews.buToScope[bu];
-    if (!scope) text = 'Choose the branch to see the number';
+    const scope = r.scope_code === 'ENTERPRISE' ? '0' : previews.selToScope[bu];
+    if (!scope) text = `Choose the ${watch === 'branch_id' ? 'branch' : 'business unit'} to see the number`;
     else {
       const year = (date || new Date().toISOString()).slice(0, 4);
       const last = previews.counters[`${scope}|${r.reset_yearly_flag === 'Y' ? year : 'ALL'}`];

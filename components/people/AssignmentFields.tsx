@@ -25,16 +25,18 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
   if (kind === 'STUDENT') {
     const years = (await sql`select id, name, start_date, end_date from academic_year where enterprise_id = ${E} order by start_date desc`)
       .map((y) => ({ value: String(y.id), label: y.name, start: y.start_date, end: y.end_date }));
-    // Branch → Class → Section, limited to the user's own classes when they are an incharge
+    // Business Unit → Branch → Class → Section, limited to the user's own classes when they are an incharge
     const allowed = await allowedClassKeys(u);
     const classes = (await datedRefOptions('classes', E, { plain: true })).filter((c) => !allowed || allowed.has(c.value));
     const sections = (await datedRefOptions('sections', E, { plain: true }))
       .filter((s) => !allowed || allowed.has(`${s.parent}:*`) || allowed.has(`${s.parent}:${s.value}`));
-    const bus = (await datedRefOptions('business-units', E)).filter((b) => !allowed || classes.some((c) => c.parent === b.value));
+    const branches = (await datedRefOptions('branches', E)).filter((b) => !allowed || classes.some((c) => c.parent === b.value));
+    const bus = (await datedRefOptions('business-units', E)).filter((b) => !allowed || branches.some((x) => x.parent === b.value));
     return (
       <>
-        <Field label="Branch *">{D('business_unit_id', bus, a.business_unit_id, { required: true })}</Field>
-        <Field label="Class *">{D('class_id', classes, a.class_id, { required: true, parentField: 'business_unit_id' })}</Field>
+        <Field label="Business Unit *">{D('business_unit_id', bus, a.business_unit_id, { required: true })}</Field>
+        <Field label="Branch *">{D('branch_id', branches, a.branch_id, { required: true, parentField: 'business_unit_id' })}</Field>
+        <Field label="Class *">{D('class_id', classes, a.class_id, { required: true, parentField: 'branch_id' })}</Field>
         <Field label="Section *">{D('section_id', sections, a.section_id, { required: true, parentField: 'class_id' })}</Field>
         <Field label="Academic Year" help="Empty = the year containing the date">{D('academic_year_id', years, a.academic_year_id, { empty: '— Year of effective date —' })}</Field>
         <Field label="Grade / Level">{D('student_grade_id', await datedRefOptions('student-grades', E), a.student_grade_id)}</Field>
@@ -51,10 +53,11 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
     <>
       <Field label="Legal Employer">{D('legal_employer_id', await datedRefOptions('legal-employers', E), a.legal_employer_id)}</Field>
       <Field label="Business Unit *">{D('business_unit_id', await datedRefOptions('business-units', E, { parentField: 'legal_employer_id' }), a.business_unit_id, { required: true, parentField: 'legal_employer_id' })}</Field>
+      <Field label="Branch" help="Empty for staff not tied to one branch">{D('branch_id', await datedRefOptions('branches', E), a.branch_id, { parentField: 'business_unit_id' })}</Field>
       <Field label="Location">{D('location_id', await datedRefOptions('locations', E), a.location_id)}</Field>
       <Field label="Department">{D('department_id', await datedRefOptions('departments', E), a.department_id)}</Field>
       <Field label="Job">{D('job_id', await datedRefOptions('jobs', E), a.job_id)}</Field>
-      <Field label="Position" help="Choosing a position fills branch, department, job, grade and type">{D('position_id', await datedRefOptions('positions', E), a.position_id)}</Field>
+      <Field label="Position" help="Choosing a position fills business unit, department, job, grade and type">{D('position_id', await datedRefOptions('positions', E), a.position_id)}</Field>
       <PositionAutofill dateField={dateField} positions={(await sql`select f.id, f.effective_start_date, f.effective_end_date, f.business_unit_id, f.department_id, f.job_id, f.staff_grade_id, f.full_time_flag
         from position b join position_f f on f.id = b.id where b.enterprise_id = ${E}`).map((r) => ({ id: String(r.id), start: r.effective_start_date, end: r.effective_end_date,
           business_unit_id: r.business_unit_id && String(r.business_unit_id), department_id: r.department_id && String(r.department_id), job_id: r.job_id && String(r.job_id),

@@ -17,7 +17,7 @@ export default async function StaffAttendance({ searchParams }: { searchParams: 
   const bu = s(sp.bu);
   const [statuses, bus] = [await lookupOptions('ATTENDANCE_STATUS', date), await refOptions('business-units', u.enterpriseId, date)];
   const rows = await sql`
-    select a.person_id, a.assignment_number, ${fullName()} full_name, ${nm('job', 'af.job_id', date)} job_name, ${nm('business_unit', 'af.business_unit_id', date)} bu_name,
+    select a.person_id, a.assignment_number, ${fullName()} full_name, ${nm('job', 'af.job_id', date)} job_name, coalesce(${nm('branch', 'af.branch_id', date)}, ${nm('business_unit', 'af.business_unit_id', date)}) bu_name,
       sa.status_code, sa.check_in_time, sa.check_out_time, sa.reason, sa.source_code
     from assignment a
     join assignment_f af on af.id = a.id and ${date}::date between af.effective_start_date and af.effective_end_date
@@ -32,7 +32,7 @@ export default async function StaffAttendance({ searchParams }: { searchParams: 
       <Flash sp={sp} />
       <form className="card mb-4 flex flex-wrap gap-2">
         <input type="date" name="date" defaultValue={date} className="input w-44" />
-        <Select name="bu" options={bus} value={bu} empty="All branches" className="input max-w-xs" />
+        <Select name="bu" options={bus} value={bu} empty="All business units" className="input max-w-xs" />
         <AutoSubmit />
       </form>
       <form action={saveStaffAttendance} className="card overflow-x-auto">

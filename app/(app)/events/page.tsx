@@ -22,7 +22,7 @@ export default async function Events({ searchParams }: { searchParams: SP }) {
       <PageHeader title="Events" subtitle="Tournaments, demonstrations, workshops, arangetram. Create an event, then assign students." />
       <Flash sp={await searchParams} />
       <div className="card mb-4 overflow-x-auto">
-        <table className="tbl"><thead><tr><th>Date</th><th>Event</th><th>Type</th><th>Branch</th><th>Venue</th><th>Fee</th><th>Students</th><th>Status</th></tr></thead>
+        <table className="tbl"><thead><tr><th>Date</th><th>Event</th><th>Type</th><th>Business Unit</th><th>Venue</th><th>Fee</th><th>Students</th><th>Status</th></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.id}><td className="whitespace-nowrap">{fmtDate(r.start_date)}{r.end_date !== r.start_date && ` – ${fmtDate(r.end_date)}`}</td>
               <td><Link className="link" href={`/events/${r.id}`}>{r.name}</Link></td><td>{L('EVENT_TYPE', r.event_type_code)}</td><td>{r.bu_name ?? 'All'}</td><td>{r.venue}</td>

@@ -20,7 +20,7 @@ export default async function Generate({ searchParams }: { searchParams: SP }) {
       <form action={generateFees} className="card space-y-3">
         <Back to="/fees/generate" />
         <Field label="Academic Year *"><Select name="academic_year_id" options={years.map((y) => ({ value: String(y.id), label: y.name }))} value={cur?.id} required /></Field>
-        <Field label="Branch"><Select name="business_unit_id" options={bus} empty="All branches" /></Field>
+        <Field label="Business Unit"><Select name="business_unit_id" options={bus} empty="All business units" /></Field>
         <div>
           <span className="label">Fee types (none ticked = all)</span>
           <div className="grid gap-1 sm:grid-cols-3">
