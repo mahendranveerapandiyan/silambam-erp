@@ -42,7 +42,9 @@ export function LovSearch() {
     if (r.bottom < 0 || r.top > window.innerHeight) return false;
     const below = window.innerHeight - r.bottom - 8;
     const up = below < 220 && r.top > below;
-    setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - Math.max(r.width, 280) - 8)), top: up ? r.top - 4 : r.bottom + 4, width: Math.max(r.width, 280), maxH: Math.min(360, (up ? r.top : below) - 8), up });
+    // a little wider than the field when there is room, so long names and codes fit
+    const width = Math.min(Math.max(r.width, 340), 520, window.innerWidth - 16);
+    setPos({ left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)), top: up ? r.top - 4 : r.bottom + 4, width, maxH: Math.min(360, (up ? r.top : below) - 8), up });
     return true;
   }, []);
 
@@ -120,7 +122,7 @@ export function LovSearch() {
             className={`lov-item ${i === act ? 'lov-active' : ''} ${it.value === sel.value ? 'lov-selected' : ''} ${it.value === '' ? 'lov-empty' : ''}`}
             onMouseEnter={() => setActive(i)} onMouseDown={(e) => { e.preventDefault(); pick(it); }}>
             <span className="lov-label">{it.group && <span className="lov-group">{it.group} · </span>}{it.label}</span>
-            {it.code && it.code !== it.label && <span className="lov-code">{it.code}</span>}
+            {it.code && it.code !== it.label && <span className="lov-code" title={it.code}>{it.code}</span>}
           </li>
         ))}
         {!shown.length && <li className="lov-none">No match for “{q}”</li>}
