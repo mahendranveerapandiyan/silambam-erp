@@ -15,7 +15,7 @@ export async function saveItem(id: string | null, fd: FormData) {
       unit_price: Number(o.unit_price || 0), reorder_level: Number(o.reorder_level || 0), active_flag: o.active_flag === 'N' ? 'N' : 'Y' };
     if (id) await sql`update item set ${sql({ ...v, last_updated_by: u.username, last_update_date: new Date() })} where id = ${id} and enterprise_id = ${u.enterpriseId}`;
     else await sql`insert into item ${sql({ ...v, enterprise_id: u.enterpriseId, created_by: u.username })}`;
-    return { to: '/inventory', msg: id ? 'Item saved' : 'Item created' };
+    return { to: '/inventory', msg: `${o.name} item has been ${id ? 'updated' : 'created'}.` };
   });
 }
 
@@ -34,7 +34,7 @@ export async function stockEntry(fd: FormData) {
     }
     await sql`insert into stock_txn ${sql({ item_id: o.item_id, business_unit_id: o.business_unit_id, txn_date: o.txn_date ?? todayISO(), txn_type_code: o.txn_type_code,
       quantity: q, unit_price: o.unit_price ? Number(o.unit_price) : null, reference: o.reference, remarks: o.remarks, created_by: u.username })}`;
-    return { msg: 'Stock updated' };
+    return { msg: 'The stock has been updated.' };
   });
 }
 

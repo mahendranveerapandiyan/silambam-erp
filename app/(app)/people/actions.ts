@@ -206,9 +206,9 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
       if (kind === 'STUDENT' && o.generate_fees === 'Y' && av.academic_year_id) {
         const [ay] = await tx`select * from academic_year where id = ${av.academic_year_id}`;
         const r = await generateStudentFees(tx, { enterpriseId: u.enterpriseId, personId, assignmentId: a.id, ay, asg: av, joinDate: date, by: u.username });
-        msg = ` · ${r.created} fee installment(s) created`;
+        msg = ` ${r.created} fee installment(s) have been created.`;
       }
-      msg = `${kind === 'STUDENT' ? 'Student admitted' : 'Staff hired'}: ${anum}${msg}`;
+      msg = `${display} has been ${kind === 'STUDENT' ? 'admitted as student' : 'hired as staff'} ${anum}.${msg}`;
     });
     return { to: `${base(kind)}/${personId}`, msg };
   });
@@ -228,7 +228,7 @@ export async function updatePerson(kind: PersonKind, personId: string, fd: FormD
       await dtChange(tx, 'person', personId, o.effective_date!, o.mode === 'CORRECT' ? 'CORRECT' : 'UPDATE', vals, u.username);
       await tx`update person set date_of_birth = ${o.date_of_birth} where id = ${personId}`;
     });
-    return { msg: 'Personal details saved' };
+    return { msg: 'The personal details have been updated.' };
   });
 }
 
@@ -240,7 +240,7 @@ export async function uploadPhoto(kind: PersonKind, personId: string, fd: FormDa
     if (!photo) throw new Error('Choose an image');
     await sql`insert into person_photo (person_id, mime, data) values (${personId}, ${photo.mime}, ${photo.data})
       on conflict (person_id) do update set mime = excluded.mime, data = excluded.data, last_update_date = now()`;
-    return { msg: 'Photo updated' };
+    return { msg: 'The photo has been updated.' };
   });
 }
 
@@ -260,14 +260,14 @@ export async function saveContact(kind: PersonKind, personId: string, contactId:
     const o = formObj(fd);
     if (o._delete && contactId) {
       await sql`delete from person_contact where id = ${contactId} and person_id = ${personId}`;
-      return { msg: 'Contact removed' };
+      return { msg: 'The contact has been removed.' };
     }
     if (!o.name || !o.relationship_code) throw new Error('Relationship and name are required');
     const v = { relationship_code: o.relationship_code, name: o.name, phone: o.phone, email: o.email, occupation: o.occupation, primary_flag: o.primary_flag === 'Y' ? 'Y' : 'N' };
     if (v.primary_flag === 'Y') await sql`update person_contact set primary_flag = 'N' where person_id = ${personId}`;
     if (contactId) await sql`update person_contact set ${sql({ ...v, last_updated_by: u.username, last_update_date: new Date() })} where id = ${contactId} and person_id = ${personId}`;
     else await sql`insert into person_contact ${sql({ person_id: personId, ...v, created_by: u.username })}`;
-    return { msg: 'Contact saved' };
+    return { msg: `Contact ${o.name} has been ${contactId ? 'updated' : 'added'}.` };
   });
 }
 
@@ -302,7 +302,7 @@ export async function assignmentAction(kind: PersonKind, personId: string, fd: F
       }, u.username),
     );
     if (terminating && kind === 'STAFF') await sql`update class_incharge set end_date = ${date} where person_id = ${personId} and end_date > ${date}`;
-    return { to: `${base(kind)}/${personId}?tab=assignment`, msg: `${action.name} recorded effective ${date}` };
+    return { to: `${base(kind)}/${personId}?tab=assignment`, msg: `${action.name} has been recorded effective ${date}.` };
   });
 }
 
@@ -312,7 +312,7 @@ export async function undoAssignment(kind: PersonKind, personId: string, fd: For
     const [a] = await sql`select id from assignment where person_id = ${personId} and assignment_type = ${kind}`;
     const { dtDeleteLatest } = await import('@/lib/dt');
     await sql.begin((tx) => dtDeleteLatest(tx, 'assignment', a.id));
-    return { msg: 'Latest assignment change removed' };
+    return { msg: 'The latest assignment change has been removed.' };
   });
 }
 
@@ -331,7 +331,7 @@ export async function changeStartDate(kind: PersonKind, personId: string, fd: Fo
     const [a] = await sql`select * from assignment where person_id = ${personId} and assignment_type = ${kind}`;
     if (!a) throw new Error('No record found');
     const oldDate = a.original_start_date as string;
-    if (newDate === oldDate) return { msg: 'Date unchanged' };
+    if (newDate === oldDate) return { msg: 'The date is unchanged.' };
     let cancelled = 0;
     await sql.begin(async (tx) => {
       const [first] = await tx`select * from assignment_f where id = ${a.id} order by effective_start_date limit 1`;
@@ -364,7 +364,7 @@ export async function changeStartDate(kind: PersonKind, personId: string, fd: Fo
         cancelled = lines.length;
       }
     });
-    return { msg: `${kind === 'STUDENT' ? 'Admission' : 'Hire'} date changed to ${newDate}${cancelled ? ` · ${cancelled} unpaid fee line(s) before that date cancelled` : ''}` };
+    return { msg: `${kind === 'STUDENT' ? 'Admission' : 'Hire'} date has been changed to ${newDate}.${cancelled ? ` ${cancelled} unpaid fee line(s) before that date have been cancelled.` : ''}` };
   });
 }
 
@@ -378,9 +378,12 @@ export async function deletePerson(kind: PersonKind, personId: string, fd: FormD
     const blockers = await deletionBlockers(personId, kind);
     if (blockers.length) throw new Error(`Cannot delete – found ${blockers.join(', ')}. Use a ${kind === 'STUDENT' ? 'Withdrawal' : 'Termination'} action instead.`);
     let number = '';
+    let who = '';
     await sql.begin(async (tx) => {
       const [a] = await tx`select id, assignment_number, original_start_date from assignment where person_id = ${personId} and assignment_type = ${kind}`;
       number = a.assignment_number;
+      const [pn] = await tx`select trim(concat_ws(' ', first_name, last_name)) n from person_f where id = ${personId} order by effective_start_date desc limit 1`;
+      who = pn?.n ?? '';
       await tx`delete from fee_demand where assignment_id = ${a.id} or (person_id = ${personId} and ${kind} = 'STUDENT')`;
       await tx`delete from assignment where id = ${a.id}`;
       const [other] = await tx`select 1 from assignment where person_id = ${personId}`;
@@ -390,7 +393,7 @@ export async function deletePerson(kind: PersonKind, personId: string, fd: FormD
       // no counter to rewind: the next number is always the highest in use + 1,
       // so deleting the newest record gives its number back automatically
     });
-    return { to: base, msg: `${kind === 'STUDENT' ? 'Student' : 'Staff'} ${number} deleted` };
+    return { to: base, msg: `${kind === 'STUDENT' ? 'Student' : 'Staff'} ${number}${who ? ` (${who})` : ''} has been deleted.` };
   });
 }
 
@@ -404,7 +407,7 @@ export async function saveIdentifier(kind: PersonKind, personId: string, rowId: 
       const [n] = await sql`select count(*)::int n from person_identifier where person_id = ${personId}`;
       if (n.n <= 1) throw new Error('At least one identification document must remain. Add the new one before removing this.');
       await sql`delete from person_identifier where id = ${rowId} and person_id = ${personId}`;
-      return { msg: 'Identification removed' };
+      return { msg: 'The identification document has been removed.' };
     }
     const x = readIdForm(o, 'idf');
     if (!x) throw new Error('Enter the identification type and number');
@@ -422,6 +425,6 @@ export async function saveIdentifier(kind: PersonKind, personId: string, rowId: 
         await insertIdentifier(tx, u.enterpriseId, personId, x, primary || !any, u.username);
       }
     });
-    return { msg: 'Identification saved' };
+    return { msg: 'The identification document has been saved.' };
   });
 }

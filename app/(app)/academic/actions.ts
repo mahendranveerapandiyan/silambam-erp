@@ -12,6 +12,6 @@ export async function saveAcademicYear(id: string | null, fd: FormData) {
     // the code is fixed once the year is created
     if (id) await sql`update academic_year set ${sql(v)}, object_version_number = object_version_number + 1 where id = ${id} and enterprise_id = ${u.enterpriseId}`;
     else await sql`insert into academic_year ${sql({ ...v, code: o.code!.toUpperCase(), enterprise_id: u.enterpriseId, created_by: u.username })}`;
-    return { msg: id ? 'Academic year saved' : 'Academic year created' };
+    return { msg: `${o.name} academic year has been ${id ? 'updated' : 'created'}.` };
   });
 }

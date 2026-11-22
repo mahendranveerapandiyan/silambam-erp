@@ -16,7 +16,7 @@ export async function saveEvent(id: string | null, fd: FormData) {
     let eid = id;
     if (id) await sql`update event set ${sql({ ...v, last_updated_by: u.username, last_update_date: new Date() })} where id = ${id} and enterprise_id = ${u.enterpriseId}`;
     else eid = (await sql`insert into event ${sql({ ...v, enterprise_id: u.enterpriseId, created_by: u.username })} returning id`)[0].id;
-    return { to: `/events/${eid}`, msg: id ? 'Event saved' : 'Event created – now assign students' };
+    return { to: `/events/${eid}`, msg: id ? `${o.name} event has been updated.` : `${o.name} event has been created. Now assign students.` };
   });
 }
 
@@ -52,7 +52,7 @@ export async function addParticipants(eventId: string, fd: FormData) {
         n++;
       }
     });
-    return { msg: `${n} student(s) added${Number(ev.fee_amount) > 0 ? ' – event fee added to their fee pages' : ''}` };
+    return { msg: `${n} student(s) have been added${Number(ev.fee_amount) > 0 ? ' – event fee added to their fee pages' : ''}` };
   });
 }
 
@@ -68,9 +68,9 @@ export async function updateParticipant(eventId: string, rowId: string, fd: Form
         if (!(await cancelDemandIfUnpaid(tx, r.fee_demand_id))) throw new Error('Event fee already paid – cannot remove');
         await tx`delete from event_participant where id = ${rowId}`;
       });
-      return { msg: 'Participant removed' };
+      return { msg: 'The participant has been removed.' };
     }
     await sql`update event_participant set participation_code = ${o.participation_code}, achievement = ${o.achievement} where id = ${rowId}`;
-    return { msg: 'Saved' };
+    return { msg: 'The participants have been updated.' };
   });
 }

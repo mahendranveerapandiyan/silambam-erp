@@ -32,7 +32,7 @@ export async function saveStructure(id: string | null, fd: FormData) {
         await tx`insert into fee_structure_amount values (${sid}, ${f}, ${Number(a)})`;
       }
     });
-    return { to: `/fees/structures?ay=${o.academic_year_id}`, msg: id ? 'Fee structure saved' : 'Fee structure created' };
+    return { to: `/fees/structures?ay=${o.academic_year_id}`, msg: `${o.name} fee structure has been ${id ? 'updated' : 'created'}.` };
   });
 }
 
@@ -63,7 +63,7 @@ export async function copyStructures(fd: FormData) {
         await tx`insert into exam_fee (academic_year_id, exam_type_code, student_grade_id, amount) values (${o.to_ay}, ${e.exam_type_code}, ${e.student_grade_id}, ${amt}) on conflict do nothing`;
       }
     });
-    return { to: `/fees/structures?ay=${o.to_ay}`, msg: `${n} fee structure(s) copied${pct ? ` with ${pct}% change` : ''}` };
+    return { to: `/fees/structures?ay=${o.to_ay}`, msg: `${n} fee structure(s) have been copied${pct ? ` with a ${pct}% change` : ''}.` };
   });
 }
 
@@ -127,7 +127,7 @@ export async function demandAction(demandId: string, fd: FormData) {
         await sql.begin(async (tx) => {
           receipt = (await recordPayment(tx, { enterpriseId: u.enterpriseId, personId, amount: pay, date: o.payment_date ?? todayISO(), mode: o.payment_mode_code ?? 'CASH', reference: o.reference, demandIds: [demandId], by: u.username })).receipt;
         });
-        return { msg: `Payment recorded · Receipt ${receipt}` };
+        return { msg: `Payment has been recorded. Receipt ${receipt}.` };
       }
       case 'EXEMPT_FULL':
       case 'EXEMPT_PARTIAL': {
@@ -138,13 +138,13 @@ export async function demandAction(demandId: string, fd: FormData) {
         const auto = can(u, 'CD_FEE_EXCEPTION_APPROVAL_PRV', 'WRITE');
         await sql`insert into fee_exemption (demand_id, amount, reason_code, remarks, status_code, requested_by, decided_by, decided_at)
           values (${demandId}, ${ex}, ${o.reason_code}, ${o.remarks}, ${auto ? 'APPROVED' : 'PENDING'}, ${u.username}, ${auto ? u.username : null}, ${auto ? new Date() : null})`;
-        return { msg: auto ? 'Exception applied' : 'Exception submitted for administrator approval' };
+        return { msg: auto ? 'The fee exception has been applied.' : 'The fee exception has been submitted for administrator approval.' };
       }
       case 'CANCEL': {
         if (!can(u, 'CD_FEE_CANCEL_PRV', 'WRITE')) throw new Error('You do not have permission to cancel fee lines');
         if (Number(d.paid_amount) > 0) throw new Error('This line has payments; cancel the payment receipts first');
         await sql`update fee_demand set cancelled_flag = 'Y', last_updated_by = ${u.username}, last_update_date = now() where id = ${demandId}`;
-        return { msg: 'Fee line cancelled' };
+        return { msg: 'The fee line has been cancelled.' };
       }
     }
     throw new Error('Choose an action');
@@ -164,7 +164,7 @@ export async function bulkPayment(personId: string, fd: FormData) {
     await sql.begin(async (tx) => {
       receipt = (await recordPayment(tx, { enterpriseId: u.enterpriseId, personId, amount, date: o.payment_date ?? todayISO(), mode: o.payment_mode_code ?? 'CASH', reference: o.reference, remarks: o.remarks, demandIds: ids.length ? ids : undefined, by: u.username })).receipt;
     });
-    return { msg: `Payment of ${amount} recorded · Receipt ${receipt}` };
+    return { msg: `Payment of ${amount} has been recorded. Receipt ${receipt}.` };
   });
 }
 
@@ -175,7 +175,7 @@ export async function addCharge(personId: string, fd: FormData) {
     if (!o.fee_type_code || !o.description || !o.amount || !o.due_date) throw new Error('Fee type, description, amount and due date are required');
     const [a] = await sql`select a.id, af.business_unit_id, af.academic_year_id from assignment a left join assignment_f af on af.id = a.id and ${o.due_date}::date between af.effective_start_date and af.effective_end_date where a.person_id = ${personId} and a.assignment_type = 'STUDENT'`;
     await addDemand(sql, { enterpriseId: u.enterpriseId, personId, feeType: o.fee_type_code, description: o.description, amount: Number(o.amount), dueDate: o.due_date, by: u.username, assignmentId: a?.id, buId: a?.business_unit_id, ayId: a?.academic_year_id });
-    return { msg: 'Charge added' };
+    return { msg: 'The charge has been added.' };
   });
 }
 
@@ -183,7 +183,7 @@ export async function cancelPayment(paymentId: string, fd: FormData) {
   const u = await requirePriv('CD_FEE_CANCEL_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     await sql`update fee_payment set status_code = 'CANCELLED', remarks = coalesce(remarks || ' · ', '') || ${'Cancelled by ' + u.username} where id = ${paymentId}`;
-    return { msg: 'Receipt cancelled; the amounts are outstanding again' };
+    return { msg: 'The receipt has been cancelled; its amounts are outstanding again.' };
   });
 }
 
@@ -209,7 +209,7 @@ export async function changeFrequency(personId: string, fd: FormData) {
         if (ay) await generateStudentFees(tx, { enterpriseId: u.enterpriseId, personId, assignmentId: a.id, ay, asg: cur, joinDate: date > cur.original_start_date ? date : cur.original_start_date, by: u.username, feeTypes: ['TUITION'] });
       }
     });
-    return { msg: 'Fee frequency changed' };
+    return { msg: 'The fee frequency has been changed.' };
   });
 }
 
@@ -221,7 +221,7 @@ export async function decideExemption(id: string, decision: 'APPROVED' | 'REJECT
     if (!e || e.status_code !== 'PENDING') throw new Error('Request is no longer pending');
     if (decision === 'APPROVED' && Number(e.amount) > Number(e.balance_amount) + 0.001) throw new Error('Exception now exceeds the open balance (payments were recorded since)');
     await sql`update fee_exemption set status_code = ${decision}, decided_by = ${u.username}, decided_at = now() where id = ${id}`;
-    return { msg: `Exception ${decision.toLowerCase()}` };
+    return { msg: `The fee exception has been ${decision.toLowerCase()}.` };
   });
 }
 
@@ -237,7 +237,7 @@ export async function uploadPaymentQr(fd: FormData) {
     if (!branchLevel && !u.personId) throw new Error('Your login is not linked to a staff record');
     await sql`insert into payment_qr (person_id, business_unit_id, label, upi_id, mime, data, created_by)
       values (${branchLevel ? null : u.personId}, ${branchLevel ? o.business_unit_id : null}, ${o.label}, ${o.upi_id}, ${img.mime}, ${img.data}, ${u.username})`;
-    return { msg: 'Payment QR uploaded – it now appears on student fee pages' };
+    return { msg: 'The payment QR has been uploaded. It now appears on student fee pages.' };
   });
 }
 

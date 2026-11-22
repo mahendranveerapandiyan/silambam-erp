@@ -2,7 +2,9 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { getTheme, themeStyle, enterpriseInfo } from '@/lib/theme';
 import { getUser } from '@/lib/auth';
+import { Suspense } from 'react';
 import { LovSearch } from '@/components/LovSearch';
+import { ActionPopups } from '@/components/ActionPopups';
 
 export async function generateMetadata(): Promise<Metadata> {
   const e = await enterpriseInfo();
@@ -18,7 +20,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         <style dangerouslySetInnerHTML={{ __html: themeStyle(theme) }} />
       </head>
-      <body className="min-h-screen antialiased">{children}<LovSearch /></body>
+      <body className="min-h-screen antialiased">{children}<LovSearch /><Suspense fallback={null}><ActionPopups /></Suspense></body>
     </html>
   );
 }

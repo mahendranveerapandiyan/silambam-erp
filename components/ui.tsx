@@ -15,15 +15,10 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   );
 }
 
-export function Flash({ sp }: { sp: Record<string, string | string[] | undefined> }) {
-  const ok = typeof sp.ok === 'string' ? sp.ok : null;
-  const err = typeof sp.err === 'string' ? sp.err : null;
-  if (!ok && !err) return null;
-  return (
-    <div className={`mb-4 rounded-md border px-3 py-2 text-sm no-print ${err ? 'border-red-300 bg-red-50 text-red-800' : 'border-green-300 bg-green-50 text-green-800'}`}>
-      {err ?? ok}
-    </div>
-  );
+/** Results of actions (?ok / ?err) are shown app-wide in a pop-up (components/ActionPopups). */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function Flash(_: { sp: Record<string, string | string[] | undefined> }) {
+  return null;
 }
 
 export function Field({ label, children, help, className = '' }: { label: string; children: ReactNode; help?: string; className?: string }) {

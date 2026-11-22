@@ -36,6 +36,6 @@ export async function changePassword(fd: FormData) {
     if (!o.password || o.password.length < 6) throw new Error('New password must be at least 6 characters');
     if (o.password !== o.confirm) throw new Error('Passwords do not match');
     await sql`update user_account set password_hash = ${await bcrypt.hash(o.password, 10)}, must_change_password = 'N', last_update_date = now() where id = ${u.id}`;
-    return { to: homeFor(u), msg: 'Password changed' };
+    return { to: homeFor(u), msg: 'Your password has been changed.' };
   });
 }

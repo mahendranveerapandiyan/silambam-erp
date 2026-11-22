@@ -47,7 +47,7 @@ export async function saveExam(id: string | null, fd: FormData) {
         if (sf) await sql`insert into exam_subject (exam_id, subject_id, subject_type_code, max_marks, pass_marks, display_seq) values (${eid}, ${s}, ${sf.subject_type_code}, ${sf.default_max_marks ?? 100}, ${sf.default_pass_marks ?? 35}, ${i})`;
       }
     }
-    return { to: `/exams/${eid}`, msg: id ? 'Exam saved' : 'Exam created' };
+    return { to: `/exams/${eid}`, msg: `${o.name} exam has been ${id ? 'updated' : 'created'}.` };
   });
 }
 
@@ -58,14 +58,14 @@ export async function saveSubject(examId: string, rowId: string | null, fd: Form
     const o = formObj(fd);
     if (o._delete && rowId) {
       await sql`delete from exam_subject where id = ${rowId} and exam_id = ${examId}`;
-      return { msg: 'Subject removed' };
+      return { msg: 'The subject has been removed from the exam.' };
     }
     if (!o.subject_id || !o.subject_type_code || !o.max_marks || !o.pass_marks) throw new Error('Subject, type, max and pass marks are required');
     if (Number(o.pass_marks) > Number(o.max_marks)) throw new Error('Pass marks cannot exceed max marks');
     const v = { subject_id: o.subject_id, subject_type_code: o.subject_type_code, max_marks: Number(o.max_marks), pass_marks: Number(o.pass_marks), display_seq: Number(o.display_seq ?? 0) };
     if (rowId) await sql`update exam_subject set ${sql(v)} where id = ${rowId} and exam_id = ${examId}`;
     else await sql`insert into exam_subject ${sql({ ...v, exam_id: examId })}`;
-    return { msg: 'Subject saved' };
+    return { msg: 'The exam subject has been updated.' };
   });
 }
 
@@ -99,7 +99,7 @@ export async function assignCandidates(examId: string, fd: FormData) {
         }
       }
     });
-    return { msg: `${pool.length} student(s) assigned · ${fees} exam fee line(s) added to fee pages` };
+    return { msg: `${pool.length} student(s) have been assigned. ${fees} exam fee line(s) have been added to fee pages.` };
   });
 }
 
@@ -114,7 +114,7 @@ export async function removeCandidate(examId: string, candidateId: string, fd: F
       if (!(await cancelDemandIfUnpaid(tx, c.fee_demand_id))) throw new Error('Exam fee already paid – cancel the receipt first or keep the candidate');
       await tx`delete from exam_candidate where id = ${candidateId}`;
     });
-    return { msg: 'Candidate removed and unpaid exam fee cancelled' };
+    return { msg: 'The candidate has been removed and the unpaid exam fee cancelled.' };
   });
 }
 
@@ -151,7 +151,7 @@ export async function saveMarks(examId: string, fd: FormData) {
         n++;
       }
     });
-    return { msg: `Marks saved for ${n} candidate(s)` };
+    return { msg: `Marks have been saved for ${n} candidate(s).` };
   });
 }
 
@@ -179,7 +179,7 @@ export async function publishResults(examId: string, fd: FormData) {
       }
       await tx`update exam set status_code = 'PUBLISHED', last_updated_by = ${u.username}, last_update_date = now() where id = ${examId}`;
     });
-    return { msg: `Results published${promoted ? ` · ${promoted} student(s) promoted effective ${date}` : ''}` };
+    return { msg: `Results have been published${promoted ? ` · ${promoted} student(s) promoted effective ${date}` : ''}` };
   });
 }
 
@@ -203,6 +203,6 @@ export async function saveExamFees(fd: FormData) {
         n++;
       }
     });
-    return { msg: `${n} exam fee(s) saved` };
+    return { msg: `${n} exam fee(s) have been updated.` };
   });
 }

@@ -9,6 +9,19 @@ import { parseAttributes } from '@/lib/fields';
 import { validateEntity } from '@/lib/entityRules';
 import type { Tx } from '@/lib/db';
 
+/** "CEO position", "Madurai East branch" – the record's name and type, for messages. */
+function title(e: Entity, name: string | null | undefined) {
+  const type = e.label.toLowerCase();
+  const n = (name ?? '').trim();
+  if (!n) return `The ${type}`;
+  return n.toLowerCase().endsWith(type) ? n : `${n} ${type}`;
+}
+async function nameOf(e: Entity, id: string) {
+  const [r] = await sql`select name from ${sql(e.table + '_f')} where id = ${id} order by effective_start_date desc limit 1`;
+  return r?.name as string | undefined;
+}
+const fmt = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+
 /** Fields marked lockOnUpdate keep the value they were created with. */
 async function keepLocked(tx: Tx, e: Entity, id: string, vals: Record<string, any>) {
   const locked = e.fields.filter((f) => f.lockOnUpdate);
@@ -61,7 +74,7 @@ export async function createEntity(key: string, fd: FormData) {
       id = b.id;
       await tx`insert into ${tx(e.table + '_f')} ${tx({ id, effective_start_date: start, ...vals, created_by: u.username, last_updated_by: u.username })}`;
     });
-    return { to: `/setup/${key}/${id}`, msg: `${e.label} created` };
+    return { to: `/setup/${key}/${id}`, msg: `${title(e, vals.name)} has been created.` };
   });
 }
 
@@ -86,7 +99,7 @@ export async function updateEntity(key: string, id: string, fd: FormData) {
       await validateEntity(tx, key, vals, { id, date: checkDate });
       await dtChange(tx, e.table, id, date, mode, vals, u.username);
     });
-    return { msg: mode === 'CORRECT' ? 'Record corrected' : `Record updated effective ${date}` };
+    return { msg: mode === 'CORRECT' ? `${title(e, vals.name)} has been corrected.` : `${title(e, vals.name)} has been updated from ${fmt(date)}.` };
   });
 }
 
@@ -107,7 +120,7 @@ export async function correctVersion(key: string, id: string, versionStart: stri
       // moving the record's very first start later must not orphan records that use it
       if (r.isFirst && newStart > versionStart) await assertDependentsWithin(tx, e.table, id, newStart, null, `start this ${e.label.toLowerCase()} on ${newStart}`);
     });
-    return { to: `/setup/${key}/${id}?version=${newStart}`, msg: newStart === versionStart ? 'Version corrected' : `Version corrected; it now starts ${newStart}` };
+    return { to: `/setup/${key}/${id}?version=${newStart}`, msg: newStart === versionStart ? `${title(e, vals.name)} has been corrected.` : `${title(e, vals.name)} has been corrected; this version now starts ${fmt(newStart)}.` };
   });
 }
 
@@ -121,7 +134,7 @@ export async function endDateEntity(key: string, id: string, fd: FormData) {
       await assertDependentsWithin(tx, e.table, id, null, d, `end-date this ${e.label.toLowerCase()} on ${d}`);
       await dtEndDate(tx, e.table, id, d);
     });
-    return { msg: `Record end-dated on ${d}` };
+    return { msg: `${title(e, await nameOf(e, id))} has been end-dated on ${fmt(d)}.` };
   });
 }
 
@@ -134,7 +147,7 @@ export async function deleteLatestVersion(key: string, id: string, fd: FormData)
       const span = await dtSpan(tx, e.table, id);
       await assertDependentsWithin(tx, e.table, id, span.start, span.end, 'remove the latest version');
     });
-    return { to: `/setup/${key}/${id}`, msg: 'Latest change removed' };
+    return { to: `/setup/${key}/${id}`, msg: `The latest change to ${title(e, await nameOf(e, id))} has been removed.` };
   });
 }
 
@@ -143,11 +156,12 @@ export async function deleteEntity(key: string, id: string, fd: FormData) {
   const u = await requirePriv(getEntity(key)!.priv, 'WRITE');
   const e = getEntity(key)!;
   await act(backOf(fd), async () => {
+    const name = await nameOf(e, id);
     await sql.begin(async (tx) => {
       const used = await usages(tx, e.table, id);
       if (used.length) throw new Error(`Cannot delete: used by ${used.map((x) => `${x.label} (${x.count})`).join(', ')}. End-date it instead.`);
       await tx`delete from ${tx(e.table)} where id = ${id} and enterprise_id = ${u.enterpriseId}`;
     });
-    return { to: `/setup/${key}`, msg: `${e.label} deleted` };
+    return { to: `/setup/${key}`, msg: `${title(e, name)} has been deleted.` };
   });
 }

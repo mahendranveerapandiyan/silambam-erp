@@ -30,7 +30,7 @@ export async function saveIncharge(fd: FormData) {
     await sql`insert into class_incharge ${sql({ person_id: p.person_id, class_id: classId, section_id: sectionId || null, academic_year_id: ay.id, start_date: start, end_date: end, primary_flag: 'Y', created_by: u.username })}`;
     const [acct] = await sql`select id from user_account where person_id = ${p.person_id}`;
     if (acct) await sql`insert into user_role values (${acct.id}, 'INCHARGE') on conflict do nothing`;
-    return { msg: acct ? `Incharge assigned for ${ay.name} (Incharge role added to their login)` : `Incharge assigned for ${ay.name}. This staff member has no login yet – create one under Users.` };
+    return { msg: acct ? `The incharge has been assigned for ${ay.name} (Incharge role added to their login)` : `The incharge has been assigned for ${ay.name}. This staff member has no login yet – create one under Users.` };
   });
 }
 
@@ -43,7 +43,7 @@ export async function endIncharge(id: string, fd: FormData) {
     if (!ci || !d) throw new Error('Choose the end date');
     if (d < ci.start_date) throw new Error('End date cannot be before the start date');
     await sql`update class_incharge set end_date = ${d} where id = ${id}`;
-    return { msg: 'Incharge assignment end-dated' };
+    return { msg: 'The incharge assignment has been end-dated.' };
   });
 }
 
@@ -56,6 +56,6 @@ export async function deleteIncharge(id: string, fd: FormData) {
     const [latest] = await sql`select id from class_incharge where person_id = ${ci.person_id} order by start_date desc, id desc limit 1`;
     if (String(latest.id) !== String(id)) throw new Error("Only the staff member's latest incharge assignment can be deleted.");
     await sql`delete from class_incharge where id = ${id}`;
-    return { msg: 'Incharge assignment deleted' };
+    return { msg: 'The incharge assignment has been deleted.' };
   });
 }

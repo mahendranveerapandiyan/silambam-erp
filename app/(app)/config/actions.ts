@@ -17,7 +17,7 @@ export async function createLookupType(fd: FormData) {
     const t = o.lookup_type.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
     await sql`insert into lookup_type (lookup_type, meaning, description, module_code, access_level, parent_lookup_type, created_by)
       values (${t}, ${o.meaning}, ${o.description}, ${o.module_code ?? 'COMMON'}, 'USER', ${o.parent_lookup_type}, ${u.username})`;
-    return { to: `/config/lookups/${t}`, msg: 'Lookup type created' };
+    return { to: `/config/lookups/${t}`, msg: `${o.meaning} lookup type has been created.` };
   });
 }
 
@@ -51,7 +51,7 @@ export async function saveLookupValue(type: string, fd: FormData) {
       if (access === 'SYSTEM') throw new Error('This is a system lookup; values cannot be added.');
       const code = o.lookup_code.toUpperCase().replace(/\s+/g, '_');
       await sql`insert into lookup_value ${sql({ lookup_type: type, lookup_code: code, ...vals, created_by: u.username })}`;
-      return { msg: `Value ${code} added` };
+      return { msg: `${o.meaning} (${code}) has been added.` };
     }
     const [cur] = await sql`select system_flag from lookup_value where lookup_type = ${type} and lookup_code = ${o.lookup_code}`;
     if (cur?.system_flag === 'Y' && vals.enabled_flag === 'N') throw new Error('System values cannot be disabled (the application depends on them).');
@@ -64,7 +64,7 @@ export async function saveLookupValue(type: string, fd: FormData) {
     if (use?.first && vals.start_date > use.first)
       throw new Error(`${o.lookup_code} is already used from ${use.first} (${describeUsage(use)}). The start date must be on or before that date.`);
     await sql`update lookup_value set ${sql(vals)} where lookup_type = ${type} and lookup_code = ${o.lookup_code}`;
-    return { msg: `Value ${o.lookup_code} saved` };
+    return { msg: `${o.meaning} (${o.lookup_code}) has been updated.` };
   });
 }
 
@@ -76,7 +76,7 @@ export async function deleteLookupValue(type: string, code: string, fd: FormData
     const use = (await lookupUsage(type)).get(code);
     if (use?.count) throw new Error(`Cannot delete ${code}: it is in use – ${describeUsage(use)}. Set an end date or disable it instead.`);
     await sql`delete from lookup_value where lookup_type = ${type} and lookup_code = ${code}`;
-    return { msg: `Value ${code} deleted` };
+    return { msg: `Lookup value ${code} has been deleted.` };
   });
 }
 
@@ -105,7 +105,7 @@ export async function saveEnterprise(fd: FormData) {
       last_updated_by = ${u.username}, last_update_date = now(), object_version_number = object_version_number + 1 where id = ${u.enterpriseId}`;
     if (logo) await sql`update enterprise set logo_mime = ${logo.mime}, logo_data = ${logo.data} where id = ${u.enterpriseId}`;
     if (o.remove_logo === 'Y') await sql`update enterprise set logo_mime = null, logo_data = null where id = ${u.enterpriseId}`;
-    return { msg: cur.code_locked_flag === 'Y' ? 'Enterprise saved' : `Enterprise saved – code ${code} is now locked` };
+    return { msg: cur.code_locked_flag === 'Y' ? 'The enterprise has been updated.' : `The enterprise has been updated. Code ${code} is now locked.` };
   });
 }
 
@@ -132,7 +132,7 @@ export async function saveNumberRule(id: string, fd: FormData) {
       separator = ${o.separator ?? ''}, include_scope_code_flag = ${o.include_scope_code_flag ?? 'N'}, include_year_flag = ${o.include_year_flag ?? 'N'},
       reset_yearly_flag = ${o.reset_yearly_flag ?? 'N'}, padding = ${padding}, start_number = ${start},
       last_updated_by = ${u.username}, last_update_date = now(), object_version_number = object_version_number + 1 where id = ${id} and enterprise_id = ${u.enterpriseId}`;
-    return { msg: 'Rule saved. The Counters table shows the next number for each counter.' };
+    return { msg: 'The numbering rule has been updated. The Counters table shows the next number for each counter.' };
   });
 }
 
@@ -167,7 +167,7 @@ export async function saveTheme(fd: FormData) {
       await sql`insert into ui_setting (enterprise_id, setting_key, setting_value, last_updated_by) values (${u.enterpriseId}, ${k}, ${v}, ${u.username})
         on conflict (enterprise_id, setting_key) do update set setting_value = excluded.setting_value, last_updated_by = excluded.last_updated_by, last_update_date = now()`;
     }
-    return { msg: o._reset ? 'Theme reset to defaults' : 'Theme saved' };
+    return { msg: o._reset ? 'The theme has been reset to the defaults.' : 'The theme has been updated.' };
   });
 }
 
@@ -212,7 +212,7 @@ export async function saveUser(id: string | null, fd: FormData) {
       await tx`delete from user_student_access where user_id = ${uid}`;
       for (const p of students) await tx`insert into user_student_access values (${uid}, ${p}) on conflict do nothing`;
     });
-    return { to: `/config/users/${uid}`, msg: id ? 'User saved' : 'User created' };
+    return { to: `/config/users/${uid}`, msg: `User ${o.display_name} has been ${id ? 'updated' : 'created'}.` };
   });
 }
 
@@ -240,7 +240,7 @@ export async function saveRole(code: string | null, fd: FormData) {
         await tx`insert into role_privilege values (${rc}, ${p.code}, 'Y', 'Y', ${lvl === 'WRITE' ? 'Y' : 'N'})`;
       }
     });
-    return { to: `/config/roles/${rc}`, msg: code ? 'Role saved' : 'Role created' };
+    return { to: `/config/roles/${rc}`, msg: `${o.name} role has been ${code ? 'updated' : 'created'}.` };
   });
 }
 
@@ -252,7 +252,7 @@ export async function deleteRole(code: string, fd: FormData) {
     const [n] = await sql`select count(*)::int n from user_role where role_code = ${code}`;
     if (n.n > 0) throw new Error(`This role is assigned to ${n.n} user(s); remove it from them first.`);
     await sql`delete from app_role where code = ${code}`;
-    return { to: '/config/roles', msg: 'Role deleted' };
+    return { to: '/config/roles', msg: `Role ${code} has been deleted.` };
   });
 }
 
@@ -268,14 +268,14 @@ export async function saveField(id: string | null, fd: FormData) {
     };
     if (id) {
       await sql`update additional_field set ${sql(v)} where id = ${id} and enterprise_id = ${u.enterpriseId}`;
-      return { msg: 'Field saved' };
+      return { msg: `${o.label} field has been updated.` };
     }
     if (!o.context_code || !o.field_code || !o.data_type) throw new Error('Page, field code and data type are required');
     if (o.data_type === 'LOOKUP' && !o.lookup_type) throw new Error('Choose the lookup that supplies the values');
     const code = o.field_code.toUpperCase().replace(/[^A-Z0-9_]/g, '_');
     await sql`insert into additional_field ${sql({ ...v, enterprise_id: u.enterpriseId, context_code: o.context_code, field_code: code, data_type: o.data_type,
       lookup_type: o.data_type === 'LOOKUP' ? o.lookup_type : null, created_by: u.username })}`;
-    return { to: `/config/fields?context=${encodeURIComponent(o.context_code)}`, msg: `Field ${code} added` };
+    return { to: `/config/fields?context=${encodeURIComponent(o.context_code)}`, msg: `${o.label ?? code} field has been added.` };
   });
 }
 

@@ -39,8 +39,7 @@ export function AutoSubmit() {
 
 export function ConfirmButton({ children, message, className = 'btn', name, value }: { children: React.ReactNode; message: string; className?: string; name?: string; value?: string }) {
   return (
-    <button type="submit" name={name} value={value} className={className}
-      onClick={(e) => { if (!confirm(message)) e.preventDefault(); }}>
+    <button type="submit" name={name} value={value} className={className} data-confirm={message}>
       {children}
     </button>
   );

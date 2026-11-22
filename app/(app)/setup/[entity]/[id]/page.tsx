@@ -135,14 +135,14 @@ export default async function EntityDetail({ params, searchParams }: { params: P
           <h2 className="h2">End Date (Inactivate)</h2>
           <p className="muted mb-2">The record stops being effective after this date. Later versions are removed. Not allowed while other records still use it after that date.</p>
           <div className="flex gap-2"><input type="date" name="end_date" defaultValue={asOf} className="input" required />
-            <ConfirmButton className="btn btn-danger" message="End-date this record?">End Date</ConfirmButton></div>
+            <ConfirmButton className="btn btn-danger" message={`End-date ${row.name} (${e.label.toLowerCase()})? It will not be available after the end date.`}>End Date</ConfirmButton></div>
         </form>
         {history.length > 1 && (
           <form action={deleteLatestVersion.bind(null, entity, id)} className="card">
             <Back to={back} />
             <h2 className="h2">Undo Last Change</h2>
             <p className="muted mb-2">Removes the latest version ({fmtDate(history[0].effective_start_date)}) and re-opens the previous one.</p>
-            <ConfirmButton className="btn" message="Remove the latest version?">Delete Latest Version</ConfirmButton>
+            <ConfirmButton className="btn" message={`Delete the latest version of ${row.name} (${e.label.toLowerCase()})? The previous version becomes current again.`}>Delete Latest Version</ConfirmButton>
           </form>
         )}
         <form action={deleteEntity.bind(null, entity, id)} className="card">
@@ -153,7 +153,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
           ) : (
             <>
               <p className="muted mb-2">Not used anywhere. Deleting removes the record and all its history permanently.</p>
-              <ConfirmButton className="btn btn-danger" message={`Permanently delete ${row.code}?`}>Delete</ConfirmButton>
+              <ConfirmButton className="btn btn-danger" message={`Delete ${row.name} (${e.label.toLowerCase()} ${row.code})? This cannot be undone.`}>Delete</ConfirmButton>
             </>
           )}
         </form>

@@ -184,7 +184,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         ) : (
           <>
             <p className="muted mb-2">For records entered by mistake. Removes the {stu ? 'admission (and its unpaid fee lines)' : 'hire'} and the personal record; linked logins are deactivated.</p>
-            <ConfirmButton className="btn btn-danger" message={`Permanently delete ${ab!.assignment_number}?`}>Delete</ConfirmButton>
+            <ConfirmButton className="btn btn-danger" message={`Delete ${stu ? 'student' : 'staff'} ${p.full_name} (${ab!.assignment_number})? This cannot be undone.`}>Delete</ConfirmButton>
           </>
         )}
       </form>
