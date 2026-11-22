@@ -30,9 +30,8 @@ export async function isManual(tx: Tx, enterpriseId: string, objectCode: string)
  * honouring the configured level (Enterprise / LE / BU), prefix, suffix,
  * year and yearly reset. Returns null when the rule is MANUAL.
  */
-export async function nextNumber(tx: Tx, enterpriseId: string, objectCode: string, ctx: NumberCtx): Promise<string | null> {
-  const rule = await getRule(tx, enterpriseId, objectCode);
-  if (!rule || rule.method_code === 'MANUAL') return null;
+/** Which counter (Enterprise / LE / BU) a number belongs to, and the code shown in it. */
+async function resolveScope(tx: Tx, rule: Row, objectCode: string, ctx: NumberCtx) {
   let scopeId = '0';
   let scopeCode: string | null = null;
   if (rule.scope_code === 'LE' || rule.scope_code === 'BU') {
@@ -47,12 +46,39 @@ export async function nextNumber(tx: Tx, enterpriseId: string, objectCode: strin
     scopeCode = s?.code ?? null;
   }
   const year = ctx.date.slice(0, 4);
-  const period = rule.reset_yearly_flag === 'Y' ? year : 'ALL';
+  return { scopeId: String(scopeId), scopeCode, year, period: rule.reset_yearly_flag === 'Y' ? year : 'ALL' };
+}
+
+export async function nextNumber(tx: Tx, enterpriseId: string, objectCode: string, ctx: NumberCtx): Promise<string | null> {
+  const rule = await getRule(tx, enterpriseId, objectCode);
+  if (!rule || rule.method_code === 'MANUAL') return null;
+  const { scopeId, scopeCode, year, period } = await resolveScope(tx, rule, objectCode, ctx);
   const [seq] = await tx`
     insert into number_sequence (rule_id, scope_id, period, last_value) values (${rule.id}, ${scopeId}, ${period}, ${rule.start_number})
     on conflict (rule_id, scope_id, period) do update set last_value = number_sequence.last_value + 1
     returning last_value`;
   return formatNumber(rule, seq.last_value, scopeCode, year);
+}
+
+/**
+ * Called after a record holding an auto-generated number is deleted. If it
+ * held the newest number of its counter, the counter steps back so that number
+ * is issued again – and keeps stepping back over any other unused numbers at
+ * the top. Numbers in the middle (with newer ones still in use) are not reused.
+ * `inUse(n)` tells whether a number is still held by another record.
+ */
+export async function releaseNumber(tx: Tx, enterpriseId: string, objectCode: string, ctx: NumberCtx, deleted: string, inUse: (n: string) => Promise<boolean>) {
+  const rule = await getRule(tx, enterpriseId, objectCode);
+  if (!rule || rule.method_code === 'MANUAL') return;
+  const { scopeId, scopeCode, year, period } = await resolveScope(tx, rule, objectCode, ctx);
+  const [seq] = await tx`select last_value from number_sequence where rule_id = ${rule.id} and scope_id = ${scopeId} and period = ${period} for update`;
+  if (!seq) return;
+  let last = Number(seq.last_value);
+  if (formatNumber(rule, last, scopeCode, year) !== deleted) return; // not the newest number: leave the gap
+  const floor = Number(rule.start_number) - 1;
+  last--;
+  while (last > floor && !(await inUse(formatNumber(rule, last, scopeCode, year)))) last--;
+  await tx`update number_sequence set last_value = ${last} where rule_id = ${rule.id} and scope_id = ${scopeId} and period = ${period}`;
 }
 
 export type NumberPreviews = { single: string | null; byScope: Record<string, string>; classToScope: Record<string, string>; buToScope: Record<string, string> } | null;
