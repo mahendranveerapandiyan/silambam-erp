@@ -13,6 +13,8 @@ import { PhotoInput } from '../PhotoInput';
 import { IdentificationFields, employerWatch } from './IdentificationFields';
 import { AssignmentFields } from './AssignmentFields';
 import { hirePerson } from '@/app/(app)/people/actions';
+import { userNameRule } from '@/lib/usernames';
+import { UsernamePreview } from '../UsernamePreview';
 
 export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: PersonKind; asOf: string; sp: Record<string, any> }) {
   const stu = kind === 'STUDENT';
@@ -21,6 +23,7 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
   const defaultAction = actions[0]?.value;
   const previews = await numberPreviews(u.enterpriseId, kind, asOf);
   const watch = await employerWatch(u.enterpriseId, asOf, !stu);
+  const staffRule = await userNameRule(u.enterpriseId, 'STAFF');
   return (
     <div className="max-w-6xl">
       <PageHeader title={stu ? 'New Student Admission' : 'Hire Staff'} actions={<Link href={stu ? '/students' : '/staff'} className="btn">Back</Link>} />
@@ -84,7 +87,7 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
               <div className="grid-form">
                 <Field label="Parent Login Username" help="e.g. parent mobile number. Existing username = add this child to that parent."><input name="parent_username" className="input" autoComplete="off" /></Field>
                 <Field label="Temporary Password"><input name="parent_password" type="password" className="input" autoComplete="new-password" /></Field>
-                <label className="flex items-center gap-2 pt-5 text-sm"><input type="checkbox" name="student_login" value="Y" /> Also create a student login (username = student number)</label>
+                <label className="flex items-center gap-2 pt-5 text-sm"><input type="checkbox" name="student_login" value="Y" /> Also create a student login (user name = student number; password = the parent&apos;s temporary password)</label>
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="generate_fees" value="Y" defaultChecked /> Generate this academic year&apos;s fees (admission + tuition)</label>
               </div>
             </div>
@@ -93,8 +96,8 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
           <div className="card">
             <h2 className="h2">Application Login</h2>
             <div className="grid-form">
-              <Field label="Username"><input name="login_username" className="input" autoComplete="off" /></Field>
-              <Field label="Temporary Password"><input name="login_password" type="password" className="input" autoComplete="new-password" /></Field>
+              <Field label="Username" help="Set automatically – Configuration › User Name Rules"><UsernamePreview method={staffRule.method_code} separator={staffRule.separator} /></Field>
+              <Field label="Temporary Password" help="Leave empty to hire without a login"><input name="login_password" type="password" className="input" autoComplete="new-password" /></Field>
               <div className="space-y-1 pt-5 text-sm">
                 {[['INCHARGE', 'Class Incharge'], ['STAFF', 'Staff'], ['ACCOUNTANT', 'Accountant']].map(([v, l]) => (
                   <label key={v} className="mr-3 inline-flex items-center gap-1"><input type="checkbox" name="login_roles" value={v} defaultChecked={v === 'STAFF'} /> {l}</label>

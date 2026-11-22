@@ -3,7 +3,8 @@ import { imageToPng } from '@/lib/images';
 import bcrypt from 'bcryptjs';
 import { sql } from '@/lib/db';
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
-import { act, backOf, formObj, fileToBytes } from '@/lib/util';
+import { act, backOf, formObj, fileToBytes, todayISO } from '@/lib/util';
+import { makeUsername, personLoginInfo } from '@/lib/usernames';
 import { THEME_KEYS } from '@/lib/theme';
 import { lookupPrivs } from '@/lib/menu';
 import { lookupUsage, describeUsage } from '@/lib/lookupUsage';
@@ -193,10 +194,19 @@ export async function saveUser(id: string | null, fd: FormData) {
     let uid = id;
     await sql.begin(async (tx) => {
       if (!uid) {
-        if (!o.username || !o.password) throw new Error('Username and password are required');
+        if (!o.password) throw new Error('A temporary password is required');
         if (o.password.length < 6) throw new Error('Password must be at least 6 characters');
+        // user name: generated for a linked staff member / student (User Name Rules), typed for parents
+        if (o.person_id) {
+          const info = await personLoginInfo(tx, o.person_id, todayISO(), roles.includes('STUDENT') ? 'STUDENT' : 'STAFF');
+          if (!info) throw new Error('The linked person has no staff or student record.');
+          o.username = await makeUsername(tx, u.enterpriseId, info.category, { number: info.number, first: info.first, last: info.last, email: info.email });
+        } else {
+          if (!o.username) throw new Error('Username is required (or link a staff / student number to generate it)');
+          if ((await tx`select 1 from user_account where lower(username) = lower(${o.username})`).length) throw new Error(`User name "${o.username.toLowerCase()}" is already used by another login.`);
+        }
         const [n] = await tx`insert into user_account (enterprise_id, username, password_hash, display_name, person_id, must_change_password, created_by)
-          values (${u.enterpriseId}, ${o.username.toLowerCase()}, ${await bcrypt.hash(o.password, 10)}, ${o.display_name}, ${o.person_id}, 'Y', ${u.username}) returning id`;
+          values (${u.enterpriseId}, ${o.username!.toLowerCase()}, ${await bcrypt.hash(o.password, 10)}, ${o.display_name}, ${o.person_id}, 'Y', ${u.username}) returning id`;
         uid = n.id;
       } else {
         await tx`update user_account set display_name = ${o.display_name}, person_id = ${o.person_id}, active_flag = ${o.active_flag === 'N' ? 'N' : 'Y'},
@@ -212,7 +222,25 @@ export async function saveUser(id: string | null, fd: FormData) {
       await tx`delete from user_student_access where user_id = ${uid}`;
       for (const p of students) await tx`insert into user_student_access values (${uid}, ${p}) on conflict do nothing`;
     });
-    return { to: `/config/users/${uid}`, msg: `User ${o.display_name} has been ${id ? 'updated' : 'created'}.` };
+    return { to: `/config/users/${uid}`, msg: id ? `User ${o.display_name} has been updated.` : `User ${o.display_name} has been created with user name ${o.username!.toLowerCase()}.` };
+  });
+}
+
+// ---------------- User name rules ----------------
+export async function saveUserNameRule(fd: FormData) {
+  const u = await requirePriv('CD_USER_NAME_RULE_PRV', 'WRITE');
+  await act('/config/user-names', async () => {
+    const o = formObj(fd);
+    const method = o.method_code ?? '';
+    if (!['STAFF_NUMBER', 'FIRST_LAST', 'EMAIL'].includes(method)) throw new Error('Choose how staff user names are formed.');
+    const separator = method === 'FIRST_LAST' ? (o.separator ?? '') : '.';
+    if (!['.', '_', '-', ''].includes(separator)) throw new Error('Separator must be a dot, underscore, hyphen or none.');
+    await sql`insert into user_name_rule (enterprise_id, person_category, method_code, separator, last_updated_by)
+      values (${u.enterpriseId}, 'STAFF', ${method}, ${separator}, ${u.username})
+      on conflict (enterprise_id, person_category) do update set method_code = excluded.method_code, separator = excluded.separator,
+        last_updated_by = excluded.last_updated_by, last_update_date = now()`;
+    const [m] = await sql`select meaning from lookup_value where lookup_type = 'USER_NAME_METHOD' and lookup_code = ${method}`;
+    return { msg: `The staff user name rule has been updated: ${m?.meaning ?? method}. It applies to logins created from now on.` };
   });
 }
 

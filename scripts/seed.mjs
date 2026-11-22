@@ -69,6 +69,7 @@ const LOOKUPS = {
   ROLE: ['Application Role', 'SYSTEM', 'SYSTEM', null, [['ADMIN', 'Administrator'], ['INCHARGE', 'Class Incharge'], ['STAFF', 'Staff'], ['ACCOUNTANT', 'Accountant'], ['PARENT', 'Parent / Guardian'], ['STUDENT', 'Student']]],
   NUMBER_OBJECT: ['Number Generation Object', 'SYSTEM', 'SYSTEM', null, [['PERSON', 'Person Number'], ['STUDENT', 'Student Number'], ['STAFF', 'Staff Number'], ['RECEIPT', 'Fee Receipt Number']]],
   NUMBER_METHOD: ['Number Generation Method', 'SYSTEM', 'SYSTEM', null, [['AUTO', 'Automatic'], ['MANUAL', 'Manual']]],
+  USER_NAME_METHOD: ['User Name Method', 'SYSTEM', 'SYSTEM', null, [['STAFF_NUMBER', 'Staff Number', 'STAFF'], ['FIRST_LAST', 'First and Last Name', 'STAFF'], ['EMAIL', 'Email ID', 'STAFF'], ['STUDENT_NUMBER', 'Student Number', 'STUDENT'], ['MANUAL', 'Entered Manually', 'PARENT']]],
   NUMBER_SCOPE: ['Number Generation Level', 'SYSTEM', 'SYSTEM', null, [['ENTERPRISE', 'Enterprise'], ['LE', 'Legal Employer'], ['BU', 'Business Unit'], ['BRANCH', 'Branch']]],
 };
 
@@ -129,6 +130,8 @@ try {
       { object_code: 'STAFF', prefix: 'EMP', separator: '-', padding: 4, scope_code: 'ENTERPRISE' },
       { object_code: 'RECEIPT', prefix: 'RC', separator: '/', padding: 5, scope_code: 'BU', include_scope_code_flag: 'Y', include_year_flag: 'Y', reset_yearly_flag: 'Y' },
     ]) await tx`insert into number_rule ${tx({ enterprise_id: E, created_by: BY, ...r })}`;
+    for (const [cat, method] of [['STAFF', 'STAFF_NUMBER'], ['STUDENT', 'STUDENT_NUMBER'], ['PARENT', 'MANUAL']])
+      await tx`insert into user_name_rule (enterprise_id, person_category, method_code, last_updated_by) values (${E}, ${cat}, ${method}, ${BY})`;
 
     // Theme defaults
     for (const [k, v] of Object.entries({

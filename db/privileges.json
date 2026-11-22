@@ -523,6 +523,13 @@
   "seq": 650
  },
  {
+  "code": "CD_USER_NAME_RULE_PRV",
+  "name": "User Name Rules",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 655
+ },
+ {
   "code": "CD_USER_PRV",
   "name": "Users",
   "module": "Configuration",

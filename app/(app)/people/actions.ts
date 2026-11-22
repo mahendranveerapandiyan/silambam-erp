@@ -8,6 +8,7 @@ import { getAsOf } from '@/lib/asof';
 import { act, backOf, formObj, fileToBytes } from '@/lib/util';
 import { dtChange, dtCorrectVersion } from '@/lib/dt';
 import { nextNumber } from '@/lib/numbering';
+import { makeUsername } from '@/lib/usernames';
 import { assertStudentAccess, myClasses, seesAllStudents } from '@/lib/scope';
 
 const dirPriv = (k: PersonKind) => (k === 'STUDENT' ? 'CD_STUDENT_DIRECTORY_PRV' : 'CD_STAFF_DIRECTORY_PRV');
@@ -197,10 +198,17 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
       const display = [o.first_name, o.last_name].filter(Boolean).join(' ') || anum;
       if (kind === 'STUDENT') {
         if (o.parent_username && o.parent_password) await createLogin(tx, u, o.parent_username, o.parent_password, `Parent of ${display}`, null, ['PARENT'], [personId]);
-        if (o.student_login === 'Y' && o.parent_password) await createLogin(tx, u, anum, o.parent_password, display, personId, ['STUDENT']);
-      } else if (o.login_username && o.login_password) {
+        if (o.student_login === 'Y') {
+          if (!o.parent_password) throw new Error('Enter the temporary password to create the student login.');
+          // students: user name = student number (Configuration › User Name Rules)
+          await createLogin(tx, u, await makeUsername(tx, u.enterpriseId, 'STUDENT', { number: anum }), o.parent_password, display, personId, ['STUDENT']);
+        }
+      } else if (o.login_password) {
+        // staff: user name from Configuration › User Name Rules (staff number, first + last name or email id)
+        const username = await makeUsername(tx, u.enterpriseId, 'STAFF', { number: anum, first: o.first_name, last: o.last_name, email: o.email });
         const roles = fd.getAll('login_roles').map(String).filter((r) => ['INCHARGE', 'STAFF', 'ACCOUNTANT'].includes(r));
-        await createLogin(tx, u, o.login_username, o.login_password, display, personId, roles.length ? roles : ['STAFF']);
+        await createLogin(tx, u, username, o.login_password, display, personId, roles.length ? roles : ['STAFF']);
+        msg += ` Login user name: ${username}.`;
       }
       // fees for the academic year
       if (kind === 'STUDENT' && o.generate_fees === 'Y' && av.academic_year_id) {

@@ -96,6 +96,7 @@ export const MENU: MenuGroup[] = [
       { label: 'Additional Fields', href: '/config/fields', priv: 'CD_ADDITIONAL_FIELD_PRV' },
       { label: 'Number Generation', href: '/config/numbering', priv: 'CD_NUMBERING_PRV' },
       { label: 'UI Theme', href: '/config/theme', priv: 'CD_THEME_PRV' },
+      { label: 'User Name Rules', href: '/config/user-names', priv: 'CD_USER_NAME_RULE_PRV' },
       { label: 'Users', href: '/config/users', priv: 'CD_USER_PRV' },
       { label: 'Roles & Privileges', href: '/config/roles', priv: 'CD_ROLE_PRV' },
     ],

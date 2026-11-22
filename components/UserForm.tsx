@@ -1,5 +1,6 @@
 import { Field, Back } from './ui';
 import { EditableForm, EditScope } from '@/components/EditMode';
+import { UsernameField } from './UsernamePreview';
 import type { Row } from '@/lib/db';
 
 
@@ -8,10 +9,12 @@ export function UserForm({ action, user, roles = [], students = [], back, allRol
     <EditableForm action={action} canEdit={canEdit} startEditing={!user} saveLabel={user ? 'Save' : 'Create User'}>
       <Back to={back} />
       <div className="grid-form">
-        <Field label="Username *"><input name="username" defaultValue={user?.username} disabled={!!user} required className="input lowercase" /></Field>
+        {user
+          ? <Field label="Username"><input name="username" defaultValue={user.username} disabled className="input lowercase" /></Field>
+          : <Field label="Username *" help="Staff / students: set automatically from the linked number (User Name Rules). Parents and others: type it."><UsernameField /></Field>}
         <Field label="Display Name *"><input name="display_name" defaultValue={user?.display_name} required className="input" /></Field>
         <Field label={user ? 'Reset Password (leave blank to keep)' : 'Temporary Password *'} help="User must change it at next login"><input name="password" type="password" required={!user} className="input" autoComplete="new-password" /></Field>
-        <Field label="Linked Person (staff / student number)" help="Staff: their staff number. Student login: their student number."><input name="person_number" defaultValue={user?.linked_number ?? ''} className="input" /></Field>
+        <Field label="Linked Person (staff / student number)" help="Staff: their staff number. Student login: their student number. Leave empty for parents."><input name="person_number" defaultValue={user?.linked_number ?? ''} className="input" /></Field>
         {user && <Field label="Active"><select name="active_flag" defaultValue={user.active_flag} className="input"><option value="Y">Yes</option><option value="N">No</option></select></Field>}
       </div>
       <div className="mt-4">
