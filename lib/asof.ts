@@ -1,9 +1,11 @@
 import 'server-only';
-import { cookies } from 'next/headers';
 import { todayISO } from './util';
 
-/** The session "As-of date" every date-tracked screen is evaluated on. */
+/**
+ * The date every date-tracked screen is evaluated on. The header date picker
+ * was removed, so this is always today; past and future versions are seen and
+ * corrected through each record's history.
+ */
 export async function getAsOf(): Promise<string> {
-  const v = (await cookies()).get('erp_asof')?.value;
-  return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : todayISO();
+  return todayISO();
 }

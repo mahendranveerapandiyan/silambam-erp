@@ -78,7 +78,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
         </form>
       ) : !effective ? (
         <div className="card mb-4 border-amber-300 bg-amber-50 text-sm">
-          This record is not effective on {fmtDate(asOf)}. Use <b>Correct</b> on a version below, or change the <b>As of</b> date in the header.
+          This record is not effective today ({fmtDate(asOf)}) – it is future-dated or has ended. Use <b>Correct</b> on a version below to view or change it.
         </div>
       ) : (
         <EditableForm action={updateEntity.bind(null, entity, id)} canEdit={write} className="card mb-4">
@@ -114,7 +114,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
                 const editing = version?.effective_start_date === h.effective_start_date;
                 return (
                   <tr key={h.effective_start_date} className={editing ? 'bg-blue-50' : cur ? 'bg-amber-50' : ''}>
-                    <td className="whitespace-nowrap">{fmtDate(h.effective_start_date)} {cur && <Badge color="amber">as of</Badge>}</td>
+                    <td className="whitespace-nowrap">{fmtDate(h.effective_start_date)} {cur && <Badge color="amber">current</Badge>}</td>
                     <td className="whitespace-nowrap">{fmtDate(h.effective_end_date)}</td>
                     <td>{h.name}</td>
                     {e.fields.map((f) => <td key={f.name}>{fmt(f, h[f.name], h.effective_start_date)}</td>)}

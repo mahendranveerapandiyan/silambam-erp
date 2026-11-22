@@ -1,12 +1,8 @@
 import Link from 'next/link';
-import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { requireUser, can } from '@/lib/auth';
-import { getAsOf } from '@/lib/asof';
 import { menuFor } from '@/lib/menu';
 import { enterpriseInfo } from '@/lib/theme';
-import { todayISO } from '@/lib/util';
-import { AsOfPicker } from '@/components/AsOf';
 import { NavLinks } from '@/components/NavLinks';
 import { logout } from '../actions';
 
@@ -14,7 +10,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const u = await requireUser();
   // portal-only users (parents / students) use the separate portal layout
   if (!can(u, 'CD_DASHBOARD_PRV') && !can(u, 'CD_MY_PROFILE_PRV') && can(u, 'CD_PORTAL_PRV')) redirect('/portal');
-  const [asOf, ent] = [await getAsOf(), await enterpriseInfo(u.enterpriseId)];
+  const ent = await enterpriseInfo(u.enterpriseId);
   const menu = menuFor(u.privs);
   return (
     <div className="min-h-screen">
@@ -27,7 +23,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <span className="hidden rounded bg-white/15 px-1.5 py-0.5 text-[11px] font-bold tracking-tight sm:inline">caMpus dAy</span>
         </Link>
         <div className="ml-auto flex items-center gap-3">
-          <Suspense><AsOfPicker value={asOf} today={todayISO()} /></Suspense>
           <Link href="/account" className="hidden text-sm opacity-90 hover:underline sm:inline">{u.displayName}</Link>
           <form action={logout}><button className="rounded px-2 py-1 text-sm hover:bg-white/10">Logout</button></form>
         </div>

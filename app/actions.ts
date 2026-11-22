@@ -1,5 +1,4 @@
 'use server';
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import bcrypt from 'bcryptjs';
 import { sql } from '@/lib/db';
@@ -26,14 +25,6 @@ export async function login(fd: FormData) {
 export async function logout() {
   await destroySession();
   redirect('/login');
-}
-
-export async function setAsOf(fd: FormData) {
-  const d = String(fd.get('asof') || '');
-  const c = await cookies();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) c.set('erp_asof', d, { path: '/', sameSite: 'lax' });
-  else c.delete('erp_asof');
-  redirect(backOf(fd, '/'));
 }
 
 export async function changePassword(fd: FormData) {
