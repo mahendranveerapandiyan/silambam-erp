@@ -115,15 +115,35 @@ export async function saveNumberRule(id: string, fd: FormData) {
   await act('/config/numbering', async () => {
     const o = formObj(fd);
     const padding = Number(o.padding || 4);
-    if (padding < 1 || padding > 12) throw new Error('Padding must be between 1 and 12');
-    const [old] = await sql`select scope_code, reset_yearly_flag from number_rule where id = ${id}`;
-    await sql`update number_rule set method_code = ${o.method_code ?? 'AUTO'}, scope_code = ${o.scope_code ?? 'ENTERPRISE'}, prefix = ${o.prefix}, suffix = ${o.suffix},
+    if (padding < 1 || padding > 12) throw new Error('Digits (padding) must be between 1 and 12');
+    const start = Number(o.start_number || 1);
+    if (!(start >= 0)) throw new Error('Start number must be 0 or more');
+    const scope = o.scope_code ?? 'ENTERPRISE';
+    // per-branch / per-employer counters each start from the start number, so the
+    // number must contain the branch / employer code or numbers would repeat
+    if (scope !== 'ENTERPRISE' && o.include_scope_code_flag !== 'Y' && (o.method_code ?? 'AUTO') === 'AUTO')
+      throw new Error(`With numbering at ${scope === 'BU' ? 'Business Unit' : 'Legal Employer'} level each ${scope === 'BU' ? 'branch' : 'employer'} counts from ${start}, so "Include LE/BU Code" must be Yes – otherwise two people would get the same number. Or use Enterprise level.`);
+    if (o.reset_yearly_flag === 'Y' && o.include_year_flag !== 'Y' && (o.method_code ?? 'AUTO') === 'AUTO')
+      throw new Error('"Reset Every Year" needs "Include Year" = Yes, otherwise the numbers of different years would repeat.');
+    await sql`update number_rule set method_code = ${o.method_code ?? 'AUTO'}, scope_code = ${scope}, prefix = ${o.prefix}, suffix = ${o.suffix},
       separator = ${o.separator ?? ''}, include_scope_code_flag = ${o.include_scope_code_flag ?? 'N'}, include_year_flag = ${o.include_year_flag ?? 'N'},
-      reset_yearly_flag = ${o.reset_yearly_flag ?? 'N'}, padding = ${padding}, start_number = ${Number(o.start_number || 1)},
+      reset_yearly_flag = ${o.reset_yearly_flag ?? 'N'}, padding = ${padding}, start_number = ${start},
       last_updated_by = ${u.username}, last_update_date = now(), object_version_number = object_version_number + 1 where id = ${id} and enterprise_id = ${u.enterpriseId}`;
-    if (old && (old.scope_code !== o.scope_code || old.reset_yearly_flag !== o.reset_yearly_flag))
-      return { msg: 'Rule saved. Level/reset changed: numbering restarts from the start number for the new level.' };
-    return { msg: 'Number generation rule saved' };
+    return { msg: 'Rule saved. The Counters table shows the next number for each counter.' };
+  });
+}
+
+/** Set the next number a counter will issue (e.g. restart at 1 after changing the prefix). */
+export async function setNextNumber(ruleId: string, scopeId: string, period: string, fd: FormData) {
+  const u = await requirePriv('CD_NUMBERING_PRV', 'WRITE');
+  await act('/config/numbering', async () => {
+    const next = Number(formObj(fd).next_number);
+    if (!Number.isInteger(next) || next < 1) throw new Error('Next number must be a whole number, 1 or more');
+    const [r] = await sql`select id from number_rule where id = ${ruleId} and enterprise_id = ${u.enterpriseId}`;
+    if (!r) throw new Error('Rule not found');
+    await sql`insert into number_sequence (rule_id, scope_id, period, last_value) values (${ruleId}, ${scopeId}, ${period}, ${next - 1})
+      on conflict (rule_id, scope_id, period) do update set last_value = excluded.last_value`;
+    return { msg: `Next number set to ${next}. Numbers already in use are skipped automatically.` };
   });
 }
 

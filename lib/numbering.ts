@@ -53,11 +53,26 @@ export async function nextNumber(tx: Tx, enterpriseId: string, objectCode: strin
   const rule = await getRule(tx, enterpriseId, objectCode);
   if (!rule || rule.method_code === 'MANUAL') return null;
   const { scopeId, scopeCode, year, period } = await resolveScope(tx, rule, objectCode, ctx);
-  const [seq] = await tx`
-    insert into number_sequence (rule_id, scope_id, period, last_value) values (${rule.id}, ${scopeId}, ${period}, ${rule.start_number})
-    on conflict (rule_id, scope_id, period) do update set last_value = number_sequence.last_value + 1
-    returning last_value`;
-  return formatNumber(rule, seq.last_value, scopeCode, year);
+  // take the next value; if that number is already used (e.g. typed manually
+  // earlier or issued under another level), move on to the next free one
+  for (let guard = 0; guard < 10000; guard++) {
+    const [seq] = await tx`
+      insert into number_sequence (rule_id, scope_id, period, last_value) values (${rule.id}, ${scopeId}, ${period}, ${rule.start_number})
+      on conflict (rule_id, scope_id, period) do update set last_value = number_sequence.last_value + 1
+      returning last_value`;
+    const num = formatNumber(rule, seq.last_value, scopeCode, year);
+    if (!(await numberInUse(tx, enterpriseId, objectCode, num))) return num;
+  }
+  throw new Error(`Could not find a free ${objectCode.toLowerCase()} number – check Configuration › Number Generation.`);
+}
+
+/** Is this number already held by a record? */
+export async function numberInUse(tx: Tx, enterpriseId: string, objectCode: string, num: string) {
+  const r =
+    objectCode === 'PERSON' ? await tx`select 1 from person where enterprise_id = ${enterpriseId} and person_number = ${num}`
+    : objectCode === 'RECEIPT' ? await tx`select 1 from fee_payment where enterprise_id = ${enterpriseId} and receipt_number = ${num}`
+    : await tx`select 1 from assignment where enterprise_id = ${enterpriseId} and assignment_type = ${objectCode} and upper(assignment_number) = upper(${num})`;
+  return r.length > 0;
 }
 
 /**
@@ -81,41 +96,40 @@ export async function releaseNumber(tx: Tx, enterpriseId: string, objectCode: st
   await tx`update number_sequence set last_value = ${last} where rule_id = ${rule.id} and scope_id = ${scopeId} and period = ${period}`;
 }
 
-export type NumberPreviews = { single: string | null; byScope: Record<string, string>; classToScope: Record<string, string>; buToScope: Record<string, string> } | null;
+export type NumberPreviews = {
+  rule: { prefix: string | null; suffix: string | null; separator: string; padding: number; include_scope_code_flag: string; include_year_flag: string;
+    reset_yearly_flag: string; scope_code: string; start_number: number };
+  counters: Record<string, number>; // "<scopeId>|<period>" -> last value
+  scopeCodes: Record<string, string>; // scopeId -> code shown in the number
+  buToScope: Record<string, string>; classToScope: Record<string, string>;
+} | null;
 
 /**
- * The number the next student / staff member would get, without using it up.
- * For branch- or LE-level rules it is worked out per branch / LE; the form
- * picks the right one from the selected branch or class.
+ * Everything the hire / admission page needs to show the number the new person
+ * will get (formatted in the browser for the chosen branch and hire date).
  */
 export async function numberPreviews(enterpriseId: string, kind: 'STUDENT' | 'STAFF', date: string): Promise<NumberPreviews> {
   const { sql } = await import('./db');
   const rule = await getRule(sql, enterpriseId, kind);
   if (!rule || rule.method_code === 'MANUAL') return null;
-  const year = date.slice(0, 4);
-  const period = rule.reset_yearly_flag === 'Y' ? year : 'ALL';
-  const next = async (scopeId: string, scopeCode: string | null) => {
-    const [s] = await sql`select last_value from number_sequence where rule_id = ${rule.id} and scope_id = ${scopeId} and period = ${period}`;
-    return formatNumber(rule, s ? Number(s.last_value) + 1 : Number(rule.start_number), scopeCode, year);
-  };
-  const out = { single: null as string | null, byScope: {} as Record<string, string>, classToScope: {} as Record<string, string>, buToScope: {} as Record<string, string> };
-  if (rule.scope_code === 'ENTERPRISE') {
-    out.single = await next('0', null);
-    return out;
-  }
+  const counters = Object.fromEntries((await sql`select scope_id, period, last_value from number_sequence where rule_id = ${rule.id}`)
+    .map((r) => [`${r.scope_id}|${r.period}`, Number(r.last_value)]));
   const bus = await sql`select b.id, b.code, f.legal_employer_id from business_unit b
     join lateral (select * from business_unit_f x where x.id = b.id order by (${date}::date between x.effective_start_date and x.effective_end_date) desc, x.effective_start_date desc limit 1) f on true
     where b.enterprise_id = ${enterpriseId}`;
-  if (rule.scope_code === 'BU') {
-    for (const b of bus) { out.byScope[String(b.id)] = await next(String(b.id), b.code); out.buToScope[String(b.id)] = String(b.id); }
-  } else {
-    const les = await sql`select id, code from legal_employer where enterprise_id = ${enterpriseId}`;
-    for (const l of les) out.byScope[String(l.id)] = await next(String(l.id), l.code);
-    for (const b of bus) out.buToScope[String(b.id)] = String(b.legal_employer_id);
-  }
+  const les = await sql`select id, code from legal_employer where enterprise_id = ${enterpriseId}`;
+  const scopeCodes: Record<string, string> = {};
+  const buToScope: Record<string, string> = {};
+  if (rule.scope_code === 'BU') for (const b of bus) { scopeCodes[String(b.id)] = b.code; buToScope[String(b.id)] = String(b.id); }
+  else if (rule.scope_code === 'LE') { for (const l of les) scopeCodes[String(l.id)] = l.code; for (const b of bus) buToScope[String(b.id)] = String(b.legal_employer_id); }
+  else for (const b of bus) buToScope[String(b.id)] = '0';
   const classes = await sql`select c.id, f.business_unit_id from class c
     join lateral (select * from class_f x where x.id = c.id order by (${date}::date between x.effective_start_date and x.effective_end_date) desc, x.effective_start_date desc limit 1) f on true
     where c.enterprise_id = ${enterpriseId}`;
-  for (const c of classes) out.classToScope[String(c.id)] = out.buToScope[String(c.business_unit_id)];
-  return out;
+  const classToScope = Object.fromEntries(classes.map((c) => [String(c.id), buToScope[String(c.business_unit_id)]]));
+  return {
+    rule: { prefix: rule.prefix, suffix: rule.suffix, separator: rule.separator ?? '', padding: Number(rule.padding), include_scope_code_flag: rule.include_scope_code_flag,
+      include_year_flag: rule.include_year_flag, reset_yearly_flag: rule.reset_yearly_flag, scope_code: rule.scope_code, start_number: Number(rule.start_number) },
+    counters, scopeCodes, buToScope, classToScope,
+  };
 }

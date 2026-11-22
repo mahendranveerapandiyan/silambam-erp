@@ -142,6 +142,8 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
         pv.attributes = await parseAttributes(u.enterpriseId, kind, fd);
         const pnum = (await nextNumber(tx, u.enterpriseId, 'PERSON', { date })) ?? o.person_number;
         if (!pnum) throw new Error('Person number is required (manual numbering)');
+        const [ptaken] = await tx`select 1 from person where enterprise_id = ${u.enterpriseId} and upper(person_number) = upper(${pnum})`;
+        if (ptaken) throw new Error(`Person number ${pnum} is already used. Enter a different number.`);
         const [p] = await tx`insert into person (enterprise_id, person_number, date_of_birth, qr_token, created_by)
           values (${u.enterpriseId}, ${pnum}, ${o.date_of_birth}, ${crypto.randomBytes(12).toString('hex')}, ${u.username}) returning id`;
         personId = p.id;
@@ -163,6 +165,9 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
       if (!hire) throw new Error(`No ${kind === 'STUDENT' ? 'admission' : 'hire'} action is configured`);
       const anum = (await nextNumber(tx, u.enterpriseId, kind, { buId: av.business_unit_id, leId: av.legal_employer_id, date })) ?? o.assignment_number;
       if (!anum) throw new Error(`${kind === 'STUDENT' ? 'Student' : 'Staff'} number is required (manual numbering)`);
+      const [taken] = await tx`select a.person_id, (select trim(concat_ws(' ', first_name, last_name)) from person_f x where x.id = a.person_id order by effective_start_date desc limit 1) who
+        from assignment a where a.enterprise_id = ${u.enterpriseId} and a.assignment_type = ${kind} and upper(a.assignment_number) = upper(${anum})`;
+      if (taken) throw new Error(`${kind === 'STUDENT' ? 'Student' : 'Staff'} number ${anum} is already used by ${taken.who ?? 'another person'}. Enter a different number.`);
       const [a] = await tx`insert into assignment (enterprise_id, person_id, assignment_type, assignment_number, original_start_date, created_by)
         values (${u.enterpriseId}, ${personId}, ${kind}, ${anum}, ${date}, ${u.username}) returning id`;
       if (!av.person_type_id) {
