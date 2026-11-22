@@ -86,11 +86,13 @@ try {
 
     for (const [type, [meaning, module, access, parent, values]] of Object.entries(LOOKUPS)) {
       await tx`insert into lookup_type (lookup_type, meaning, module_code, access_level, parent_lookup_type, created_by)
-               values (${type}, ${meaning}, ${module}, ${access}, ${parent}, ${BY})`;
+               values (${type}, ${meaning}, ${module}, ${access}, ${parent}, ${BY})
+               on conflict (lookup_type) do nothing`; // some types are created by migrations
       let seq = 10;
       for (const [code, m, tag, pcode] of values) {
         await tx`insert into lookup_value (lookup_type, lookup_code, meaning, tag, parent_code, display_seq, system_flag, created_by)
-                 values (${type}, ${code}, ${m}, ${tag ?? null}, ${pcode ?? null}, ${seq}, ${access === 'SYSTEM' ? 'Y' : 'N'}, ${BY})`;
+                 values (${type}, ${code}, ${m}, ${tag ?? null}, ${pcode ?? null}, ${seq}, ${access === 'SYSTEM' ? 'Y' : 'N'}, ${BY})
+                 on conflict do nothing`;
         seq += 10;
       }
     }
@@ -131,7 +133,7 @@ try {
       { object_code: 'RECEIPT', prefix: 'RC', separator: '/', padding: 5, scope_code: 'BU', include_scope_code_flag: 'Y', include_year_flag: 'Y', reset_yearly_flag: 'Y' },
     ]) await tx`insert into number_rule ${tx({ enterprise_id: E, created_by: BY, ...r })}`;
     for (const [cat, method] of [['STAFF', 'STAFF_NUMBER'], ['STUDENT', 'STUDENT_NUMBER'], ['PARENT', 'MANUAL']])
-      await tx`insert into user_name_rule (enterprise_id, person_category, method_code, last_updated_by) values (${E}, ${cat}, ${method}, ${BY})`;
+      await tx`insert into user_name_rule (enterprise_id, person_category, method_code, last_updated_by) values (${E}, ${cat}, ${method}, ${BY}) on conflict do nothing`;
 
     // Theme defaults
     for (const [k, v] of Object.entries({
