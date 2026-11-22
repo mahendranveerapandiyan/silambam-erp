@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import type { Opt } from '@/lib/lookups';
+import { Icon } from './icons';
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
@@ -66,15 +67,18 @@ export const STATUS_COLOR: Record<string, string> = {
   P: 'green', L: 'amber', A: 'red', LV: 'blue', HD: 'amber', H: 'gray',
 };
 
-export function Stat({ label, value, sub, href }: { label: string; value: ReactNode; sub?: ReactNode; href?: string }) {
+export function Stat({ label, value, sub, href, icon, dark }: { label: string; value: ReactNode; sub?: ReactNode; href?: string; icon?: string; dark?: boolean }) {
   const body = (
-    <div className="card h-full">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="mt-1 text-2xl font-bold">{value}</div>
-      {sub && <div className="muted mt-0.5">{sub}</div>}
+    <div className={`${dark ? 'card-dark' : 'card'} h-full transition hover:-translate-y-0.5`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className={`text-sm font-medium ${dark ? 'text-slate-300' : 'text-slate-500'}`}>{label}</div>
+        {icon && <span className={`rounded-full p-1.5 ${dark ? 'bg-white text-slate-900' : 'bg-sky-50 text-[var(--accent-color)]'}`}><Icon name={icon} className="h-4 w-4" /></span>}
+      </div>
+      <div className="mt-3 text-3xl font-semibold tracking-tight">{value}</div>
+      {sub && <div className={`mt-1 text-sm ${dark ? 'text-slate-300' : 'text-slate-500'}`}>{sub}</div>}
     </div>
   );
-  return href ? <Link href={href} className="block hover:opacity-90">{body}</Link> : body;
+  return href ? <Link href={href} className="block">{body}</Link> : body;
 }
 
 export function Empty({ children = 'No records found.' }: { children?: ReactNode }) {

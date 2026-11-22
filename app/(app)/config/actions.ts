@@ -133,7 +133,7 @@ export async function saveTheme(fd: FormData) {
   await act('/config/theme', async () => {
     const o = formObj(fd);
     if (o._reset) {
-      const defaults: Record<string, string> = { header_bg: '#7a1f1f', header_text: '#ffffff', sidebar_bg: '#1f2933', sidebar_text: '#e4e7eb', body_bg: '#f5f3ef', card_bg: '#ffffff', text_color: '#1f2933', primary_color: '#b45309', font_size: '14', font_family: 'Inter, system-ui, sans-serif' };
+      const defaults: Record<string, string> = { header_bg: '#ffffff', header_text: '#0f172a', sidebar_bg: '#0b0f19', sidebar_text: '#e2e8f0', body_bg: '#eef2f7', card_bg: '#ffffff', text_color: '#0f172a', primary_color: '#0284c7', accent_color: '#0ea5e9', font_size: '14', font_family: 'Inter, system-ui, sans-serif' };
       Object.assign(o, defaults);
     }
     for (const [k, , type] of THEME_KEYS) {

@@ -10,6 +10,7 @@ export const THEME_KEYS: [string, string, 'color' | 'number' | 'text'][] = [
   ['card_bg', 'Card / Panel Background', 'color'],
   ['text_color', 'Text Colour', 'color'],
   ['primary_color', 'Primary / Button Colour', 'color'],
+  ['accent_color', 'Accent Colour (highlights, icons)', 'color'],
   ['font_size', 'Base Font Size (px)', 'number'],
   ['font_family', 'Font Family', 'text'],
 ];
