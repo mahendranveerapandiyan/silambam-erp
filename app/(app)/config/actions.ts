@@ -141,9 +141,9 @@ export async function setNextNumber(ruleId: string, scopeId: string, period: str
     if (!Number.isInteger(next) || next < 1) throw new Error('Next number must be a whole number, 1 or more');
     const [r] = await sql`select id from number_rule where id = ${ruleId} and enterprise_id = ${u.enterpriseId}`;
     if (!r) throw new Error('Rule not found');
-    await sql`insert into number_sequence (rule_id, scope_id, period, last_value) values (${ruleId}, ${scopeId}, ${period}, ${next - 1})
-      on conflict (rule_id, scope_id, period) do update set last_value = excluded.last_value`;
-    return { msg: `Next number set to ${next}. Numbers already in use are skipped automatically.` };
+    await sql`insert into number_sequence (rule_id, scope_id, period, last_value, next_min) values (${ruleId}, ${scopeId}, ${period}, 0, ${next})
+      on conflict (rule_id, scope_id, period) do update set next_min = excluded.next_min`;
+    return { msg: `Numbering will continue from ${next} – or from the highest number in use + 1, if that is higher.` };
   });
 }
 

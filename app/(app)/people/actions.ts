@@ -7,7 +7,7 @@ import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/a
 import { getAsOf } from '@/lib/asof';
 import { act, backOf, formObj, fileToBytes } from '@/lib/util';
 import { dtChange, dtCorrectVersion } from '@/lib/dt';
-import { nextNumber, releaseNumber } from '@/lib/numbering';
+import { nextNumber } from '@/lib/numbering';
 import { assertStudentAccess, myClasses, seesAllStudents } from '@/lib/scope';
 
 const dirPriv = (k: PersonKind) => (k === 'STUDENT' ? 'CD_STUDENT_DIRECTORY_PRV' : 'CD_STAFF_DIRECTORY_PRV');
@@ -373,8 +373,6 @@ export async function deletePerson(kind: PersonKind, personId: string, fd: FormD
     let number = '';
     await sql.begin(async (tx) => {
       const [a] = await tx`select id, assignment_number, original_start_date from assignment where person_id = ${personId} and assignment_type = ${kind}`;
-      const [first] = await tx`select business_unit_id, legal_employer_id from assignment_f where id = ${a.id} order by effective_start_date limit 1`;
-      const [pers] = await tx`select person_number, creation_date::date d from person where id = ${personId}`;
       number = a.assignment_number;
       await tx`delete from fee_demand where assignment_id = ${a.id} or (person_id = ${personId} and ${kind} = 'STUDENT')`;
       await tx`delete from assignment where id = ${a.id}`;
@@ -382,11 +380,8 @@ export async function deletePerson(kind: PersonKind, personId: string, fd: FormD
       // logins of this person stop working
       await tx`update user_account set active_flag = 'N', last_updated_by = ${u.username}, last_update_date = now() where person_id = ${personId}`;
       if (!other) await tx`delete from person where id = ${personId}`;
-      // give back the numbers if they were the newest ones issued
-      await releaseNumber(tx, u.enterpriseId, kind, { buId: first?.business_unit_id, leId: first?.legal_employer_id, date: a.original_start_date }, a.assignment_number,
-        async (n) => !!(await tx`select 1 from assignment where enterprise_id = ${u.enterpriseId} and assignment_type = ${kind} and assignment_number = ${n}`).length);
-      if (!other) await releaseNumber(tx, u.enterpriseId, 'PERSON', { date: a.original_start_date }, pers.person_number,
-        async (n) => !!(await tx`select 1 from person where enterprise_id = ${u.enterpriseId} and person_number = ${n}`).length);
+      // no counter to rewind: the next number is always the highest in use + 1,
+      // so deleting the newest record gives its number back automatically
     });
     return { to: base, msg: `${kind === 'STUDENT' ? 'Student' : 'Staff'} ${number} deleted` };
   });
