@@ -117,6 +117,7 @@ export async function refOptions(entityKey: string, enterpriseId: string, asOf: 
   return rows
     .map((r) => ({
       value: String(r.id),
+      code: r.code as string,
       label: e.parentRef && parentNames[r[e.parentRef.field]] ? `${parentNames[r[e.parentRef.field]]} › ${r.name}` : r.name,
       parent: e.parentRef ? r[e.parentRef.field] : null,
       inactive: r.active_flag === 'N',
@@ -172,23 +173,23 @@ export async function dtSpan(tx: Tx, table: string, id: string) {
 // name it had in that period, so forms can show only what exists on the date
 // being entered (e.g. a branch renamed LSTS -> LSTC shows the right name).
 // ------------------------------------------------------------------------
-export type DatedOpt = { value: string; label: string; start: string; end: string; parent?: string | null; inactive?: boolean };
+export type DatedOpt = { value: string; label: string; code?: string | null; start: string; end: string; parent?: string | null; inactive?: boolean };
 
 export async function datedRefOptions(entityKey: string, enterpriseId: string, opts: { parentField?: string; plain?: boolean } = {}): Promise<DatedOpt[]> {
   const e = ENTITIES[entityKey];
   if (opts.plain || opts.parentField) {
     // own names only; parent = the given column (or the registry parent)
     const pf = opts.parentField ?? e.parentRef?.field;
-    const rows = await sql`select b.id, f.* from ${sql(e.table)} b join ${sql(e.table + '_f')} f on f.id = b.id where b.enterprise_id = ${enterpriseId} ${fixedWhere(e)} order by f.name, f.effective_start_date`;
-    return rows.map((r) => ({ value: String(r.id), label: r.name, start: r.effective_start_date, end: r.effective_end_date, parent: pf && r[pf] ? String(r[pf]) : null, inactive: r.active_flag === 'N' }));
+    const rows = await sql`select b.id, b.code, f.* from ${sql(e.table)} b join ${sql(e.table + '_f')} f on f.id = b.id where b.enterprise_id = ${enterpriseId} ${fixedWhere(e)} order by f.name, f.effective_start_date`;
+    return rows.map((r) => ({ value: String(r.id), code: r.code as string, label: r.name, start: r.effective_start_date, end: r.effective_end_date, parent: pf && r[pf] ? String(r[pf]) : null, inactive: r.active_flag === 'N' }));
   }
   const rows = await sql`
-    select b.id, f.* from ${sql(e.table)} b join ${sql(e.table + '_f')} f on f.id = b.id
+    select b.id, b.code, f.* from ${sql(e.table)} b join ${sql(e.table + '_f')} f on f.id = b.id
     where b.enterprise_id = ${enterpriseId} ${fixedWhere(e)}
     order by ${e.fields.some((x) => x.name === 'sequence_no') ? sql`f.sequence_no,` : sql``} f.name, f.effective_start_date`;
   if (!e.parentRef || e.parentInLabel === false) {
     const pf = e.parentRef?.field;
-    return rows.map((r) => ({ value: String(r.id), label: r.name, start: r.effective_start_date, end: r.effective_end_date, parent: pf && r[pf] ? String(r[pf]) : null, inactive: r.active_flag === 'N' }));
+    return rows.map((r) => ({ value: String(r.id), code: r.code as string, label: r.name, start: r.effective_start_date, end: r.effective_end_date, parent: pf && r[pf] ? String(r[pf]) : null, inactive: r.active_flag === 'N' }));
   }
   // label "Parent › Name": split each version by the parent's versions
   const parents = await datedRefOptions(e.parentRef.entity, enterpriseId);
@@ -198,7 +199,7 @@ export async function datedRefOptions(entityKey: string, enterpriseId: string, o
     for (const p of parents.filter((x) => x.value === pid)) {
       const start = r.effective_start_date > p.start ? r.effective_start_date : p.start;
       const end = r.effective_end_date < p.end ? r.effective_end_date : p.end;
-      if (start <= end) out.push({ value: String(r.id), label: `${p.label} › ${r.name}`, start, end, parent: pid, inactive: r.active_flag === 'N' || p.inactive });
+      if (start <= end) out.push({ value: String(r.id), code: r.code as string, label: `${p.label} › ${r.name}`, start, end, parent: pid, inactive: r.active_flag === 'N' || p.inactive });
     }
   }
   return out.sort((a, b) => a.label.localeCompare(b.label));
@@ -207,7 +208,7 @@ export async function datedRefOptions(entityKey: string, enterpriseId: string, o
 export async function datedLookupOptions(type: string): Promise<DatedOpt[]> {
   const rows = await sql`select lookup_code, meaning, parent_code, start_date, end_date from lookup_value
     where lookup_type = ${type} and enabled_flag = 'Y' order by display_seq, meaning`;
-  return rows.map((r) => ({ value: r.lookup_code, label: r.meaning, start: r.start_date, end: r.end_date, parent: r.parent_code }));
+  return rows.map((r) => ({ value: r.lookup_code, code: r.lookup_code, label: r.meaning, start: r.start_date, end: r.end_date, parent: r.parent_code }));
 }
 
 /** Name of a record on a given date from a preloaded version list. */

@@ -53,7 +53,7 @@ export default async function Lookups({ searchParams }: { searchParams: SP }) {
           <Field label="Meaning *"><input name="meaning" className="input" required /></Field>
           <Field label="Module"><select name="module_code" className="input">{['COMMON', 'GEOGRAPHY', 'ACADEMIC', 'WORKFORCE', 'ATTENDANCE', 'FEES', 'EXAMS', 'EVENTS', 'INVENTORY', 'FINANCE'].map((m) => <option key={m}>{m}</option>)}</select></Field>
           <Field label="Parent Lookup (for dependent lists)">
-            <select name="parent_lookup_type" className="input"><option value="">None</option>{rows.map((r) => <option key={r.lookup_type} value={r.lookup_type}>{r.meaning}</option>)}</select>
+            <select name="parent_lookup_type" className="input"><option value="">None</option>{rows.map((r) => <option key={r.lookup_type} value={r.lookup_type} data-code={r.lookup_type}>{r.meaning}</option>)}</select>
           </Field>
           <Field label="Description"><textarea name="description" className="input" rows={2} /></Field>
           <button className="btn btn-primary">Create</button>

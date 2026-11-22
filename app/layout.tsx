@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { getTheme, themeStyle, enterpriseInfo } from '@/lib/theme';
 import { getUser } from '@/lib/auth';
+import { LovSearch } from '@/components/LovSearch';
 
 export async function generateMetadata(): Promise<Metadata> {
   const e = await enterpriseInfo();
@@ -17,7 +18,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <head>
         <style dangerouslySetInnerHTML={{ __html: themeStyle(theme) }} />
       </head>
-      <body className="min-h-screen antialiased">{children}</body>
+      <body className="min-h-screen antialiased">{children}<LovSearch /></body>
     </html>
   );
 }

@@ -2,7 +2,7 @@ import 'server-only';
 import { cache } from 'react';
 import { sql } from './db';
 
-export type Opt = { value: string; label: string; parent?: string | null; inactive?: boolean };
+export type Opt = { value: string; label: string; code?: string | null; parent?: string | null; inactive?: boolean };
 
 /** Enabled lookup values valid on the given date, in display order. */
 export async function lookupOptions(type: string, asOf: string): Promise<Opt[]> {
@@ -10,7 +10,7 @@ export async function lookupOptions(type: string, asOf: string): Promise<Opt[]> 
     select lookup_code, meaning, parent_code from lookup_value
     where lookup_type = ${type} and enabled_flag = 'Y' and ${asOf}::date between start_date and end_date
     order by display_seq, meaning`;
-  return rows.map((r) => ({ value: r.lookup_code, label: r.meaning, parent: r.parent_code }));
+  return rows.map((r) => ({ value: r.lookup_code, label: r.meaning, code: r.lookup_code, parent: r.parent_code }));
 }
 
 /** All meanings for all lookups (cached per request) - used to render codes. */

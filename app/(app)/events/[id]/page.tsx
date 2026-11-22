@@ -53,7 +53,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
                 <tr key={r.id}>
                   <td><Link className="link" href={`/students/${r.person_id}?tab=events`}>{r.full_name}</Link><div className="text-xs text-gray-500">{r.assignment_number}</div></td>
                   <td>{r.class_name}</td>
-                  <td><select name="participation_code" form={fid} defaultValue={r.participation_code ?? 'PARTICIPANT'} className="input w-36">{roles.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}</select></td>
+                  <td><select name="participation_code" form={fid} defaultValue={r.participation_code ?? 'PARTICIPANT'} className="input w-36">{roles.map((x) => <option key={x.value} value={x.value} data-code={x.value}>{x.label}</option>)}</select></td>
                   <td><input name="achievement" form={fid} defaultValue={r.achievement ?? ''} placeholder="e.g. Gold – Single stick" className="input" /></td>
                   <td>{r.payment_status && <Badge color={STATUS_COLOR[r.payment_status]}>{L('FEE_PAYMENT_STATUS', r.payment_status)}</Badge>}</td>
                   <td><form id={fid} action={updateParticipant.bind(null, id, r.id)} className="flex gap-1"><Back to={back} /><button className="btn btn-sm">Save</button><button name="_delete" value="1" className="btn btn-sm">✕</button></form></td>

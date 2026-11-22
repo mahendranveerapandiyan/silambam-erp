@@ -30,7 +30,7 @@ export function IdTypeSelect({ name, options, value, required, fixedCountry, wat
     <>
       <select name={name} value={ok ? sel : ''} onChange={(e) => setSel(e.target.value)} required={required} className="input">
         <option value="">— Select —</option>
-        {visible.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {visible.map((o) => <option key={o.value} value={o.value} data-code={o.value}>{o.label}</option>)}
       </select>
       <span className="mt-0.5 block text-xs text-gray-500">
         {country ? `Types for ${countryNames[country] ?? country} (legal employer)` : watch ? 'Choose the legal employer / branch to narrow the list' : ''}

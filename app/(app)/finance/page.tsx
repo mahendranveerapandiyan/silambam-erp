@@ -37,8 +37,8 @@ export default async function Finance({ searchParams }: { searchParams: SP }) {
         <Field label="Category *" className="sm:col-span-2">
           <select name="category" className="input" required defaultValue="">
             <option value="" disabled>Choose…</option>
-            <optgroup label="Expense">{exp.map((x) => <option key={x.value} value={`EXPENSE:${x.value}`}>{x.label}</option>)}</optgroup>
-            <optgroup label="Income">{inc.map((x) => <option key={x.value} value={`INCOME:${x.value}`}>{x.label}</option>)}</optgroup>
+            <optgroup label="Expense">{exp.map((x) => <option key={x.value} value={`EXPENSE:${x.value}`} data-code={x.value}>{x.label}</option>)}</optgroup>
+            <optgroup label="Income">{inc.map((x) => <option key={x.value} value={`INCOME:${x.value}`} data-code={x.value}>{x.label}</option>)}</optgroup>
           </select>
         </Field>
         <Field label="Date"><input type="date" name="txn_date" defaultValue={todayISO()} className="input" /></Field>

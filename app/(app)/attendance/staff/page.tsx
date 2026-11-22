@@ -44,7 +44,7 @@ export default async function StaffAttendance({ searchParams }: { searchParams: 
             <tr key={r.person_id}>
               <td><div className="font-medium">{r.full_name}</div><div className="text-xs text-gray-500">{r.assignment_number} · {r.job_name}</div></td>
               <td>{r.bu_name}</td>
-              <td><select name={`st_${r.person_id}`} defaultValue={r.status_code ?? ''} className="input w-32"><option value="">—</option>{statuses.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}</select></td>
+              <td><select name={`st_${r.person_id}`} defaultValue={r.status_code ?? ''} className="input w-32"><option value="">—</option>{statuses.map((x) => <option key={x.value} value={x.value} data-code={x.value}>{x.label}</option>)}</select></td>
               <td><input type="time" name={`in_${r.person_id}`} defaultValue={hhmm(r.check_in_time)} className="input w-28" /></td>
               <td><input type="time" name={`out_${r.person_id}`} defaultValue={hhmm(r.check_out_time)} className="input w-28" /></td>
               <td><input name={`rs_${r.person_id}`} defaultValue={r.reason ?? ''} className="input" /></td>

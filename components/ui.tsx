@@ -43,7 +43,7 @@ export function Select({
     <select name={name} id={id} defaultValue={value ?? ''} required={required} disabled={disabled} className={className}>
       {empty !== false && <option value="">{empty}</option>}
       {options.map((o) => (
-        <option key={o.value} value={o.value} data-parent={o.parent ?? ''}>
+        <option key={o.value} value={o.value} data-parent={o.parent ?? ''} data-code={o.code ?? undefined}>
           {o.label}
           {o.inactive ? ' (inactive)' : ''}
         </option>

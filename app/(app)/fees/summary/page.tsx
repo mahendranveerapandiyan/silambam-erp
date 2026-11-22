@@ -50,7 +50,7 @@ export default async function FeeSummary({ searchParams }: { searchParams: SP })
       <form className="card mb-4 flex flex-wrap gap-2 no-print">
         <Select name="ay" options={years.map((y) => ({ value: String(y.id), label: y.name }))} value={ay} empty={false} className="input max-w-xs" />
         <Select name="bu" options={bus} value={bu} empty="All business units" className="input max-w-xs" />
-        <select name="ft" defaultValue={ft ?? ''} className="input max-w-xs"><option value="">All fee types</option>{byType.map((t) => <option key={t.fee_type_code} value={t.fee_type_code}>{L('FEE_TYPE', t.fee_type_code)}</option>)}</select>
+        <select name="ft" defaultValue={ft ?? ''} className="input max-w-xs"><option value="">All fee types</option>{byType.map((t) => <option key={t.fee_type_code} value={t.fee_type_code} data-code={t.fee_type_code}>{L('FEE_TYPE', t.fee_type_code)}</option>)}</select>
         <AutoSubmit />
       </form>
       <div className="mb-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">

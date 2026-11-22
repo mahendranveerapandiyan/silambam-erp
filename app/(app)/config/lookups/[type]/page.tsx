@@ -26,7 +26,7 @@ export default async function LookupValues({ params, searchParams }: { params: P
   const isId = type === 'IDENTIFICATION_TYPE';
   const ParentSel = ({ v, form }: { v?: string; form: string }) =>
     t.parent_lookup_type ? (
-      <select name="parent_code" form={form} defaultValue={v ?? ''} className="input"><option value="" />{parents.map((p) => <option key={p.lookup_code} value={p.lookup_code}>{p.meaning}</option>)}</select>
+      <select name="parent_code" form={form} defaultValue={v ?? ''} className="input"><option value="" />{parents.map((p) => <option key={p.lookup_code} value={p.lookup_code} data-code={p.lookup_code}>{p.meaning}</option>)}</select>
     ) : <span className="text-xs text-gray-400">—</span>;
   return (
     <div>

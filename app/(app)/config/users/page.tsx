@@ -25,7 +25,7 @@ export default async function Users({ searchParams }: { searchParams: SP }) {
       <div className="card overflow-x-auto">
         <form className="mb-3 flex gap-2">
           <input name="q" defaultValue={q ?? ''} placeholder="Search username or name" className="input max-w-xs" />
-          <select name="role" defaultValue={role ?? ''} className="input max-w-[12rem]"><option value="">All roles</option>{(await sql`select code, name from app_role order by name`).map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}</select>
+          <select name="role" defaultValue={role ?? ''} className="input max-w-[12rem]"><option value="">All roles</option>{(await sql`select code, name from app_role order by name`).map((r) => <option key={r.code} value={r.code} data-code={r.code}>{r.name}</option>)}</select>
           <button className="btn">Filter</button>
         </form>
         <table className="tbl">

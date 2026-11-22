@@ -30,7 +30,7 @@ export default async function Sale({ searchParams }: { searchParams: SP }) {
         {[0, 1, 2, 3, 4].map((i) => (
           <div key={i} className="grid grid-cols-[1fr_6rem] gap-2">
             <select name={`item_${i}`} className="input" defaultValue=""><option value="">{i === 0 ? 'Select item *' : '— another item —'}</option>
-              {items.map((it) => <option key={it.id} value={it.id}>{it.name}{it.size_label ? ` – ${it.size_label}` : ''} · {money(it.unit_price)}</option>)}</select>
+              {items.map((it) => <option key={it.id} value={it.id} data-code={it.code}>{it.name}{it.size_label ? ` – ${it.size_label}` : ''} · {money(it.unit_price)}</option>)}</select>
             <input name={`qty_${i}`} type="number" min="0" defaultValue={i === 0 ? 1 : ''} placeholder="Qty" className="input" />
           </div>
         ))}

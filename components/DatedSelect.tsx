@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 
-export type DatedOpt = { value: string; label: string; start: string; end: string; parent?: string | null; inactive?: boolean };
+export type DatedOpt = { value: string; label: string; code?: string | null; start: string; end: string; parent?: string | null; inactive?: boolean };
 
 const valOf = (name?: string) =>
   name ? (document.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${name}"]`)?.value ?? '') : '';
@@ -57,7 +57,7 @@ export function DatedSelect({
     <>
       <select ref={ref} name={name} value={missing || otherParent ? '' : sel} onChange={(e) => setSel(e.target.value)} required={required} disabled={disabled} className={className}>
         {empty !== false && <option value="">{empty}</option>}
-        {visible.map((o) => <option key={o.value} value={o.value} data-parent={o.parent ?? ''}>{o.label}{o.inactive ? ' (inactive)' : ''}</option>)}
+        {visible.map((o) => <option key={o.value} value={o.value} data-parent={o.parent ?? ''} data-code={o.code ?? undefined}>{o.label}{o.inactive ? ' (inactive)' : ''}</option>)}
       </select>
       {missing && <span className="mt-0.5 block text-xs text-amber-700">“{missingLabel ?? sel}” is not effective on {date || 'this date'} – choose another.</span>}
     </>
