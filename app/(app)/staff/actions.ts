@@ -20,7 +20,14 @@ export async function saveIncharge(fd: FormData) {
     if (!p) throw new Error(`No staff member with number ${o.staff_number}`);
     const [active] = await sql`select 1 from assignment_f af join assignment_status_f st on st.id = af.assignment_status_id and ${start}::date between st.effective_start_date and st.effective_end_date
       where af.id = ${p.id} and ${start}::date between af.effective_start_date and af.effective_end_date and st.system_status_code = 'ACTIVE'`;
-    if (!active) throw new Error(`Staff ${o.staff_number} is not active on ${start}.`);
+    if (!active) {
+      const [from] = await sql`select min(af.effective_start_date) d from assignment_f af
+        join assignment_status_f st on st.id = af.assignment_status_id and af.effective_start_date between st.effective_start_date and st.effective_end_date
+        where af.id = ${p.id} and st.system_status_code = 'ACTIVE' and af.effective_end_date >= ${start}::date and af.effective_start_date <= ${end}::date`;
+      throw new Error(from?.d
+        ? `Staff ${o.staff_number} is not active on ${start}; they are active from ${from.d}. Set "From" to ${from.d} or later.`
+        : `Staff ${o.staff_number} is not active between ${start} and ${end}.`);
+    }
     const [classId, sectionId] = o.class_section.split(':');
     await assertEffective(sql, 'class', classId, start, 'Class');
     if (sectionId) await assertEffective(sql, 'section', sectionId, start, 'Section');

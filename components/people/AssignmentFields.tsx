@@ -4,6 +4,7 @@ import type { PersonKind } from '@/lib/people';
 import { datedLookupOptions, datedRefOptions } from '@/lib/dt';
 import { allowedClassKeys } from '@/lib/scope';
 import { sql } from '@/lib/db';
+import { activeStaffPeriods } from '@/lib/people';
 import { Field } from '../ui';
 import { DatedSelect } from '../DatedSelect';
 import { PositionAutofill } from '../PositionAutofill';
@@ -62,6 +63,9 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
         from position b join position_f f on f.id = b.id where b.enterprise_id = ${E}`).map((r) => ({ id: String(r.id), start: r.effective_start_date, end: r.effective_end_date,
           business_unit_id: r.business_unit_id && String(r.business_unit_id), department_id: r.department_id && String(r.department_id), job_id: r.job_id && String(r.job_id),
           staff_grade_id: r.staff_grade_id && String(r.staff_grade_id), full_time_flag: r.full_time_flag }))} />
+      <Field label="Manager" help="Empty = the holder of the position's parent position (Reports To)">{D('manager_person_id', (await activeStaffPeriods(E))
+        .filter((m) => String(m.person_id) !== String(a.person_id ?? ''))
+        .map((m) => ({ value: String(m.person_id), label: m.full_name || m.assignment_number, code: m.assignment_number, start: m.start_date, end: m.end_date })), a.manager_person_id, { empty: '— From position hierarchy —' })}</Field>
       <Field label="Grade">{D('staff_grade_id', await datedRefOptions('staff-grades', E), a.staff_grade_id)}</Field>
       <Field label="Employment Type">{D('employment_type_code', await datedLookupOptions('EMPLOYMENT_TYPE'), a.employment_type_code)}</Field>
       <Field label="Employment Category">{D('employment_category_code', await datedLookupOptions('EMPLOYMENT_CATEGORY'), a.employment_category_code)}</Field>

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import type { SessionUser } from '@/lib/auth';
 import { can } from '@/lib/auth';
 import { sql } from '@/lib/db';
-import { assignmentBase, assignmentFor, personDetail, deletionBlockers, type PersonKind } from '@/lib/people';
+import { assignmentBase, assignmentFor, personDetail, deletionBlockers, managerOf, type PersonKind } from '@/lib/people';
 import { datedRefOptions, nameOn } from '@/lib/dt';
 import { lk, lookupOptions } from '@/lib/lookups';
 import { fmtDate, fmtDateTime, money, ageOn } from '@/lib/util';
@@ -32,6 +32,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   const ab = await assignmentBase(personId, kind);
   if (!p || !ab) notFound();
   const a = await assignmentFor(personId, kind, asOf);
+  const mgr = kind === 'STAFF' && a ? await managerOf(personId, asOf) : null;
   const L = await lk();
   const stu = kind === 'STUDENT';
   const base = stu ? '/students' : '/staff';
@@ -140,6 +141,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
               </> : <>
                 <Info label="Job">{a.job_name}</Info>
                 <Info label="Position">{a.position_name}</Info>
+                <Info label="Manager">{mgr ? <>{mgr.full_name} ({mgr.assignment_number}){mgr.source === 'POSITION' && <span className="block text-xs text-slate-500">from position hierarchy{mgr.position_name ? ` – ${mgr.position_name}` : ''}</span>}</> : '—'}</Info>
                 <Info label="Department">{a.department_name}</Info>
                 <Info label="Grade">{a.staff_grade_name}</Info>
                 <Info label="Employment Type">{L('EMPLOYMENT_TYPE', a.employment_type_code)}</Info>
@@ -193,6 +195,10 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
 
   async function AssignmentHistory() {
     const rows = await sql`select * from assignment_f where id = ${ab!.id} order by effective_start_date desc`;
+    const mids = [...new Set(rows.map((r) => r.manager_person_id).filter(Boolean).map(String))];
+    const mgrNames: Record<string, string> = Object.fromEntries((mids.length ? await sql`select a.person_id, a.assignment_number,
+        (select trim(concat_ws(' ', first_name, last_name)) from person_f x where x.id = a.person_id order by effective_start_date desc limit 1) n
+      from assignment a where a.person_id in ${sql(mids)} and a.assignment_type = 'STAFF'` : []).map((m) => [String(m.person_id), `${m.n} (${m.assignment_number})`]));
     const E = u.enterpriseId;
     const V = async (k: string) => datedRefOptions(k, E);
     const o = {
@@ -212,7 +218,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         </div>
         <table className="tbl">
           <thead><tr><th>From</th><th>To</th><th>Action</th><th>Reason</th><th>Status</th><th>Business Unit</th><th>Branch</th>
-            {stu ? <><th>Class › Section</th><th>Grade</th><th>Fee Freq.</th></> : <><th>Job</th><th>Position</th><th>Department</th><th>Grade</th><th>Payroll</th></>}
+            {stu ? <><th>Class › Section</th><th>Grade</th><th>Fee Freq.</th></> : <><th>Job</th><th>Position</th><th>Manager</th><th>Department</th><th>Grade</th><th>Payroll</th></>}
             <th>Comments</th><th>By</th></tr></thead>
           <tbody>{rows.map((r) => {
             const d = r.effective_start_date;
@@ -221,7 +227,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
               <td className="whitespace-nowrap">{fmtDate(r.effective_start_date)}</td><td className="whitespace-nowrap">{fmtDate(r.effective_end_date)}</td>
               <td>{at('action', r.action_id, d)}</td><td>{L('ACTION_REASON', r.action_reason_code)}</td><td>{at('status', r.assignment_status_id, d)}</td><td>{at('bu', r.business_unit_id, d)}</td><td>{at('br', r.branch_id, d)}</td>
               {stu ? <><td>{at('cls', r.class_id, d)}{r.section_id && ` › ${at('sec', r.section_id, d)}`}</td><td>{at('grade', r.student_grade_id, d)}</td><td>{L('FEE_FREQUENCY', r.fee_frequency_code)}</td></>
-                : <><td>{at('job', r.job_id, d)}</td><td>{at('pos', r.position_id, d)}</td><td>{at('dept', r.department_id, d)}</td><td>{at('sgrade', r.staff_grade_id, d)}</td><td>{L('PAYROLL_STATUS', r.payroll_status_code)}</td></>}
+                : <><td>{at('job', r.job_id, d)}</td><td>{at('pos', r.position_id, d)}</td><td>{r.manager_person_id ? (mgrNames[String(r.manager_person_id)] ?? '') : <span className="text-xs text-slate-400">position</span>}</td><td>{at('dept', r.department_id, d)}</td><td>{at('sgrade', r.staff_grade_id, d)}</td><td>{L('PAYROLL_STATUS', r.payroll_status_code)}</td></>}
               <td>{r.comments}</td><td className="text-xs text-gray-500">{r.last_updated_by}<br />{fmtDateTime(r.last_update_date)}</td>
             </tr>);
           })}

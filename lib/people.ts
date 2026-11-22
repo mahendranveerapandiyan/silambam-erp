@@ -98,6 +98,53 @@ export async function assignmentFor(personId: string, kind: PersonKind, asOf: st
   return a as Row | undefined;
 }
 
+/**
+ * Staff with an Active assignment, one entry per active version (start / end), so
+ * date-aware drop-downs only offer people active on the chosen date.
+ */
+export async function activeStaffPeriods(enterpriseId: string) {
+  return sql`
+    select a.person_id, a.assignment_number, af.effective_start_date start_date, af.effective_end_date end_date,
+      (select trim(concat_ws(' ', x.first_name, x.last_name)) from person_f x where x.id = a.person_id order by x.effective_start_date desc limit 1) full_name
+    from assignment a
+    join assignment_f af on af.id = a.id
+    join assignment_status_f st on st.id = af.assignment_status_id and af.effective_start_date between st.effective_start_date and st.effective_end_date
+    where a.enterprise_id = ${enterpriseId} and a.assignment_type = 'STAFF' and st.system_status_code = 'ACTIVE'
+    order by full_name, af.effective_start_date`;
+}
+
+/**
+ * A staff member's manager on a date: the manager on their assignment, otherwise
+ * the active holder of their position's parent position (position hierarchy).
+ */
+export async function managerOf(personId: string, asOf: string) {
+  const [r] = await sql`
+    select af.manager_person_id, af.position_id,
+      (select pf.parent_position_id from position_f pf where pf.id = af.position_id and ${asOf}::date between pf.effective_start_date and pf.effective_end_date) parent_position_id
+    from assignment a join assignment_f af on af.id = a.id and ${asOf}::date between af.effective_start_date and af.effective_end_date
+    where a.person_id = ${personId} and a.assignment_type = 'STAFF'`;
+  if (!r) return null;
+  const who = (pid: string) => sql`select a.person_id, a.assignment_number, trim(concat_ws(' ', x.first_name, x.last_name)) full_name
+    from assignment a left join lateral (select * from person_f y where y.id = a.person_id order by (${asOf}::date between y.effective_start_date and y.effective_end_date) desc, y.effective_start_date desc limit 1) x on true
+    where a.person_id = ${pid} and a.assignment_type = 'STAFF'`;
+  if (r.manager_person_id) {
+    const [m] = await who(r.manager_person_id);
+    return m ? { ...m, source: 'ASSIGNMENT' as const, position_name: null as string | null } : null;
+  }
+  if (!r.parent_position_id) return null;
+  // holder(s) of the parent position who are active on the date
+  const [h] = await sql`
+    select a.person_id, a.assignment_number, trim(concat_ws(' ', x.first_name, x.last_name)) full_name,
+      (select name from position_f p where p.id = ${r.parent_position_id} and ${asOf}::date between p.effective_start_date and p.effective_end_date) position_name
+    from assignment a
+    join assignment_f af on af.id = a.id and ${asOf}::date between af.effective_start_date and af.effective_end_date
+    join assignment_status_f st on st.id = af.assignment_status_id and ${asOf}::date between st.effective_start_date and st.effective_end_date
+    left join lateral (select * from person_f y where y.id = a.person_id order by (${asOf}::date between y.effective_start_date and y.effective_end_date) desc, y.effective_start_date desc limit 1) x on true
+    where a.assignment_type = 'STAFF' and af.position_id = ${r.parent_position_id} and st.system_status_code = 'ACTIVE' and a.person_id <> ${personId}
+    order by a.original_start_date, a.assignment_number limit 1`;
+  return h ? { person_id: h.person_id, assignment_number: h.assignment_number, full_name: h.full_name, source: 'POSITION' as const, position_name: h.position_name as string | null } : null;
+}
+
 export async function assignmentBase(personId: string, kind: PersonKind) {
   const [a] = await sql`select * from assignment where person_id = ${personId} and assignment_type = ${kind}`;
   return a as Row | undefined;
@@ -221,6 +268,7 @@ export async function deletionBlockers(personId: string, kind: PersonKind): Prom
   if (kind === 'STAFF') {
     checks.push(['class incharge assignment(s)', sql`select count(*) from class_incharge where person_id = ${personId}`]);
     checks.push(['attendance record(s)', sql`select count(*) from staff_attendance where person_id = ${personId}`]);
+    checks.push(['staff member(s) reporting to them', sql`select count(distinct id) from assignment_f where manager_person_id = ${personId}`]);
   } else {
     checks.push(['attendance record(s)', sql`select count(*) from student_attendance where person_id = ${personId}`]);
     checks.push(['fee payment(s)', sql`select count(*) from fee_payment where person_id = ${personId}`]);

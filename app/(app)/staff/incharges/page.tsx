@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { requirePriv, can } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
-import { fullName, personAsOf, nm, academicYearOn } from '@/lib/people';
+import { fullName, personAsOf, nm, academicYearOn, activeStaffPeriods } from '@/lib/people';
 import { myClasses } from '@/lib/scope';
 import { fmtDate } from '@/lib/util';
 import { PageHeader, Flash, Back, Field, Badge, Select, Empty, type SP, s } from '@/components/ui';
@@ -36,8 +36,11 @@ export default async function Incharges({ searchParams }: { searchParams: SP }) 
     ${personAsOf(onDate)}
     where p.enterprise_id = ${u.enterpriseId} and (ci.academic_year_id = ${ay.id} or (ci.academic_year_id is null and ci.start_date <= ${ay.end_date} and ci.end_date >= ${ay.start_date}))
     order by bu_name, class_name, full_name`;
-  const staff = await sql`select a.assignment_number, ${fullName()} full_name from assignment a join person p on p.id = a.person_id ${personAsOf(onDate)}
-    where a.enterprise_id = ${u.enterpriseId} and a.assignment_type = 'STAFF' order by full_name`;
+  // staff who are active at some point during the selected academic year
+  const staff = [...new Map((await activeStaffPeriods(u.enterpriseId))
+    .filter((x) => x.start_date <= ay.end_date && x.end_date >= ay.start_date)
+    .map((x) => [x.assignment_number, { value: x.assignment_number as string, label: (x.full_name || x.assignment_number) as string, code: x.assignment_number as string }])).values()]
+    .sort((a, b) => a.label.localeCompare(b.label));
   const uniqueClasses = [...new Map(classes.map((c) => [String(c.class_id), c])).values()];
   return (
     <div className="max-w-6xl">
@@ -51,9 +54,8 @@ export default async function Incharges({ searchParams }: { searchParams: SP }) 
       {write && (
         <form action={saveIncharge} className="card mb-4 grid items-end gap-3 sm:grid-cols-6">
           <Back to={back} /><input type="hidden" name="academic_year_id" value={ay.id} />
-          <Field label="Staff Number *">
-            <input name="staff_number" list="staff-list" className="input" required />
-            <datalist id="staff-list">{staff.map((x) => <option key={x.assignment_number} value={x.assignment_number}>{x.full_name}</option>)}</datalist>
+          <Field label="Staff *" help={`Active staff during ${ay.name}`}>
+            <Select name="staff_number" options={staff} required empty={staff.length ? '— Select staff —' : '— No active staff in this year —'} />
           </Field>
           <Field label="Class › Section *" className="sm:col-span-2">
             <select name="class_section" className="input" required>

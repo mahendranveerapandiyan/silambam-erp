@@ -52,7 +52,7 @@ async function guard(u: SessionUser, kind: PersonKind, personId: string | null, 
 }
 
 /** Assignment attribute values from a submitted form. */
-async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string, string | null>, date: string): Promise<Record<string, any>> {
+async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string, string | null>, date: string, personId: string | null = null): Promise<Record<string, any>> {
   if (kind === 'STUDENT') {
     // separate Branch / Class / Section fields (older "class:section" value still accepted)
     const [csClass, csSection] = (o.class_section ?? '').split(':');
@@ -98,10 +98,18 @@ async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string
     o.business_unit_id = bu;
   }
   if (!o.business_unit_id) throw new Error('Business unit is required');
+  // manager: an active staff member on the date, not the person themselves
+  if (o.manager_person_id) {
+    if (personId && String(o.manager_person_id) === String(personId)) throw new Error('A staff member cannot be their own manager.');
+    const [m] = await sql`select 1 from assignment a join assignment_f af on af.id = a.id and ${date}::date between af.effective_start_date and af.effective_end_date
+      join assignment_status_f st on st.id = af.assignment_status_id and ${date}::date between st.effective_start_date and st.effective_end_date
+      where a.person_id = ${o.manager_person_id} and a.assignment_type = 'STAFF' and st.system_status_code = 'ACTIVE'`;
+    if (!m) throw new Error(`The chosen manager is not an active staff member on ${date}.`);
+  }
   const le = await buLegalEmployer(o.business_unit_id, date);
   if (o.legal_employer_id && String(o.legal_employer_id) !== String(le)) throw new Error('That business unit does not belong to the chosen legal employer on this date.');
   const fv = {
-    business_unit_id: o.business_unit_id, branch_id: o.branch_id, legal_employer_id: le, location_id: o.location_id,
+    business_unit_id: o.business_unit_id, branch_id: o.branch_id, legal_employer_id: le, location_id: o.location_id, manager_person_id: o.manager_person_id,
     job_id: o.job_id, staff_grade_id: o.staff_grade_id, department_id: o.department_id, position_id: o.position_id,
     employment_type_code: o.employment_type_code, employment_category_code: o.employment_category_code, payroll_status_code: o.payroll_status_code,
     person_type_id: o.person_type_id, comments: o.comments,
@@ -295,11 +303,17 @@ export async function assignmentAction(kind: PersonKind, personId: string, fd: F
       left join assignment_status_f st on st.id = af.assignment_status_id and ${date}::date between st.effective_start_date and st.effective_end_date
       where af.id = ${a.id} and ${date}::date between af.effective_start_date and af.effective_end_date`;
     if (!cur) throw new Error(`No assignment version is effective on ${date}`);
-    if (action.action_type_code === 'HIRE') throw new Error('Use Re-admission / Rehire for a person who already has a record.');
+    const correcting = o.mode === 'CORRECT';
+    const [first] = await sql`select min(effective_start_date) d from assignment_f where id = ${a.id}`;
+    const firstVersion = cur.effective_start_date === first.d;
+    // the first version is the hire / admission: correcting it keeps a hire action, and only it may have one
+    if (correcting && firstVersion && action.action_type_code !== 'HIRE')
+      throw new Error(`This is the ${kind === 'STUDENT' ? 'admission' : 'hire'} version – it can only be corrected with a ${kind === 'STUDENT' ? 'admission' : 'hire'} action.`);
+    if (action.action_type_code === 'HIRE' && !(correcting && firstVersion)) throw new Error('Use Re-admission / Rehire for a person who already has a record.');
     if (action.action_type_code === 'REHIRE' && cur.system_status_code !== 'INACTIVE') throw new Error('Rehire / Re-admission is only for inactive records.');
-    if (cur.system_status_code === 'INACTIVE' && action.action_type_code !== 'REHIRE') throw new Error('This record is inactive. Use Re-admission / Rehire first.');
+    if (cur.system_status_code === 'INACTIVE' && action.action_type_code !== 'REHIRE' && !correcting) throw new Error('This record is inactive. Use Re-admission / Rehire first.');
     const terminating = action.action_type_code === 'TERMINATION';
-    const vals = terminating ? {} : await assignmentVals(u, kind, o, date);
+    const vals = terminating ? {} : await assignmentVals(u, kind, o, date, personId);
     await sql.begin((tx) =>
       dtChange(tx, 'assignment', a.id, date, o.mode === 'CORRECT' ? 'CORRECT' : 'UPDATE', {
         ...vals,
@@ -310,7 +324,7 @@ export async function assignmentAction(kind: PersonKind, personId: string, fd: F
       }, u.username),
     );
     if (terminating && kind === 'STAFF') await sql`update class_incharge set end_date = ${date} where person_id = ${personId} and end_date > ${date}`;
-    return { to: `${base(kind)}/${personId}?tab=assignment`, msg: `${action.name} has been recorded effective ${date}.` };
+    return { to: `${base(kind)}/${personId}?tab=assignment`, msg: correcting ? `The ${action.name} record from ${cur.effective_start_date} has been corrected.` : `${action.name} has been recorded effective ${date}.` };
   });
 }
 

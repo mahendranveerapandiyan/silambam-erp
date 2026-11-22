@@ -6,7 +6,7 @@ import { sql } from '@/lib/db';
 import { fmtDate } from '@/lib/util';
 import { PageHeader, Flash, Field, Back, Select, Badge, STATUS_COLOR } from '../ui';
 import { AssignmentFields } from './AssignmentFields';
-import { DatedSelect } from '../DatedSelect';
+import { ActionPicker } from './ActionPicker';
 import { assignmentAction } from '@/app/(app)/people/actions';
 
 export async function ActionForm({ u, kind, personId, asOf, sp }: { u: SessionUser; kind: PersonKind; personId: string; asOf: string; sp: Record<string, any> }) {
@@ -15,6 +15,9 @@ export async function ActionForm({ u, kind, personId, asOf, sp }: { u: SessionUs
   const a = (await assignmentFor(personId, kind, asOf)) ??
     (await sql`select af.* from assignment_f af where af.id = ${ab.id} order by effective_start_date desc limit 1`)[0];
   const { actions, reasons } = await actionAndReasonOptions(u.enterpriseId, kind, 'OTHER');
+  const hire = await actionAndReasonOptions(u.enterpriseId, kind, 'HIRE');
+  const versions = (await sql`select effective_start_date, effective_end_date, action_id, action_reason_code from assignment_f where id = ${ab.id} order by effective_start_date`)
+    .map((r, i) => ({ start: r.effective_start_date as string, end: r.effective_end_date as string, action_id: r.action_id ? String(r.action_id) : null, action_reason_code: r.action_reason_code as string | null, first: i === 0 }));
   const base = kind === 'STUDENT' ? '/students' : '/staff';
   return (
     <div className="max-w-6xl">
@@ -26,10 +29,9 @@ export async function ActionForm({ u, kind, personId, asOf, sp }: { u: SessionUs
         <Back to={`${base}/${personId}/action`} />
         <div className="card">
           <div className="grid-form">
-            <Field label="Action *"><DatedSelect name="action_id" options={actions} dateField="effective_date" required /></Field>
+            <Field label="Change Mode"><select name="mode" className="input"><option value="UPDATE">Update – new version from effective date</option><option value="CORRECT">Correct – fix the version on the effective date</option></select></Field>
             <Field label="Effective Date *"><input type="date" name="effective_date" defaultValue={asOf} required className="input" /></Field>
-            <Field label="Action Reason"><DatedSelect name="action_reason_code" options={reasons} dateField="effective_date" parentField="action_id" /></Field>
-            <Field label="Change Mode"><select name="mode" className="input"><option value="UPDATE">Update – new version from effective date</option><option value="CORRECT">Correct – fix the current version</option></select></Field>
+            <ActionPicker other={actions} otherReasons={reasons} hire={hire.actions} hireReasons={hire.reasons} versions={versions} initialDate={asOf} />
             <Field label="Comments" className="sm:col-span-2"><input name="comments" className="input" /></Field>
           </div>
           <p className="muted mt-3">Termination / Withdrawal keeps the assignment values and only changes the status. Other actions save the values below as a new date-effective version.</p>
