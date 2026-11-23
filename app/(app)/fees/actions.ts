@@ -1,4 +1,5 @@
 'use server';
+import { redirect } from 'next/navigation';
 import { imageToPng } from '@/lib/images';
 import { sql } from '@/lib/db';
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
@@ -341,12 +342,16 @@ export async function cancelPayment(paymentId: string, fd: FormData) {
  * amounts become outstanding again; the fee lines themselves stay.
  */
 export async function deletePayment(paymentId: string, fd: FormData) {
-  const u = await requirePriv('CD_FEE_CANCEL_PRV', 'WRITE');
+  // fee staff may delete the receipts they recorded; anyone else's needs the cancel privilege
+  const u = await requireUser();
+  if (!can(u, 'CD_FEE_CANCEL_PRV', 'WRITE') && !can(u, 'CD_FEE_COLLECT_PRV', 'WRITE')) redirect('/forbidden');
   await act(backOf(fd), async () => {
-    const [p] = await sql`select fp.receipt_number, fp.amount, fp.person_id, a.assignment_number from fee_payment fp
+    const [p] = await sql`select fp.receipt_number, fp.amount, fp.person_id, fp.collected_by, fp.created_by, a.assignment_number from fee_payment fp
       left join assignment a on a.person_id = fp.person_id and a.assignment_type = 'STUDENT'
       where fp.id = ${paymentId} and fp.enterprise_id = ${u.enterpriseId}`;
     if (!p) throw new Error('Receipt not found');
+    const mine = [p.collected_by, p.created_by].some((x) => x && String(x).toLowerCase() === u.username.toLowerCase());
+    if (!can(u, 'CD_FEE_CANCEL_PRV', 'WRITE') && !mine) throw new Error(`Receipt ${p.receipt_number} was recorded by ${p.collected_by ?? p.created_by}. You can delete only the receipts you recorded – ask an administrator for this one.`);
     await assertStudentAccess(u, p.person_id, await getAsOf());
     await sql`delete from fee_payment where id = ${paymentId}`; // its allocations go with it
     return { msg: `Receipt ${p.receipt_number} (${Number(p.amount).toFixed(2)}) for ${p.assignment_number ?? 'the student'} has been deleted. The amounts are outstanding again.` };

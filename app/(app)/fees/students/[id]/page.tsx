@@ -46,6 +46,7 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
     for (const d of demands) byYear.set(d.ay_name ?? 'Other charges', [...(byYear.get(d.ay_name ?? 'Other charges') ?? []), d]);
     const isAcct = can(u, 'CD_FEE_EXCEPTION_APPROVAL_PRV', 'WRITE');
     const canCancel = can(u, 'CD_FEE_CANCEL_PRV', 'WRITE');
+    const canCollect = can(u, 'CD_FEE_COLLECT_PRV', 'WRITE');
     const canPay = can(u, 'CD_FEE_COLLECT_PRV', 'WRITE');
     const canCharge = can(u, 'CD_FEE_CHARGE_PRV', 'WRITE');
 
@@ -144,10 +145,11 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
                   <tr key={r.id} className={r.status_code === 'CANCELLED' ? 'line-through opacity-50' : ''}>
                     <td><Link className="link" href={`/fees/receipt/${r.id}`}>{r.receipt_number}</Link></td><td>{fmtDate(r.payment_date)}</td><td className="text-right">{money(r.amount)}</td>
                     <td>{L('PAYMENT_MODE', r.payment_mode_code)}</td><td>{r.reference}</td><td className="text-xs">{r.applied_to}</td><td className="text-xs">{r.collected_by}</td>
-                    <td className="whitespace-nowrap">{canCancel && <div className="flex gap-1">
-                      {r.status_code === 'ACTIVE' && <form action={cancelPayment.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message={`Cancel receipt ${r.receipt_number}? It stays on record as cancelled and its amounts become outstanding again.`}>Cancel</ConfirmButton></form>}
-                      <form action={deletePayment.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm btn-danger" message={`Delete receipt ${r.receipt_number} (${money(r.amount)}) completely? Its amounts become outstanding again. This cannot be undone.`}>Delete</ConfirmButton></form>
-                    </div>}</td>
+                    <td className="whitespace-nowrap"><div className="flex gap-1">
+                      {canCancel && r.status_code === 'ACTIVE' && <form action={cancelPayment.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message={`Cancel receipt ${r.receipt_number}? It stays on record as cancelled and its amounts become outstanding again.`}>Cancel</ConfirmButton></form>}
+                      {(canCancel || (canCollect && [r.collected_by, r.created_by].some((x) => x && String(x).toLowerCase() === u.username.toLowerCase()))) &&
+                        <form action={deletePayment.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm btn-danger" message={`Delete receipt ${r.receipt_number} (${money(r.amount)}) completely? Its amounts become outstanding again. This cannot be undone.`}>Delete</ConfirmButton></form>}
+                    </div></td>
                   </tr>))}</tbody></table>
               {!payments.length && <Empty>No payments yet.</Empty>}
             </div>
