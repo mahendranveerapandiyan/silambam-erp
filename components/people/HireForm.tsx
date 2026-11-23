@@ -7,7 +7,8 @@ import { actionAndReasonOptions } from '@/lib/people';
 import { DatedSelect } from '../DatedSelect';
 import { NumberPreview } from '../NumberPreview';
 import { numberPreviews } from '@/lib/numbering';
-import { PageHeader, Flash, Field, Back } from '../ui';
+import { PageHeader, Flash, Field, Back, Select } from '../ui';
+import { lookupOptions } from '@/lib/lookups';
 import { PersonFields } from './PersonFields';
 import { PhotoInput } from '../PhotoInput';
 import { IdentificationFields, employerWatch } from './IdentificationFields';
@@ -24,6 +25,7 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
   const previews = await numberPreviews(u.enterpriseId, kind, asOf);
   const watch = await employerWatch(u.enterpriseId, asOf, !stu);
   const staffRule = await userNameRule(u.enterpriseId, 'STAFF');
+  const tuitionTypes = (await lookupOptions('FEE_TYPE', asOf)).filter((f) => f.value === 'TUITION');
   return (
     <div className="max-w-6xl">
       <PageHeader title={stu ? 'New Student Admission' : 'Hire Staff'} actions={<Link href={stu ? '/students' : '/staff'} className="btn">Back</Link>} />
@@ -88,6 +90,10 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
                 <Field label="Parent Login Username" help="e.g. parent mobile number. Existing username = add this child to that parent."><input name="parent_username" className="input" autoComplete="off" /></Field>
                 <Field label="Temporary Password"><input name="parent_password" type="password" className="input" autoComplete="new-password" /></Field>
                 <label className="flex items-center gap-2 pt-5 text-sm"><input type="checkbox" name="student_login" value="Y" /> Also create a student login (user name = student number; password = the parent&apos;s temporary password)</label>
+                <Field label="Fee Type"><Select name="fee_type_code" options={tuitionTypes} value="TUITION" empty={false} /></Field>
+                <Field label="Fee Amount" help="Per installment of the Fee Frequency (e.g. per month). Empty = the amount from Fee Structures.">
+                  <input name="fee_amount" type="number" min="0" step="0.01" className="input" placeholder="e.g. 800" />
+                </Field>
                 <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="generate_fees" value="Y" defaultChecked /> Generate this academic year&apos;s fees (admission + tuition)</label>
               </div>
             </div>

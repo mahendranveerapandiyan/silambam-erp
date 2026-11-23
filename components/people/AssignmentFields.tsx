@@ -41,7 +41,7 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
         <Field label="Section *">{D('section_id', sections, a.section_id, { required: true, parentField: 'class_id' })}</Field>
         <Field label="Academic Year" help="Empty = the year containing the date">{D('academic_year_id', years, a.academic_year_id, { empty: '— Year of effective date —' })}</Field>
         <Field label="Grade / Level">{D('student_grade_id', await datedRefOptions('student-grades', E), a.student_grade_id)}</Field>
-        <Field label="Fee Frequency">{D('fee_frequency_code', (await datedLookupOptions('FEE_FREQUENCY')).filter((o) => o.value !== 'ONE_TIME'), a.fee_frequency_code ?? 'MONTHLY', { empty: false })}</Field>
+        <Field label="Fee Frequency *">{D('fee_frequency_code', (await datedLookupOptions('FEE_FREQUENCY')).filter((o) => o.value !== 'ONE_TIME'), a.fee_frequency_code ?? 'MONTHLY', { empty: false, required: true })}</Field>
         <Field label="House">{D('house_id', await datedRefOptions('houses', E), a.house_id)}</Field>
         <Field label="Club">{D('club_id', await datedRefOptions('clubs', E), a.club_id)}</Field>
         <Field label="Community">{D('community_id', await datedRefOptions('communities', E), a.community_id)}</Field>

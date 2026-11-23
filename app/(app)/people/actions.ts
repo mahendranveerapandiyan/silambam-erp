@@ -60,6 +60,7 @@ async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string
     const sectionId = o.section_id ?? csSection;
     if (!classId) throw new Error('Class is required');
     if (!sectionId) throw new Error('Section is required');
+    if (!o.fee_frequency_code) throw new Error('Fee frequency is required');
     const [sec] = await sql`select class_id from section_f where id = ${sectionId} and ${date}::date between effective_start_date and effective_end_date`;
     if (!sec) throw new Error(`The section is not effective on ${date}.`);
     if (String(sec.class_id) !== String(classId)) throw new Error('That section does not belong to the chosen class.');
@@ -75,7 +76,7 @@ async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record<string
     const sv = {
       class_id: classId, section_id: sectionId || null, branch_id: h.branch_id, business_unit_id: h.business_unit_id, legal_employer_id: h.legal_employer_id,
       academic_year_id: ay, student_grade_id: o.student_grade_id, house_id: o.house_id, club_id: o.club_id, community_id: o.community_id,
-      fee_frequency_code: o.fee_frequency_code ?? 'MONTHLY', person_type_id: o.person_type_id, comments: o.comments,
+      fee_frequency_code: o.fee_frequency_code, person_type_id: o.person_type_id, comments: o.comments,
     };
     await assertAssignmentRefs({ ...sv, assignment_status_id: o.assignment_status_id }, date);
     return sv;
@@ -217,6 +218,20 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
         const roles = fd.getAll('login_roles').map(String).filter((r) => ['INCHARGE', 'STAFF', 'ACCOUNTANT'].includes(r));
         await createLogin(tx, u, username, o.login_password, display, personId, roles.length ? roles : ['STAFF']);
         msg += ` Login user name: ${username}.`;
+      }
+      // a tuition amount typed on the admission form becomes a fee structure for this student only,
+      // so it wins over class / section structures when the fees are generated
+      if (kind === 'STUDENT' && o.fee_amount) {
+        const amount = Number(o.fee_amount);
+        if (!Number.isFinite(amount) || amount < 0) throw new Error('Fee amount must be 0 or more');
+        if ((o.fee_type_code ?? 'TUITION') !== 'TUITION') throw new Error('Only the Tuition Fee can be set on the admission form.');
+        if (!av.academic_year_id) throw new Error('No academic year contains the admission date – create one (Academic Structure › Academic Years) to attach a fee amount.');
+        const freq = av.fee_frequency_code;
+        if (!freq) throw new Error('Fee frequency is required');
+        const [m] = await tx`select meaning from lookup_value where lookup_type = 'FEE_TYPE' and lookup_code = 'TUITION'`;
+        const [fs] = await tx`insert into fee_structure ${tx({ enterprise_id: u.enterpriseId, academic_year_id: av.academic_year_id, fee_type_code: 'TUITION',
+          name: `${m?.meaning ?? 'Tuition Fee'} – ${display}`, description: `Set on admission of ${anum}`, person_id: personId, created_by: u.username })} returning id`;
+        await tx`insert into fee_structure_amount values (${fs.id}, ${freq}, ${amount})`;
       }
       // fees for the academic year
       if (kind === 'STUDENT' && o.generate_fees === 'Y' && av.academic_year_id) {
