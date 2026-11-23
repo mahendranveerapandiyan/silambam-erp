@@ -14,7 +14,7 @@ import { PhotoInput } from '../PhotoInput';
 import { EditableForm, EditScope } from '../EditMode';
 import { deleteIncharge } from '@/app/(app)/staff/actions';
 import { PersonFields } from './PersonFields';
-import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate, deletePerson, saveIdentifier } from '@/app/(app)/people/actions';
+import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate, deletePerson, saveIdentifier, saveAor } from '@/app/(app)/people/actions';
 import { identifiersOf, personEmployerCountry } from '@/lib/identifiers';
 import { IdentificationFields } from './IdentificationFields';
 
@@ -39,8 +39,8 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   const tab = typeof sp.tab === 'string' ? sp.tab : 'overview';
   const back = here(`${base}/${personId}`, sp);
   const tabs: [string, string][] = stu
-    ? [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['identification', 'Identification'], ['contacts', 'Parents / Contacts'], ['attendance', 'Attendance'], ['fees', 'Fees'], ['exams', 'Exams'], ['events', 'Events']]
-    : [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['identification', 'Identification'], ['contacts', 'Contacts'], ['attendance', 'Attendance'], ['classes', 'Classes (Incharge)']];
+    ? [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['identification', 'Identification'], ['contacts', 'Parents / Contacts'], ['attendance', 'Attendance'], ['fees', 'Fees'], ['exams', 'Exams'], ['events', 'Events'], ['aor', 'Responsibilities']]
+    : [['overview', 'Overview'], ['assignment', 'Assignment History'], ['personal', 'Personal Details'], ['identification', 'Identification'], ['contacts', 'Contacts'], ['attendance', 'Attendance'], ['classes', 'Classes (Incharge)'], ['aor', 'Responsibilities']];
   const contacts = await sql`select * from person_contact where person_id = ${personId} order by primary_flag desc, id`;
   const ids = await identifiersOf(personId);
   const canEdit = can(u, stu ? 'CD_STUDENT_DIRECTORY_PRV' : 'CD_STAFF_DIRECTORY_PRV', 'WRITE');
@@ -66,6 +66,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
 
       {tab === 'overview' && <Overview />}
       {tab === 'assignment' && <AssignmentHistory />}
+      {tab === 'aor' && <Responsibilities />}
       {tab === 'personal' && <Personal />}
       {tab === 'identification' && <Identification />}
       {tab === 'contacts' && <Contacts />}
@@ -202,6 +203,63 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
           </>
         )}
       </form>
+    );
+  }
+
+  async function Responsibilities() {
+    const typeCode = stu ? 'STUDENT_AOR' : 'STAFF_AOR';
+    const rows = await sql`select r.*, y.name ay_name from area_of_responsibility r left join academic_year y on y.id = r.academic_year_id
+      where r.person_id = ${personId} and r.person_category = ${kind} order by r.start_date desc, r.id desc`;
+    const types = await lookupOptions(typeCode, asOf);
+    const years = stu ? (await sql`select id, name from academic_year where enterprise_id = ${u.enterpriseId} order by start_date desc`).map((y) => ({ value: String(y.id), label: y.name })) : [];
+    const [cur] = stu ? await sql`select id from academic_year where enterprise_id = ${u.enterpriseId} and ${asOf}::date between start_date and end_date` : [];
+    const formFields = (r?: any) => (
+      <>
+        <Field label="Responsibility *"><Select name="aor_type_code" options={types} value={r?.aor_type_code} required /></Field>
+        {stu && <Field label="Academic Year *"><Select name="academic_year_id" options={years} value={r ? String(r.academic_year_id) : cur?.id ? String(cur.id) : null} required /></Field>}
+        <Field label="From" help={stu ? 'Empty = year start (or admission)' : 'Empty = today'}><input type="date" name="start_date" defaultValue={r?.start_date ?? ''} className="input" /></Field>
+        <Field label="To" help={stu ? 'Empty = end of the year' : 'Empty = open-ended'}><input type="date" name="end_date" defaultValue={r && r.end_date !== '4712-12-31' ? r.end_date : ''} className="input" /></Field>
+        <Field label="Remarks"><input name="remarks" defaultValue={r?.remarks ?? ''} className="input" /></Field>
+      </>
+    );
+    return (
+      <div className="space-y-4">
+        <div className="card overflow-x-auto">
+          <h2 className="h2">Areas of Responsibility</h2>
+          <table className="tbl">
+            <thead><tr><th>Responsibility</th>{stu && <th>Academic Year</th>}<th>From</th><th>To</th><th>Remarks</th><th>Status</th>{canAct && <th></th>}</tr></thead>
+            <tbody>{rows.map((r) => {
+              const active = asOf >= r.start_date && asOf <= r.end_date;
+              return (
+                <tr key={r.id}>
+                  <td>{L(typeCode, r.aor_type_code)}</td>{stu && <td>{r.ay_name}</td>}
+                  <td className="whitespace-nowrap">{fmtDate(r.start_date)}</td><td className="whitespace-nowrap">{r.end_date === '4712-12-31' ? '—' : fmtDate(r.end_date)}</td>
+                  <td>{r.remarks}</td><td>{active ? <Badge color="green">Active</Badge> : r.start_date > asOf ? <Badge color="blue">Future</Badge> : <Badge>Ended</Badge>}</td>
+                  {canAct && <td className="whitespace-nowrap">
+                    <details><summary className="btn btn-sm">Edit</summary>
+                      <form action={saveAor.bind(null, kind, personId, String(r.id))} className="mt-2 grid w-[44rem] max-w-[90vw] gap-2 rounded-md border bg-white p-3 sm:grid-cols-2">
+                        <Back to={`${base}/${personId}?tab=aor`} />{formFields(r)}
+                        <div className="flex gap-2 sm:col-span-2"><button className="btn btn-primary btn-sm">Save</button>
+                          <ConfirmButton className="btn btn-sm btn-danger" name="_delete" value="1" message={`Delete the responsibility ${L(typeCode, r.aor_type_code)}?`}>Delete</ConfirmButton></div>
+                      </form>
+                    </details>
+                  </td>}
+                </tr>
+              );
+            })}</tbody>
+          </table>
+          {!rows.length && <Empty>No responsibilities recorded.</Empty>}
+        </div>
+        {canAct && (
+          <form action={saveAor.bind(null, kind, personId, null)} className="card">
+            <Back to={`${base}/${personId}?tab=aor`} />
+            <h2 className="h2">Add Responsibility</h2>
+            <div className={`grid gap-3 ${stu ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>{formFields()}</div>
+            <button className="btn btn-primary mt-3">Add</button>
+            <p className="muted mt-2">{stu ? 'Student responsibilities belong to an academic year; the dates must be inside it.' : 'Staff responsibilities are date based.'} New responsibility types can be added under Configuration › Lookups › {stu ? 'Student' : 'Staff'} Area of Responsibility.</p>
+          </form>
+        )}
+      </div>
     );
   }
 

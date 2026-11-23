@@ -70,6 +70,8 @@ const LOOKUPS = {
   NUMBER_OBJECT: ['Number Generation Object', 'SYSTEM', 'SYSTEM', null, [['PERSON', 'Person Number'], ['STUDENT', 'Student Number'], ['STAFF', 'Staff Number'], ['RECEIPT', 'Fee Receipt Number']]],
   NUMBER_METHOD: ['Number Generation Method', 'SYSTEM', 'SYSTEM', null, [['AUTO', 'Automatic'], ['MANUAL', 'Manual']]],
   USER_NAME_METHOD: ['User Name Method', 'SYSTEM', 'SYSTEM', null, [['STAFF_NUMBER', 'Staff Number', 'STAFF'], ['FIRST_LAST', 'First and Last Name', 'STAFF'], ['EMAIL', 'Email ID', 'STAFF'], ['STUDENT_NUMBER', 'Student Number', 'STUDENT'], ['MANUAL', 'Entered Manually', 'PARENT']]],
+  STUDENT_AOR: ['Student Area of Responsibility', 'ACADEMIC', 'EXTENSIBLE', null, [['CLASS_INCHARGE', 'Class Incharge']]],
+  STAFF_AOR: ['Staff Area of Responsibility', 'WORKFORCE', 'EXTENSIBLE', null, [['STAFF_REP', 'Staff Representative']]],
   NUMBER_SCOPE: ['Number Generation Level', 'SYSTEM', 'SYSTEM', null, [['ENTERPRISE', 'Enterprise'], ['LE', 'Legal Employer'], ['BU', 'Business Unit'], ['BRANCH', 'Branch']]],
 };
 
@@ -99,7 +101,7 @@ try {
     // codes the application logic relies on are locked even in extensible lookups
     await tx`update lookup_value set system_flag = 'Y' where (lookup_type, lookup_code) in
       (('FEE_TYPE','TUITION'),('FEE_TYPE','ADMISSION'),('FEE_TYPE','GRADE_EXAM'),('FEE_TYPE','ASSESSMENT'),('FEE_TYPE','TERM_EXAM'),('FEE_TYPE','EVENT'),('FEE_TYPE','INVENTORY'),
-       ('ATTENDANCE_STATUS','P'),('ATTENDANCE_STATUS','A'),('ACTION_REASON','HIRE'),('ACTION_REASON','NEW_ADMISSION'))`;
+       ('ATTENDANCE_STATUS','P'),('ATTENDANCE_STATUS','A'),('ACTION_REASON','HIRE'),('ACTION_REASON','NEW_ADMISSION'),('STUDENT_AOR','CLASS_INCHARGE'),('STAFF_AOR','STAFF_REP'))`;
 
     const [ent] = await tx`insert into enterprise (code, name, short_name, country_code, currency_code, created_by)
       values ('SA', 'Silambam Academy', 'Silambam Academy', 'IN', 'INR', ${BY}) returning id`;

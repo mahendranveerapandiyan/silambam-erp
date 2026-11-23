@@ -12,6 +12,7 @@ import { PersonFields } from './PersonFields';
 import { PhotoInput } from '../PhotoInput';
 import { IdentificationFields, employerWatch } from './IdentificationFields';
 import { AssignmentFields } from './AssignmentFields';
+import { AorFields } from './AorFields';
 import { hirePerson } from '@/app/(app)/people/actions';
 import { userNameRule } from '@/lib/usernames';
 import { UsernamePreview } from '../UsernamePreview';
@@ -59,6 +60,11 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
             <p className="muted mt-2">The Fee Amount here is the first preference; when empty, the amount comes from Fee Structures.</p>
           </div>
         )}
+        <div className="card">
+          <h2 className="h2">Areas of Responsibility</h2>
+          <p className="muted mb-3">{stu ? 'Optional. Student responsibilities are given for an academic year, with dates inside that year.' : 'Optional. Staff responsibilities are date based.'} The list comes from Configuration › Lookups › {stu ? 'Student' : 'Staff'} Area of Responsibility.</p>
+          <AorFields kind={kind} enterpriseId={u.enterpriseId} asOf={asOf} />
+        </div>
         <div className="card">
           <h2 className="h2">Personal Details</h2>
           <p className="muted mb-3">Ignored when an existing person number is given.</p>

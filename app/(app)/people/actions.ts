@@ -5,10 +5,11 @@ import bcrypt from 'bcryptjs';
 import { sql, type Tx } from '@/lib/db';
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
-import { act, backOf, formObj, fileToBytes } from '@/lib/util';
+import { act, backOf, formObj, fileToBytes, todayISO } from '@/lib/util';
 import { dtChange, dtCorrectVersion } from '@/lib/dt';
 import { nextNumber } from '@/lib/numbering';
 import { makeUsername } from '@/lib/usernames';
+import { checkAor, aorRowsFromForm } from '@/lib/aor';
 import { assertStudentAccess, myClasses, seesAllStudents } from '@/lib/scope';
 
 const dirPriv = (k: PersonKind) => (k === 'STUDENT' ? 'CD_STUDENT_DIRECTORY_PRV' : 'CD_STAFF_DIRECTORY_PRV');
@@ -204,6 +205,12 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
         id: a.id, effective_start_date: date, action_id: hire.id, action_reason_code: o.action_reason_code ?? (kind === 'STUDENT' ? 'NEW_ADMISSION' : 'HIRE'),
         assignment_status_id: o.assignment_status_id ?? hire.assignment_status_id, ...av, created_by: u.username, last_updated_by: u.username,
       })}`;
+      // areas of responsibility entered on the form
+      for (const r of aorRowsFromForm(o)) {
+        const v = await checkAor(tx, kind, personId, r, date);
+        await tx`insert into area_of_responsibility ${tx({ enterprise_id: u.enterpriseId, person_id: personId, person_category: kind, aor_type_code: v.aor_type_code,
+          academic_year_id: v.academic_year_id, start_date: v.start_date, end_date: v.end_date, remarks: v.remarks, created_by: u.username, last_updated_by: u.username })}`;
+      }
       if (photo) await tx`insert into person_photo (person_id, mime, data) values (${personId}, ${photo.mime}, ${photo.data}) on conflict (person_id) do update set mime = excluded.mime, data = excluded.data`;
       // guardians
       for (const rel of ['FATHER', 'MOTHER', 'GUARDIAN']) {
@@ -474,5 +481,28 @@ export async function saveIdentifier(kind: PersonKind, personId: string, rowId: 
       }
     });
     return { msg: 'The identification document has been saved.' };
+  });
+}
+
+// ------------------------------------------------------------ areas of responsibility
+export async function saveAor(kind: PersonKind, personId: string, aorId: string | null, fd: FormData) {
+  const u = await requirePriv(actPriv(kind), 'WRITE');
+  await act(backOf(fd), async () => {
+    await guard(u, kind, personId, await getAsOf());
+    const o = formObj(fd);
+    if (o._delete) {
+      const [r] = await sql`delete from area_of_responsibility where id = ${aorId} and person_id = ${personId} returning aor_type_code`;
+      if (!r) throw new Error('Responsibility not found');
+      const [m] = await sql`select meaning from lookup_value where lookup_type = ${kind === 'STUDENT' ? 'STUDENT_AOR' : 'STAFF_AOR'} and lookup_code = ${r.aor_type_code}`;
+      return { msg: `The responsibility ${m?.meaning ?? r.aor_type_code} has been deleted.` };
+    }
+    const [a] = await sql`select original_start_date from assignment where person_id = ${personId} and assignment_type = ${kind}`;
+    if (!a) throw new Error('No assignment found');
+    const v = await checkAor(sql, kind, personId, { type: o.aor_type_code, academicYearId: o.academic_year_id, start: o.start_date, end: o.end_date, remarks: o.remarks },
+      todayISO() > a.original_start_date ? todayISO() : a.original_start_date, aorId);
+    const vals = { aor_type_code: v.aor_type_code, academic_year_id: v.academic_year_id, start_date: v.start_date, end_date: v.end_date, remarks: v.remarks, last_updated_by: u.username, last_update_date: new Date() };
+    if (aorId) await sql`update area_of_responsibility set ${sql(vals)} where id = ${aorId} and person_id = ${personId}`;
+    else await sql`insert into area_of_responsibility ${sql({ ...vals, enterprise_id: u.enterpriseId, person_id: personId, person_category: kind, created_by: u.username })}`;
+    return { msg: `The responsibility ${v.meaning} has been ${aorId ? 'updated' : 'added'}.` };
   });
 }
