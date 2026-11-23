@@ -3,10 +3,11 @@ import { notFound } from 'next/navigation';
 import type { SessionUser } from '@/lib/auth';
 import { assignmentBase, assignmentFor, assignmentFormOptions, personDetail, actionAndReasonOptions, type PersonKind } from '@/lib/people';
 import { sql } from '@/lib/db';
-import { fmtDate } from '@/lib/util';
+import { fmtDate, todayISO } from '@/lib/util';
 import { PageHeader, Flash, Field, Back, Select, Badge, STATUS_COLOR } from '../ui';
 import { AssignmentFields } from './AssignmentFields';
 import { ActionPicker } from './ActionPicker';
+import { ModeDate } from '../client';
 import { assignmentAction } from '@/app/(app)/people/actions';
 
 export async function ActionForm({ u, kind, personId, asOf, sp }: { u: SessionUser; kind: PersonKind; personId: string; asOf: string; sp: Record<string, any> }) {
@@ -30,8 +31,8 @@ export async function ActionForm({ u, kind, personId, asOf, sp }: { u: SessionUs
         <div className="card">
           <div className="grid-form">
             <Field label="Change Mode"><select name="mode" className="input"><option value="UPDATE">Update – new version from effective date</option><option value="CORRECT">Correct – fix the version on the effective date</option></select></Field>
-            <Field label="Effective Date *"><input type="date" name="effective_date" defaultValue={asOf} required className="input" /></Field>
-            <ActionPicker other={actions} otherReasons={reasons} hire={hire.actions} hireReasons={hire.reasons} versions={versions} initialDate={asOf} />
+            <Field label="Effective Date *" help="Update: today · Correct: start of the active version"><input type="date" name="effective_date" defaultValue={todayISO()} required className="input" /><ModeDate correctDate={a?.effective_start_date ?? versions.at(-1)?.start ?? null} updateDate={todayISO()} /></Field>
+            <ActionPicker other={actions} otherReasons={reasons} hire={hire.actions} hireReasons={hire.reasons} versions={versions} initialDate={todayISO()} />
             <Field label="Comments" className="sm:col-span-2"><input name="comments" className="input" /></Field>
           </div>
           <p className="muted mt-3">Termination / Withdrawal keeps the assignment values and only changes the status. Other actions save the values below as a new date-effective version.</p>

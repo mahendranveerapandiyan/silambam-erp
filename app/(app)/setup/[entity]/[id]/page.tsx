@@ -9,7 +9,8 @@ import { usages } from '@/lib/integrity';
 import { activeFields, fieldDisplay } from '@/lib/fields';
 import { fmtDate, fmtDateTime } from '@/lib/util';
 import { EntityFields } from '@/components/EntityFields';
-import { ConfirmButton } from '@/components/client';
+import { ConfirmButton, ModeDate } from '@/components/client';
+import { todayISO } from '@/lib/util';
 import { EditableForm } from '@/components/EditMode';
 import { PageHeader, Flash, Field, Back, Badge, type SP, here, s } from '@/components/ui';
 import { updateEntity, correctVersion, endDateEntity, deleteLatestVersion, deleteEntity } from '../../actions';
@@ -90,7 +91,7 @@ export default async function EntityDetail({ params, searchParams }: { params: P
                 <option value="CORRECT">Correct – fix the version current on that date</option>
               </select>
             </Field>
-            <Field label="Effective Date"><input type="date" name="effective_date" defaultValue={asOf} className="input" required /></Field>
+            <Field label="Effective Date" help="Update: today · Correct: start of the active version"><input type="date" name="effective_date" defaultValue={todayISO()} className="input" required /><ModeDate correctDate={row.effective_start_date ?? history[0]?.effective_start_date ?? null} updateDate={todayISO()} /></Field>
             <div className="muted pb-2">Current version: {fmtDate(row.effective_start_date)} → {fmtDate(row.effective_end_date)}</div>
           </div>
           <div className="grid-form">

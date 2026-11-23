@@ -80,3 +80,28 @@ export function CheckAll({ name }: { name: string }) {
       }} />
   );
 }
+
+/**
+ * Keeps the Effective Date in step with the Change Mode select of the same form:
+ * Correct → the start date of the active version; Update → today's date.
+ * Other date-aware fields follow, because input/change events are fired.
+ */
+export function ModeDate({ correctDate, updateDate, mode = 'mode', date = 'effective_date' }: { correctDate: string | null; updateDate: string; mode?: string; date?: string }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const form = ref.current?.closest('form');
+    const sel = form?.querySelector<HTMLSelectElement>(`select[name="${mode}"]`);
+    const inp = form?.querySelector<HTMLInputElement>(`input[name="${date}"]`);
+    if (!sel || !inp) return;
+    const apply = () => {
+      const v = sel.value === 'CORRECT' ? correctDate : updateDate;
+      if (!v || inp.value === v) return;
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(inp, v);
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      inp.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    sel.addEventListener('change', apply);
+    return () => sel.removeEventListener('change', apply);
+  }, [correctDate, updateDate, mode, date]);
+  return <span ref={ref} hidden />;
+}
