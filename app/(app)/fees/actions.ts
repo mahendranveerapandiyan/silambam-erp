@@ -378,12 +378,15 @@ export async function changeFrequency(personId: string, fd: FormData) {
     const date = o.effective_date ?? todayISO();
     await assertStudentAccess(u, personId, date);
     if (!o.fee_frequency_code) throw new Error('Choose a frequency');
+    // the assignment fee amount is per installment, so it is restated with the frequency (empty = Fee Structures)
+    const amount = o.fee_amount ? Number(o.fee_amount) : null;
+    if (amount !== null && (!Number.isFinite(amount) || amount < 0)) throw new Error('Fee amount must be 0 or more');
     const [a] = await sql`select id from assignment where person_id = ${personId} and assignment_type = 'STUDENT'`;
     const { dtChange } = await import('@/lib/dt');
     const { actionByType } = await import('@/lib/people');
     const chg = await actionByType(u.enterpriseId, 'STUDENT', 'ASSIGNMENT_CHANGE', date);
     await sql.begin(async (tx) => {
-      await dtChange(tx, 'assignment', a.id, date, 'UPDATE', { fee_frequency_code: o.fee_frequency_code, action_id: chg?.id ?? null, action_reason_code: null, comments: 'Fee frequency changed' }, u.username);
+      await dtChange(tx, 'assignment', a.id, date, 'UPDATE', { fee_frequency_code: o.fee_frequency_code, fee_type_code: amount === null ? null : 'TUITION', fee_amount: amount, action_id: chg?.id ?? null, action_reason_code: null, comments: 'Fee frequency changed' }, u.username);
       // cancel future unpaid tuition lines so they can be regenerated at the new frequency
       if (o.regenerate === 'Y') {
         const lines = await tx`select id from fee_demand_v where person_id = ${personId} and fee_type_code = 'TUITION' and period_start >= ${date} and paid_amount = 0 and exempted_amount = 0 and cancelled_flag = 'N'`;
@@ -393,7 +396,7 @@ export async function changeFrequency(personId: string, fd: FormData) {
         if (ay) await generateStudentFees(tx, { enterpriseId: u.enterpriseId, personId, assignmentId: a.id, ay, asg: cur, joinDate: date > cur.original_start_date ? date : cur.original_start_date, by: u.username, feeTypes: ['TUITION'] });
       }
     });
-    return { msg: 'The fee frequency has been changed.' };
+    return { msg: `The fee frequency has been changed${amount !== null ? ` with a fee of ${amount.toFixed(2)} per installment` : ' (fee from Fee Structures)'}.` };
   });
 }
 

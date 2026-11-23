@@ -47,16 +47,29 @@ const monLabel = (d: string) => `${MONTHS[+d.slice(5, 7) - 1]} ${d.slice(0, 4)}`
 
 /**
  * Creates fee demands (installments) for one student for an academic year.
- * Recurring structures use the student's own fee frequency; ONE_TIME
- * structures create a single demand. Existing/overlapping demands are skipped,
- * so it is safe to run repeatedly.
+ * The amount of each installment comes, in order of preference, from
+ *   1. the student's assignment (Fee Type + Fee Amount on the version in force
+ *      at the start of the period), then
+ *   2. the Fee Structures page (most specific structure wins).
+ * Recurring fees use the student's own fee frequency; ONE_TIME structures
+ * create a single demand. Existing/overlapping demands are skipped, so it is
+ * safe to run repeatedly.
  */
 export async function generateStudentFees(
   tx: Tx,
   p: { enterpriseId: string; personId: string; assignmentId: string; ay: Row; asg: Row; joinDate: string; by: string; feeTypes?: string[] },
 ) {
   const months = await frequencyMonths(tx);
-  const structures = await applicableStructures(tx, p.enterpriseId, p.ay.id, { ...p.asg, person_id: p.personId }, p.feeTypes);
+  const structures: (Row & { amounts: Record<string, number> })[] = await applicableStructures(tx, p.enterpriseId, p.ay.id, { ...p.asg, person_id: p.personId }, p.feeTypes);
+  // fee amounts on the assignment (first preference), per version
+  const versions = await tx`select effective_start_date, effective_end_date, fee_type_code, fee_amount from assignment_f where id = ${p.assignmentId} order by effective_start_date`;
+  const meanings = Object.fromEntries((await tx`select lookup_code, meaning from lookup_value where lookup_type = 'FEE_TYPE'`).map((r) => [r.lookup_code, r.meaning]));
+  for (const t of new Set(versions.filter((v) => v.fee_amount !== null && v.fee_type_code).map((v) => v.fee_type_code as string))) {
+    if (p.feeTypes?.length && !p.feeTypes.includes(t)) continue;
+    // a fee type set on the assignment needs no structure
+    if (!structures.some((x) => x.fee_type_code === t)) structures.push({ id: null, fee_type_code: t, name: meanings[t] ?? t, amounts: {} } as any);
+  }
+  const versionOn = (d: string) => versions.find((v) => d >= v.effective_start_date && d <= v.effective_end_date) ?? null;
   let created = 0;
   const skipped: string[] = [];
   for (const s of structures) {
@@ -74,16 +87,19 @@ export async function generateStudentFees(
       continue;
     }
     const freq = p.asg.fee_frequency_code || 'MONTHLY';
-    const amount = s.amounts[freq];
     const n = months[freq] || 1;
-    if (amount === undefined) {
-      skipped.push(`${s.name}: no amount defined for ${freq}`);
-      continue;
-    }
     for (let start = p.ay.start_date as string; start <= p.ay.end_date; start = addMonths(start, n)) {
       let end = addDays(addMonths(start, n), -1);
       if (end > p.ay.end_date) end = p.ay.end_date;
       if (end < p.joinDate) continue; // joined after this period
+      const v = versionOn(start < p.joinDate ? p.joinDate : start);
+      const fromAssignment = v && v.fee_amount !== null && v.fee_type_code === s.fee_type_code ? Number(v.fee_amount) : undefined;
+      const amount = fromAssignment ?? s.amounts[freq];
+      if (amount === undefined) {
+        const why = `${s.name}: no amount defined for ${freq}`;
+        if (!skipped.includes(why)) skipped.push(why);
+        continue;
+      }
       const [overlap] = await tx`
         select 1 from fee_demand where person_id = ${p.personId} and fee_type_code = ${s.fee_type_code} and academic_year_id = ${p.ay.id}
           and cancelled_flag = 'N' and daterange(period_start, period_end, '[]') && daterange(${start}::date, ${end}::date, '[]')`;
@@ -91,7 +107,8 @@ export async function generateStudentFees(
       const label = n === 1 ? monLabel(start) : `${monLabel(start)} – ${monLabel(end)}`;
       await tx`insert into fee_demand ${tx({
         enterprise_id: p.enterpriseId, person_id: p.personId, assignment_id: p.assignmentId, academic_year_id: p.ay.id, business_unit_id: p.asg.business_unit_id,
-        fee_type_code: s.fee_type_code, fee_structure_id: s.id, source_type: 'STRUCTURE', description: s.name, frequency_code: freq,
+        fee_type_code: s.fee_type_code, fee_structure_id: fromAssignment !== undefined ? null : s.id, source_type: 'STRUCTURE',
+        description: fromAssignment !== undefined ? (meanings[s.fee_type_code] ?? s.name) : s.name, frequency_code: freq,
         period_label: label, period_start: start, period_end: end, due_date: addDays(start, 9), amount, created_by: p.by,
       })}`;
       created++;

@@ -135,6 +135,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
                 <Info label="Grade">{a.grade_name}</Info>
                 <Info label="Academic Year">{a.academic_year_name}</Info>
                 <Info label="Fee Frequency">{L('FEE_FREQUENCY', a.fee_frequency_code)}</Info>
+                <Info label="Fee">{a.fee_amount !== null && a.fee_amount !== undefined ? `${L('FEE_TYPE', a.fee_type_code ?? 'TUITION')} ${money(a.fee_amount)} per installment` : 'From Fee Structures'}</Info>
                 <Info label="House">{a.house_name}</Info>
                 <Info label="Club">{a.club_name}</Info>
                 <Info label="Community">{a.community_name}</Info>
@@ -220,7 +221,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         </div>
         <table className="tbl">
           <thead><tr><th>From</th><th>To</th><th>Action</th><th>Reason</th><th>Status</th><th>Business Unit</th><th>Branch</th>
-            {stu ? <><th>Class › Section</th><th>Grade</th><th>Fee Freq.</th></> : <><th>Job</th><th>Position</th><th>Manager</th><th>Department</th><th>Grade</th><th>Payroll</th></>}
+            {stu ? <><th>Class › Section</th><th>Grade</th><th>Fee Freq.</th><th>Fee</th></> : <><th>Job</th><th>Position</th><th>Manager</th><th>Department</th><th>Grade</th><th>Payroll</th></>}
             <th>Comments</th><th>By</th></tr></thead>
           <tbody>{rows.map((r) => {
             const d = r.effective_start_date;
@@ -228,7 +229,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
             <tr key={d} className={asOf >= r.effective_start_date && asOf <= r.effective_end_date ? 'bg-amber-50' : ''}>
               <td className="whitespace-nowrap">{fmtDate(r.effective_start_date)}</td><td className="whitespace-nowrap">{fmtDate(r.effective_end_date)}</td>
               <td>{at('action', r.action_id, d)}</td><td>{L('ACTION_REASON', r.action_reason_code)}</td><td>{at('status', r.assignment_status_id, d)}</td><td>{at('bu', r.business_unit_id, d)}</td><td>{at('br', r.branch_id, d)}</td>
-              {stu ? <><td>{at('cls', r.class_id, d)}{r.section_id && ` › ${at('sec', r.section_id, d)}`}</td><td>{at('grade', r.student_grade_id, d)}</td><td>{L('FEE_FREQUENCY', r.fee_frequency_code)}</td></>
+              {stu ? <><td>{at('cls', r.class_id, d)}{r.section_id && ` › ${at('sec', r.section_id, d)}`}</td><td>{at('grade', r.student_grade_id, d)}</td><td>{L('FEE_FREQUENCY', r.fee_frequency_code)}</td><td className="text-right">{r.fee_amount !== null ? money(r.fee_amount) : <span className="text-xs text-slate-400">structure</span>}</td></>
                 : <><td>{at('job', r.job_id, d)}</td><td>{at('pos', r.position_id, d)}</td><td>{r.manager_person_id ? (mgrNames[String(r.manager_person_id)] ?? '') : <span className="text-xs text-slate-400">position</span>}</td><td>{at('dept', r.department_id, d)}</td><td>{at('sgrade', r.staff_grade_id, d)}</td><td>{L('PAYROLL_STATUS', r.payroll_status_code)}</td></>}
               <td>{r.comments}</td><td className="text-xs text-gray-500">{r.last_updated_by}<br />{fmtDateTime(r.last_update_date)}</td>
             </tr>);

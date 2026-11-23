@@ -177,6 +177,7 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
               <Back to={back} />
               <h2 className="h2">Change Fee Frequency</h2>
               <Select name="fee_frequency_code" options={freqs.filter((f) => f.value !== 'ONE_TIME')} value={a?.fee_frequency_code} empty={false} />
+              <Field label="New Fee Amount" help="Per installment of the new frequency. Empty = amount from Fee Structures."><input name="fee_amount" type="number" min="0" step="0.01" className="input" placeholder="From Fee Structures" /></Field>
               <Field label="Effective from"><input type="date" name="effective_date" defaultValue={today} className="input" /></Field>
               <label className="flex items-start gap-2 text-xs"><input type="checkbox" name="regenerate" value="Y" defaultChecked /> Cancel future unpaid tuition lines and regenerate them at the new frequency</label>
               <button className="btn w-full">Change</button>
