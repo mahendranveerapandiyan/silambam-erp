@@ -55,12 +55,15 @@ export function req(o: Record<string, string | null>, ...keys: string[]) {
 }
 
 function withParam(url: string, k: string, v: string) {
-  const [p, q = ''] = url.split('?');
+  // keep a #fragment at the end (e.g. /fees/generate?x=1#installments)
+  const hashAt = url.indexOf('#');
+  const hash = hashAt >= 0 ? url.slice(hashAt) : '';
+  const [p, q = ''] = (hashAt >= 0 ? url.slice(0, hashAt) : url).split('?');
   const sp = new URLSearchParams(q);
   sp.delete('ok');
   sp.delete('err');
   sp.set(k, v);
-  return `${p}?${sp.toString()}`;
+  return `${p}?${sp.toString()}${hash}`;
 }
 
 /**

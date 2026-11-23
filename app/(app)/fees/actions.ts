@@ -115,7 +115,7 @@ export async function copyStructures(fd: FormData) {
  * in (and must match when also chosen). Returns a filter on the student's
  * assignment version (alias af) and a description for messages.
  */
-async function feeScope(enterpriseId: string, o: Record<string, string | null>, on: string) {
+async function feeScope(enterpriseId: string, o: Record<string, string | null>, on: string, studentNumbers?: string[]) {
   const up = async (table: string, col: string, id: string) => {
     const [r] = await sql`select ${sql(col)} v from ${sql(table + '_f')} where id = ${id} order by (${on}::date between effective_start_date and effective_end_date) desc, effective_start_date desc limit 1`;
     return r?.v ? String(r.v) : null;
@@ -125,23 +125,26 @@ async function feeScope(enterpriseId: string, o: Record<string, string | null>, 
     if (o[field] && String(o[field]) !== value) throw new Error(`The chosen ${what} does not match – leave it empty or pick the matching one.`);
     o[field] = value;
   };
-  let personId: string | null = null;
-  if (o.student_number) {
-    const [st] = await sql`select person_id from assignment where enterprise_id = ${enterpriseId} and assignment_type = 'STUDENT' and upper(assignment_number) = upper(${o.student_number})`;
-    if (!st) throw new Error(`No student with number ${o.student_number}`);
-    personId = String(st.person_id);
+  // one or more students (by student number)
+  const numbers = [...new Set([...(studentNumbers ?? []), ...(o.student_number ? [o.student_number] : [])].map((n) => n.trim()).filter(Boolean))];
+  let personIds: string[] = [];
+  if (numbers.length) {
+    const rows = await sql`select person_id, upper(assignment_number) n from assignment where enterprise_id = ${enterpriseId} and assignment_type = 'STUDENT' and upper(assignment_number) in ${sql(numbers.map((n) => n.toUpperCase()))}`;
+    const missing = numbers.filter((n) => !rows.some((r) => r.n === n.toUpperCase()));
+    if (missing.length) throw new Error(`No student with number ${missing.join(', ')}`);
+    personIds = rows.map((r) => String(r.person_id));
   }
   if (o.section_id) fill('class_id', await up('section', 'class_id', o.section_id), 'class (for the section)');
   if (o.class_id) fill('branch_id', await up('class', 'branch_id', o.class_id), 'branch (for the class)');
   if (o.branch_id) fill('business_unit_id', await up('branch', 'business_unit_id', o.branch_id), 'business unit (for the branch)');
   const name = async (table: string, id: string | null) => (id ? (await sql`select name from ${sql(table + '_f')} where id = ${id} order by effective_start_date desc limit 1`)[0]?.name : null);
-  const what = o.student_number ? `student ${o.student_number}`
+  const what = numbers.length === 1 ? `student ${numbers[0]}` : numbers.length > 1 ? `${numbers.length} students (${numbers.slice(0, 5).join(', ')}${numbers.length > 5 ? ', …' : ''})`
     : o.section_id ? `section ${await name('class', o.class_id)} › ${await name('section', o.section_id)}`
     : o.class_id ? `class ${await name('class', o.class_id)}`
     : o.branch_id ? `branch ${await name('branch', o.branch_id)}`
     : o.business_unit_id ? `business unit ${await name('business_unit', o.business_unit_id)}` : 'all business units';
   const where = sql`
-    ${personId ? sql`and a.person_id = ${personId}` : sql``}
+    ${personIds.length ? sql`and a.person_id in ${sql(personIds)}` : sql``}
     ${o.business_unit_id ? sql`and af.business_unit_id = ${o.business_unit_id}` : sql``}
     ${o.branch_id ? sql`and af.branch_id = ${o.branch_id}` : sql``}
     ${o.class_id ? sql`and af.class_id = ${o.class_id}` : sql``}
@@ -159,7 +162,7 @@ export async function generateFees(fd: FormData) {
     if (!ay) throw new Error('Academic year not found');
     const t = todayISO();
     const onDate = t < ay.start_date ? ay.start_date : t > ay.end_date ? ay.end_date : t;
-    const scope = await feeScope(u.enterpriseId, o, onDate);
+    const scope = await feeScope(u.enterpriseId, o, onDate, fd.getAll('student_numbers').map(String));
     if (o._op === 'ROLLBACK') return rollbackFees(u, ay, scope, feeTypes, onDate);
     const students = await sql`
       select a.id assignment_id, a.person_id, a.original_start_date, af.* from assignment a
@@ -180,6 +183,27 @@ export async function generateFees(fd: FormData) {
       }
     });
     return { msg: `${created} fee installment(s) have been generated for ${students.length} active student(s) – ${scope.what}, ${ay.name}.${skipped.size ? ' Skipped: ' + [...skipped].join('; ') : ''}` };
+  });
+}
+
+/**
+ * Roll back chosen generated installments of one student. Lines with a receipt
+ * or fee exception are refused (delete those first on the student's fee page).
+ */
+export async function rollbackInstallments(personId: string, fd: FormData) {
+  const u = await requirePriv('CD_FEE_GENERATE_PRV', 'WRITE');
+  await act(backOf(fd, '/fees/generate'), async () => {
+    const ids = fd.getAll('demand_ids').map(String).filter(Boolean);
+    if (!ids.length) throw new Error('Tick at least one installment to roll back.');
+    const lines = await sql`select d.id, d.description, d.period_label, d.source_type,
+        exists (select 1 from fee_allocation fa where fa.demand_id = d.id) paid, exists (select 1 from fee_exemption fe where fe.demand_id = d.id) excepted
+      from fee_demand d where d.id in ${sql(ids)} and d.person_id = ${personId} and d.enterprise_id = ${u.enterpriseId}`;
+    if (lines.length !== ids.length) throw new Error('Some installments were not found for this student. Refresh the page.');
+    const bad = lines.filter((l) => l.source_type !== 'STRUCTURE' || l.paid || l.excepted);
+    if (bad.length) throw new Error(`Cannot roll back ${bad.map((l) => `${l.description}${l.period_label ? ` ${l.period_label}` : ''}`).join(', ')}: only generated installments without receipts or fee exceptions can be rolled back.`);
+    await sql`delete from fee_demand where id in ${sql(ids)}`;
+    const [st] = await sql`select assignment_number from assignment where person_id = ${personId} and assignment_type = 'STUDENT'`;
+    return { msg: `${ids.length} installment(s) of ${st?.assignment_number ?? 'the student'} have been rolled back: ${lines.map((l) => `${l.description}${l.period_label ? ` ${l.period_label}` : ''}`).join(', ')}.` };
   });
 }
 
