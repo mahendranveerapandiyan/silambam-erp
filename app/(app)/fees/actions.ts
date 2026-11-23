@@ -18,9 +18,33 @@ export async function saveStructure(id: string | null, fd: FormData) {
     const amounts = FREQS.map((f) => [f, o[`amt_${f}`]] as const).filter(([, v]) => v !== null && v !== undefined);
     if (!amounts.length) throw new Error('Enter at least one amount');
     if (amounts.some(([f]) => f === 'ONE_TIME') && amounts.length > 1) throw new Error('A one-time fee cannot also have recurring amounts');
+    // a section decides its class; a class its branch; a branch its business unit (filled in when left empty, refused when they disagree)
+    const [ay] = await sql`select start_date, end_date from academic_year where id = ${o.academic_year_id} and enterprise_id = ${u.enterpriseId}`;
+    if (!ay) throw new Error('Academic year not found');
+    const on = ay.start_date;
+    const up = async (table: string, col: string, id: string) => {
+      const [r] = await sql`select ${sql(col)} v from ${sql(table + '_f')} where id = ${id} order by (${on}::date between effective_start_date and effective_end_date) desc, effective_start_date desc limit 1`;
+      return r?.v ? String(r.v) : null;
+    };
+    const fill = (field: string, value: string | null, what: string) => {
+      if (!value) return;
+      if (o[field] && String(o[field]) !== value) throw new Error(`The chosen ${what} does not match – leave it empty or pick the matching one.`);
+      o[field] = value;
+    };
+    if (o.section_id) fill('class_id', await up('section', 'class_id', o.section_id), 'class (for the section)');
+    if (o.class_id) fill('branch_id', await up('class', 'branch_id', o.class_id), 'branch (for the class)');
+    if (o.branch_id) fill('business_unit_id', await up('branch', 'business_unit_id', o.branch_id), 'business unit (for the branch)');
+    // individual student: by student number
+    let personId: string | null = null;
+    if (o.student_number) {
+      const [st] = await sql`select person_id from assignment where enterprise_id = ${u.enterpriseId} and assignment_type = 'STUDENT' and upper(assignment_number) = upper(${o.student_number})`;
+      if (!st) throw new Error(`No student with number ${o.student_number}`);
+      personId = String(st.person_id);
+    }
     const v = {
       academic_year_id: o.academic_year_id, fee_type_code: o.fee_type_code, name: o.name, description: o.description,
-      business_unit_id: o.business_unit_id, class_id: o.class_id, student_grade_id: o.student_grade_id, active_flag: o.active_flag === 'N' ? 'N' : 'Y',
+      business_unit_id: o.business_unit_id, branch_id: o.branch_id, class_id: o.class_id, section_id: o.section_id, person_id: personId,
+      student_grade_id: o.student_grade_id, active_flag: o.active_flag === 'N' ? 'N' : 'Y',
     };
     let sid = id;
     await sql.begin(async (tx) => {
@@ -49,8 +73,8 @@ export async function copyStructures(fd: FormData) {
       for (const s of src) {
         const [dup] = await tx`select 1 from fee_structure where academic_year_id = ${o.to_ay} and copied_from_id = ${s.id}`;
         if (dup) continue;
-        const [ns] = await tx`insert into fee_structure (enterprise_id, academic_year_id, fee_type_code, name, description, business_unit_id, class_id, student_grade_id, copied_from_id, created_by)
-          values (${u.enterpriseId}, ${o.to_ay}, ${s.fee_type_code}, ${s.name}, ${s.description}, ${s.business_unit_id}, ${s.class_id}, ${s.student_grade_id}, ${s.id}, ${u.username}) returning id`;
+        const [ns] = await tx`insert into fee_structure (enterprise_id, academic_year_id, fee_type_code, name, description, business_unit_id, branch_id, class_id, section_id, person_id, student_grade_id, copied_from_id, created_by)
+          values (${u.enterpriseId}, ${o.to_ay}, ${s.fee_type_code}, ${s.name}, ${s.description}, ${s.business_unit_id}, ${s.branch_id}, ${s.class_id}, ${s.section_id}, ${s.person_id}, ${s.student_grade_id}, ${s.id}, ${u.username}) returning id`;
         for (const a of await tx`select * from fee_structure_amount where fee_structure_id = ${s.id}`) {
           const amt = Math.round((Number(a.amount) * (1 + pct / 100)) / round) * round;
           await tx`insert into fee_structure_amount values (${ns.id}, ${a.frequency_code}, ${amt})`;

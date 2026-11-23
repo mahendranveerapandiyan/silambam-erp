@@ -22,6 +22,18 @@ export default async function Structures({ searchParams }: { searchParams: SP })
   const E = u.enterpriseId;
   const [bus, classes, grades, feeTypes] = [await refOptions('business-units', E, asOf), await refOptions('classes', E, asOf), await refOptions('student-grades', E, asOf), await lookupOptions('FEE_TYPE', asOf)];
   const [buN, clN, grN] = [await refNames('business-units', E, asOf), await refNames('classes', E, asOf), await refNames('student-grades', E, asOf)];
+  const [branches, sections, brN, seN] = [await refOptions('branches', E, asOf), await refOptions('sections', E, asOf), await refNames('branches', E, asOf), await refNames('sections', E, asOf)];
+  const yr = years.find((y) => String(y.id) === ay);
+  // students admitted during (or before and still on roll in) the selected academic year
+  const students = yr ? (await sql`select distinct on (a.person_id) a.person_id, a.assignment_number,
+      (select trim(concat_ws(' ', x.first_name, x.last_name)) from person_f x where x.id = a.person_id order by x.effective_start_date desc limit 1) full_name
+    from assignment a join assignment_f af on af.id = a.id
+    where a.enterprise_id = ${E} and a.assignment_type = 'STUDENT' and af.effective_start_date <= ${yr.end_date} and af.effective_end_date >= ${yr.start_date}
+    order by a.person_id`).map((x) => ({ value: x.assignment_number as string, label: `${x.full_name || x.assignment_number}`, code: x.assignment_number as string }))
+    .sort((a, b) => a.label.localeCompare(b.label)) : [];
+  const stuByPerson: Record<string, { value: string; label: string }> = {};
+  if (yr) for (const x of await sql`select person_id, assignment_number from assignment where enterprise_id = ${E} and assignment_type = 'STUDENT'`)
+    stuByPerson[String(x.person_id)] = { value: x.assignment_number, label: students.find((st) => st.value === x.assignment_number)?.label ?? x.assignment_number };
   const rows = ay ? await sql`select fs.*, coalesce(json_object_agg(a.frequency_code, a.amount) filter (where a.frequency_code is not null), '{}') amounts,
       (select count(*) from fee_demand d where d.fee_structure_id = fs.id and d.cancelled_flag = 'N')::int used
     from fee_structure fs left join fee_structure_amount a on a.fee_structure_id = fs.id where fs.academic_year_id = ${ay} group by fs.id order by fs.fee_type_code, fs.name` : [];
@@ -29,7 +41,7 @@ export default async function Structures({ searchParams }: { searchParams: SP })
   const yearOpts = years.map((y) => ({ value: String(y.id), label: y.name }));
   return (
     <div className="max-w-7xl">
-      <PageHeader title="Fee Structures" subtitle="Fees are defined per academic year. Optionally restrict to a branch, class or grade – the most specific structure wins for each student." />
+      <PageHeader title="Fee Structures" subtitle="Fees are defined per academic year – for everyone, or a business unit, branch, class, section, grade or one student. For each fee type the most specific structure wins: student › section › grade › class › branch › business unit › all." />
       <Flash sp={sp} />
       <form className="card mb-4 flex gap-2"><Select name="ay" options={yearOpts} value={ay} empty={false} className="input max-w-xs" /><AutoSubmit /></form>
       <div className="card mb-4 overflow-x-auto">
@@ -38,7 +50,9 @@ export default async function Structures({ searchParams }: { searchParams: SP })
           <tbody>{rows.map((r) => (
             <tr key={r.id}>
               <td>{L('FEE_TYPE', r.fee_type_code)}</td><td>{r.name}</td>
-              <td className="text-xs">{[r.business_unit_id && buN[r.business_unit_id], r.class_id && clN[r.class_id], r.student_grade_id && grN[r.student_grade_id]].filter(Boolean).join(' · ') || 'All students'}</td>
+              <td className="text-xs">{r.person_id
+                ? <Badge color="purple">Student: {stuByPerson[String(r.person_id)]?.label} ({stuByPerson[String(r.person_id)]?.value})</Badge>
+                : [r.business_unit_id && buN[r.business_unit_id], r.branch_id && brN[r.branch_id], r.class_id && clN[r.class_id], r.section_id && seN[r.section_id], r.student_grade_id && grN[r.student_grade_id]].filter(Boolean).join(' · ') || 'All students'}</td>
               {FREQS.map((f) => <td key={f} className="text-right">{r.amounts[f] !== undefined ? money(r.amounts[f]) : ''}</td>)}
               <td>{r.active_flag === 'Y' ? <Badge color="green">Yes</Badge> : <Badge>No</Badge>}</td><td>{r.used}</td>
               <td><a className="btn btn-sm" href={`?ay=${ay}&edit=${r.id}#form`}>Edit</a></td>
@@ -55,9 +69,15 @@ export default async function Structures({ searchParams }: { searchParams: SP })
             <Field label="Fee Type *"><Select name="fee_type_code" options={feeTypes} value={editing?.fee_type_code} required /></Field>
             <Field label="Name *"><input name="name" defaultValue={editing?.name} className="input" required /></Field>
             <Field label="Business Unit (optional)"><Select name="business_unit_id" options={bus} value={editing?.business_unit_id} empty="All business units" /></Field>
+            <Field label="Branch (optional)"><Select name="branch_id" options={branches} value={editing?.branch_id} empty="All branches" /></Field>
             <Field label="Class (optional)"><Select name="class_id" options={classes} value={editing?.class_id} empty="All classes" /></Field>
+            <Field label="Section (optional)"><Select name="section_id" options={sections} value={editing?.section_id} empty="All sections" /></Field>
             <Field label="Grade (optional)"><Select name="student_grade_id" options={grades} value={editing?.student_grade_id} empty="All grades" /></Field>
+            <Field label="Individual Student (optional)" help="A fee only for this student – it overrides every other structure of the same fee type for them">
+              <Select name="student_number" options={students} value={editing?.person_id ? stuByPerson[String(editing.person_id)]?.value : null} empty="— Not student-specific —" />
+            </Field>
           </div>
+          <p className="muted mt-2">Choose only the narrowest level you need – a section fills in its class, branch and business unit automatically.</p>
           <p className="muted my-3">Amount <b>per installment</b> for each frequency the student may choose. For admission-type fees fill only <b>One Time</b>.</p>
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {FREQS.map((f) => <Field key={f} label={L('FEE_FREQUENCY', f)}><input name={`amt_${f}`} type="number" step="0.01" min="0" defaultValue={editing?.amounts[f] ?? ''} className="input" /></Field>)}

@@ -11,15 +11,24 @@ export async function frequencyMonths(tx: Tx = sql): Promise<Record<string, numb
 
 /**
  * Fee structures applying to a student. When several structures exist for
- * the same fee type, the most specific wins (grade > class > business unit > all).
+ * the same fee type, the most specific wins
+ * (student > section > grade > class > branch > business unit > all).
  */
-export async function applicableStructures(tx: Tx, enterpriseId: string, ayId: string, a: { business_unit_id?: string | null; class_id?: string | null; student_grade_id?: string | null }, feeTypes?: string[]) {
+export async function applicableStructures(tx: Tx, enterpriseId: string, ayId: string,
+  a: { person_id?: string | null; business_unit_id?: string | null; branch_id?: string | null; class_id?: string | null; section_id?: string | null; student_grade_id?: string | null },
+  feeTypes?: string[]) {
+  // weights make the most specific structure win: student > section > grade > class > branch > business unit
   const rows = await tx`
-    select fs.*, (case when fs.student_grade_id is not null then 4 else 0 end + case when fs.class_id is not null then 2 else 0 end + case when fs.business_unit_id is not null then 1 else 0 end) score
+    select fs.*, (case when fs.person_id is not null then 64 else 0 end + case when fs.section_id is not null then 16 else 0 end
+      + case when fs.student_grade_id is not null then 8 else 0 end + case when fs.class_id is not null then 4 else 0 end
+      + case when fs.branch_id is not null then 2 else 0 end + case when fs.business_unit_id is not null then 1 else 0 end) score
     from fee_structure fs
     where fs.enterprise_id = ${enterpriseId} and fs.academic_year_id = ${ayId} and fs.active_flag = 'Y'
+      and (fs.person_id is null or fs.person_id = ${a.person_id ?? null})
       and (fs.business_unit_id is null or fs.business_unit_id = ${a.business_unit_id ?? null})
+      and (fs.branch_id is null or fs.branch_id = ${a.branch_id ?? null})
       and (fs.class_id is null or fs.class_id = ${a.class_id ?? null})
+      and (fs.section_id is null or fs.section_id = ${a.section_id ?? null})
       and (fs.student_grade_id is null or fs.student_grade_id = ${a.student_grade_id ?? null})
       ${feeTypes?.length ? tx`and fs.fee_type_code in ${tx(feeTypes)}` : tx``}
     order by fs.fee_type_code, score desc, fs.id`;
@@ -47,7 +56,7 @@ export async function generateStudentFees(
   p: { enterpriseId: string; personId: string; assignmentId: string; ay: Row; asg: Row; joinDate: string; by: string; feeTypes?: string[] },
 ) {
   const months = await frequencyMonths(tx);
-  const structures = await applicableStructures(tx, p.enterpriseId, p.ay.id, p.asg, p.feeTypes);
+  const structures = await applicableStructures(tx, p.enterpriseId, p.ay.id, { ...p.asg, person_id: p.personId }, p.feeTypes);
   let created = 0;
   const skipped: string[] = [];
   for (const s of structures) {
