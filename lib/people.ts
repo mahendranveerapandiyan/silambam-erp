@@ -236,12 +236,13 @@ export async function actionByType(enterpriseId: string, category: PersonKind, t
  * action's type (or no parent) and whose tag is the category (or empty).
  * Reason options carry the action id as `parent`, so the form filters them.
  */
-export async function actionAndReasonOptions(enterpriseId: string, kind: PersonKind, which: 'HIRE' | 'OTHER') {
+/** Actions + reasons: HIRE = hire / admission, REHIRE = rehire / re-admission, OTHER = everything else. */
+export async function actionAndReasonOptions(enterpriseId: string, kind: PersonKind, which: 'HIRE' | 'OTHER' | 'REHIRE') {
   const acts = await sql`
     select a.id, f.name, f.action_type_code, f.effective_start_date, f.effective_end_date from action a
     join action_f f on f.id = a.id
     where a.enterprise_id = ${enterpriseId} and f.person_category = ${kind} and f.active_flag = 'Y'
-      and ${which === 'HIRE' ? sql`f.action_type_code = 'HIRE'` : sql`f.action_type_code <> 'HIRE'`}
+      and ${which === 'OTHER' ? sql`f.action_type_code not in ('HIRE', 'REHIRE')` : sql`f.action_type_code = ${which}`}
     order by f.name`;
   const reasons = await sql`select lookup_code, meaning, parent_code, tag, start_date, end_date, display_seq from lookup_value
     where lookup_type = 'ACTION_REASON' and enabled_flag = 'Y' and (tag is null or tag = ${kind}) order by display_seq, meaning`;

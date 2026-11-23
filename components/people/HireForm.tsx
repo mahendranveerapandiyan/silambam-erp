@@ -47,8 +47,18 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
         </div>
         <div className="card">
           <h2 className="h2">Assignment</h2>
-          <div className="grid-form"><AssignmentFields u={u} kind={kind} dateField="hire_date" /></div>
+          <div className="grid-form"><AssignmentFields u={u} kind={kind} dateField="hire_date" part="main" /></div>
         </div>
+        {stu && (
+          <div className="card">
+            <h2 className="h2">Fees</h2>
+            <div className="grid-form">
+              <AssignmentFields u={u} kind={kind} dateField="hire_date" part="fees" />
+              <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" name="generate_fees" value="Y" defaultChecked /> Generate this academic year&apos;s fees (admission + tuition)</label>
+            </div>
+            <p className="muted mt-2">The Fee Amount here is the first preference; when empty, the amount comes from Fee Structures.</p>
+          </div>
+        )}
         <div className="card">
           <h2 className="h2">Personal Details</h2>
           <p className="muted mb-3">Ignored when an existing person number is given.</p>
@@ -83,12 +93,11 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
               </div>
             </div>
             <div className="card">
-              <h2 className="h2">Portal Login & Fees</h2>
+              <h2 className="h2">Portal Login</h2>
               <div className="grid-form">
                 <Field label="Parent Login Username" help="e.g. parent mobile number. Existing username = add this child to that parent."><input name="parent_username" className="input" autoComplete="off" /></Field>
                 <Field label="Temporary Password"><input name="parent_password" type="password" className="input" autoComplete="new-password" /></Field>
                 <label className="flex items-center gap-2 pt-5 text-sm"><input type="checkbox" name="student_login" value="Y" /> Also create a student login (user name = student number; password = the parent&apos;s temporary password)</label>
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="generate_fees" value="Y" defaultChecked /> Generate this academic year&apos;s fees (admission + tuition)</label>
               </div>
             </div>
           </>

@@ -15,14 +15,16 @@ export async function ActionForm({ u, kind, personId, asOf, sp }: { u: SessionUs
   if (!p || !ab) notFound();
   const a = (await assignmentFor(personId, kind, asOf)) ??
     (await sql`select af.* from assignment_f af where af.id = ${ab.id} order by effective_start_date desc limit 1`)[0];
-  const { actions, reasons } = await actionAndReasonOptions(u.enterpriseId, kind, 'OTHER');
+  // an inactive (terminated / withdrawn) record can only be rehired / re-admitted
+  const inactive = a?.system_status_code === 'INACTIVE';
+  const { actions, reasons } = await actionAndReasonOptions(u.enterpriseId, kind, inactive ? 'REHIRE' : 'OTHER');
   const hire = await actionAndReasonOptions(u.enterpriseId, kind, 'HIRE');
   const versions = (await sql`select effective_start_date, effective_end_date, action_id, action_reason_code from assignment_f where id = ${ab.id} order by effective_start_date`)
     .map((r, i) => ({ start: r.effective_start_date as string, end: r.effective_end_date as string, action_id: r.action_id ? String(r.action_id) : null, action_reason_code: r.action_reason_code as string | null, first: i === 0 }));
   const base = kind === 'STUDENT' ? '/students' : '/staff';
   return (
     <div className="max-w-6xl">
-      <PageHeader title={`Assignment Action: ${p.full_name}`}
+      <PageHeader title={`${inactive ? (kind === 'STUDENT' ? 'Re-admission' : 'Rehire') : 'Assignment Action'}: ${p.full_name}`}
         subtitle={<>{ab.assignment_number} · current status {a?.status_name ? <Badge color={STATUS_COLOR[a.system_status_code]}>{a.status_name}</Badge> : '—'} · current version from {fmtDate(a?.effective_start_date)}</>}
         actions={<Link href={`${base}/${personId}`} className="btn">Back</Link>} />
       <Flash sp={sp} />
@@ -35,12 +37,20 @@ export async function ActionForm({ u, kind, personId, asOf, sp }: { u: SessionUs
             <ActionPicker other={actions} otherReasons={reasons} hire={hire.actions} hireReasons={hire.reasons} versions={versions} initialDate={todayISO()} />
             <Field label="Comments" className="sm:col-span-2"><input name="comments" className="input" /></Field>
           </div>
-          <p className="muted mt-3">Termination / Withdrawal keeps the assignment values and only changes the status. Other actions save the values below as a new date-effective version.</p>
+          <p className="muted mt-3">{inactive
+            ? `This record is inactive, so only ${kind === 'STUDENT' ? 're-admission' : 'rehire'} actions are offered. The values below become the new assignment from the effective date.`
+            : 'Termination / Withdrawal keeps the assignment values and only changes the status. Other actions save the values below as a new date-effective version.'}</p>
         </div>
         <div className="card">
           <h2 className="h2">Assignment values from the effective date</h2>
-          <div className="grid-form"><AssignmentFields u={u} kind={kind} a={a} showStatus dateField="effective_date" /></div>
+          <div className="grid-form"><AssignmentFields u={u} kind={kind} a={a} showStatus dateField="effective_date" part="main" /></div>
         </div>
+        {kind === 'STUDENT' && (
+          <div className="card">
+            <h2 className="h2">Fees from the effective date</h2>
+            <div className="grid-form"><AssignmentFields u={u} kind={kind} a={a} dateField="effective_date" part="fees" /></div>
+          </div>
+        )}
         <button className="btn btn-primary">Submit Action</button>
       </form>
     </div>

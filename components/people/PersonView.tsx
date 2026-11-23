@@ -53,7 +53,9 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         title={p.full_name}
         subtitle={<>{stu ? 'Student' : 'Staff'} No. <b>{ab.assignment_number}</b> · Person No. {p.person_number} · {a ? <Badge color={STATUS_COLOR[a.system_status_code]}>{a.status_name}</Badge> : <Badge color="gray">No assignment on {fmtDate(asOf)}</Badge>}</>}
         actions={<>
-          {canAct && <Link href={`${base}/${personId}/action`} className="btn btn-primary">Actions ▸</Link>}
+          {canAct && (a?.system_status_code === 'INACTIVE'
+            ? <Link href={`${base}/${personId}/action`} className="btn btn-primary">{stu ? 'Re-admit ▸' : 'Rehire ▸'}</Link>
+            : <Link href={`${base}/${personId}/action`} className="btn btn-primary">Actions ▸</Link>)}
           {stu && can(u, 'CD_FEE_COLLECT_PRV', 'READ') && <Link href={`/fees/students/${personId}`} className="btn">Fees</Link>}
           <Link href={`${base}/${personId}/card`} className="btn">ID Card</Link>
           <Link href={base} className="btn">Back</Link>
@@ -84,6 +86,15 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
       feeBox = (
         <div className="card">
           <h2 className="h2">Fees</h2>
+          {a && (
+            <div className="mb-3 grid grid-cols-2 gap-3 border-b border-black/10 pb-3">
+              <Info label="Fee Frequency">{L('FEE_FREQUENCY', a.fee_frequency_code)}</Info>
+              <Info label="Fee Type">{L('FEE_TYPE', a.fee_type_code ?? 'TUITION')}</Info>
+              <Info label="Fee Amount">{a.fee_amount !== null && a.fee_amount !== undefined
+                ? <>{money(a.fee_amount)} per installment<span className="block text-xs text-slate-500">from the assignment</span></>
+                : <>—<span className="block text-xs text-slate-500">from Fee Structures</span></>}</Info>
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Info label="Total Due">{money(t.due)}</Info><Info label="Paid">{money(t.paid)}</Info>
             <Info label="Exception">{money(t.exempted)}</Info><Info label="Pending"><span className={t.balance > 0 ? 'font-bold text-red-700' : ''}>{money(t.balance)}</span></Info>
@@ -134,8 +145,6 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
                 <Info label="Class › Section">{a.class_name}{a.section_name && ` › ${a.section_name}`}</Info>
                 <Info label="Grade">{a.grade_name}</Info>
                 <Info label="Academic Year">{a.academic_year_name}</Info>
-                <Info label="Fee Frequency">{L('FEE_FREQUENCY', a.fee_frequency_code)}</Info>
-                <Info label="Fee">{a.fee_amount !== null && a.fee_amount !== undefined ? `${L('FEE_TYPE', a.fee_type_code ?? 'TUITION')} ${money(a.fee_amount)} per installment` : 'From Fee Structures'}</Info>
                 <Info label="House">{a.house_name}</Info>
                 <Info label="Club">{a.club_name}</Info>
                 <Info label="Community">{a.community_name}</Info>

@@ -13,7 +13,8 @@ import { PositionAutofill } from '../PositionAutofill';
  * Student or staff assignment attributes. Every drop-down follows the date
  * input named `dateField` (admission/hire date or action effective date).
  */
-export async function AssignmentFields({ u, kind, a = {}, showStatus = false, dateField }: { u: SessionUser; kind: PersonKind; asOf?: string; a?: Row; showStatus?: boolean; dateField: string }) {
+/** `part`: 'main' = everything except the fee fields, 'fees' = only the fee fields (students), 'all' = both. */
+export async function AssignmentFields({ u, kind, a = {}, showStatus = false, dateField, part = 'all' }: { u: SessionUser; kind: PersonKind; asOf?: string; a?: Row; showStatus?: boolean; dateField: string; part?: 'all' | 'main' | 'fees' }) {
   const E = u.enterpriseId;
   const D = (name: string, options: any[], value: any, extra: { required?: boolean; empty?: string | false; parentField?: string } = {}) => (
     <DatedSelect name={name} options={options} dateField={dateField} value={value == null ? '' : String(value)} {...extra} />
@@ -33,6 +34,16 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
       .filter((s) => !allowed || allowed.has(`${s.parent}:*`) || allowed.has(`${s.parent}:${s.value}`));
     const branches = (await datedRefOptions('branches', E)).filter((b) => !allowed || classes.some((c) => c.parent === b.value));
     const bus = (await datedRefOptions('business-units', E)).filter((b) => !allowed || branches.some((x) => x.parent === b.value));
+    const feeFields = (
+      <>
+        <Field label="Fee Frequency *">{D('fee_frequency_code', (await datedLookupOptions('FEE_FREQUENCY')).filter((o) => o.value !== 'ONE_TIME'), a.fee_frequency_code ?? 'MONTHLY', { empty: false, required: true })}</Field>
+        <Field label="Fee Type">{D('fee_type_code', (await datedLookupOptions('FEE_TYPE')).filter((o) => o.value === 'TUITION'), a.fee_type_code ?? 'TUITION', { empty: false })}</Field>
+        <Field label="Fee Amount" help="Per installment of the Fee Frequency – first preference. Empty = amount from Fee Structures.">
+          <input name="fee_amount" type="number" min="0" step="0.01" defaultValue={a.fee_amount ?? ''} className="input" placeholder="From Fee Structures" />
+        </Field>
+      </>
+    );
+    if (part === 'fees') return feeFields;
     return (
       <>
         <Field label="Business Unit *">{D('business_unit_id', bus, a.business_unit_id, { required: true })}</Field>
@@ -41,16 +52,12 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
         <Field label="Section *">{D('section_id', sections, a.section_id, { required: true, parentField: 'class_id' })}</Field>
         <Field label="Academic Year" help="Empty = the year containing the date">{D('academic_year_id', years, a.academic_year_id, { empty: '— Year of effective date —' })}</Field>
         <Field label="Grade / Level">{D('student_grade_id', await datedRefOptions('student-grades', E), a.student_grade_id)}</Field>
-        <Field label="Fee Frequency *">{D('fee_frequency_code', (await datedLookupOptions('FEE_FREQUENCY')).filter((o) => o.value !== 'ONE_TIME'), a.fee_frequency_code ?? 'MONTHLY', { empty: false, required: true })}</Field>
-        <Field label="Fee Type">{D('fee_type_code', (await datedLookupOptions('FEE_TYPE')).filter((o) => o.value === 'TUITION'), a.fee_type_code ?? 'TUITION', { empty: false })}</Field>
-        <Field label="Fee Amount" help="Per installment of the Fee Frequency – first preference. Empty = amount from Fee Structures.">
-          <input name="fee_amount" type="number" min="0" step="0.01" defaultValue={a.fee_amount ?? ''} className="input" placeholder="From Fee Structures" />
-        </Field>
         <Field label="House">{D('house_id', await datedRefOptions('houses', E), a.house_id)}</Field>
         <Field label="Club">{D('club_id', await datedRefOptions('clubs', E), a.club_id)}</Field>
         <Field label="Community">{D('community_id', await datedRefOptions('communities', E), a.community_id)}</Field>
         <Field label="Person Type">{D('person_type_id', personTypes, a.person_type_id)}</Field>
         {status}
+        {part === 'all' && feeFields}
       </>
     );
   }
