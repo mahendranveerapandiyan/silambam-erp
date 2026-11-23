@@ -37,19 +37,16 @@ export default async function Generate({ searchParams }: { searchParams: SP }) {
           <Field label="Student"><Select name="student_number" options={students} empty="All students" /></Field>
         </div>
         <p className="muted">Choose only the narrowest level – a section fills in its class, branch and business unit. Students are taken by where they are placed today (within the academic year).</p>
-        <div>
-          <span className="label">Fee types (none ticked = all)</span>
-          <div className="grid gap-1 sm:grid-cols-3">
-            {feeTypes.filter((f) => !['GRADE_EXAM', 'ASSESSMENT', 'TERM_EXAM', 'EVENT', 'INVENTORY'].includes(f.value)).map((f) => (
-              <label key={f.value} className="flex items-center gap-2 text-sm"><input type="checkbox" name="fee_types" value={f.value} /> {f.label}</label>
-            ))}
-          </div>
+        <div className="grid-form">
+          <Field label="Fee Type" help="Exam, event and equipment fees are added on their own pages">
+            <Select name="fee_types" options={feeTypes.filter((f) => !['GRADE_EXAM', 'ASSESSMENT', 'TERM_EXAM', 'EVENT', 'INVENTORY'].includes(f.value))} empty="All fee types" />
+          </Field>
         </div>
         {write && (
           <div className="flex flex-wrap gap-2">
             <button className="btn btn-primary" name="_op" value="GENERATE">Generate</button>
             <ConfirmButton className="btn btn-danger" name="_op" value="ROLLBACK"
-              message="Roll back the generated fee installments for the chosen academic year, level and fee types? Students with a payment or fee exception recorded are kept unchanged.">Roll Back</ConfirmButton>
+              message="Roll back the generated fee installments for the chosen academic year, level and fee type? Students with a payment or fee exception recorded are kept unchanged.">Roll Back</ConfirmButton>
           </div>
         )}
         <ul className="muted list-disc space-y-0.5 pl-5">
