@@ -92,6 +92,46 @@ export async function copyStructures(fd: FormData) {
 }
 
 // ------------------------------------------------------------- generate
+/**
+ * Scope for generating / rolling back fees: the narrowest of business unit,
+ * branch, class, section or student. Levels above the chosen one are filled
+ * in (and must match when also chosen). Returns a filter on the student's
+ * assignment version (alias af) and a description for messages.
+ */
+async function feeScope(enterpriseId: string, o: Record<string, string | null>, on: string) {
+  const up = async (table: string, col: string, id: string) => {
+    const [r] = await sql`select ${sql(col)} v from ${sql(table + '_f')} where id = ${id} order by (${on}::date between effective_start_date and effective_end_date) desc, effective_start_date desc limit 1`;
+    return r?.v ? String(r.v) : null;
+  };
+  const fill = (field: string, value: string | null, what: string) => {
+    if (!value) return;
+    if (o[field] && String(o[field]) !== value) throw new Error(`The chosen ${what} does not match – leave it empty or pick the matching one.`);
+    o[field] = value;
+  };
+  let personId: string | null = null;
+  if (o.student_number) {
+    const [st] = await sql`select person_id from assignment where enterprise_id = ${enterpriseId} and assignment_type = 'STUDENT' and upper(assignment_number) = upper(${o.student_number})`;
+    if (!st) throw new Error(`No student with number ${o.student_number}`);
+    personId = String(st.person_id);
+  }
+  if (o.section_id) fill('class_id', await up('section', 'class_id', o.section_id), 'class (for the section)');
+  if (o.class_id) fill('branch_id', await up('class', 'branch_id', o.class_id), 'branch (for the class)');
+  if (o.branch_id) fill('business_unit_id', await up('branch', 'business_unit_id', o.branch_id), 'business unit (for the branch)');
+  const name = async (table: string, id: string | null) => (id ? (await sql`select name from ${sql(table + '_f')} where id = ${id} order by effective_start_date desc limit 1`)[0]?.name : null);
+  const what = o.student_number ? `student ${o.student_number}`
+    : o.section_id ? `section ${await name('class', o.class_id)} › ${await name('section', o.section_id)}`
+    : o.class_id ? `class ${await name('class', o.class_id)}`
+    : o.branch_id ? `branch ${await name('branch', o.branch_id)}`
+    : o.business_unit_id ? `business unit ${await name('business_unit', o.business_unit_id)}` : 'all business units';
+  const where = sql`
+    ${personId ? sql`and a.person_id = ${personId}` : sql``}
+    ${o.business_unit_id ? sql`and af.business_unit_id = ${o.business_unit_id}` : sql``}
+    ${o.branch_id ? sql`and af.branch_id = ${o.branch_id}` : sql``}
+    ${o.class_id ? sql`and af.class_id = ${o.class_id}` : sql``}
+    ${o.section_id ? sql`and af.section_id = ${o.section_id}` : sql``}`;
+  return { where, what };
+}
+
 export async function generateFees(fd: FormData) {
   const u = await requirePriv('CD_FEE_GENERATE_PRV', 'WRITE');
   await act(backOf(fd, '/fees/generate'), async () => {
@@ -99,28 +139,61 @@ export async function generateFees(fd: FormData) {
     if (!o.academic_year_id) throw new Error('Academic year is required');
     const feeTypes = fd.getAll('fee_types').map(String).filter(Boolean);
     const [ay] = await sql`select * from academic_year where id = ${o.academic_year_id} and enterprise_id = ${u.enterpriseId}`;
+    if (!ay) throw new Error('Academic year not found');
     const t = todayISO();
     const onDate = t < ay.start_date ? ay.start_date : t > ay.end_date ? ay.end_date : t;
+    const scope = await feeScope(u.enterpriseId, o, onDate);
+    if (o._op === 'ROLLBACK') return rollbackFees(u, ay, scope, feeTypes, onDate);
     const students = await sql`
       select a.id assignment_id, a.person_id, a.original_start_date, af.* from assignment a
       join assignment_f af on af.id = a.id and ${onDate}::date between af.effective_start_date and af.effective_end_date
       join assignment_status_f st on st.id = af.assignment_status_id and ${onDate}::date between st.effective_start_date and st.effective_end_date
-      where a.enterprise_id = ${u.enterpriseId} and a.assignment_type = 'STUDENT' and st.system_status_code = 'ACTIVE'
-        ${o.business_unit_id ? sql`and af.business_unit_id = ${o.business_unit_id}` : sql``}`;
+      where a.enterprise_id = ${u.enterpriseId} and a.assignment_type = 'STUDENT' and st.system_status_code = 'ACTIVE' ${scope.where}`;
+    if (!students.length) throw new Error(`No active students found for ${scope.what} in ${ay.name}.`);
     let created = 0;
     const skipped = new Set<string>();
     await sql.begin(async (tx) => {
-      for (const s of students) {
+      for (const st of students) {
         const r = await generateStudentFees(tx, {
-          enterpriseId: u.enterpriseId, personId: s.person_id, assignmentId: s.assignment_id, ay, asg: s,
-          joinDate: s.original_start_date, by: u.username, feeTypes: feeTypes.length ? feeTypes : undefined,
+          enterpriseId: u.enterpriseId, personId: st.person_id, assignmentId: st.assignment_id, ay, asg: st,
+          joinDate: st.original_start_date, by: u.username, feeTypes: feeTypes.length ? feeTypes : undefined,
         });
         created += r.created;
         r.skipped.forEach((x) => skipped.add(x));
       }
     });
-    return { msg: `${created} fee installment(s) created for ${students.length} active student(s).${skipped.size ? ' Skipped: ' + [...skipped].join('; ') : ''}` };
+    return { msg: `${created} fee installment(s) have been generated for ${students.length} active student(s) – ${scope.what}, ${ay.name}.${skipped.size ? ' Skipped: ' + [...skipped].join('; ') : ''}` };
   });
+}
+
+/**
+ * Removes generated fee installments (from fee structures) for the scope, as
+ * long as no payment has been recorded: a student whose generated lines in
+ * scope have a receipt (active or cancelled) or a fee exception is skipped
+ * entirely, so collected and audited fees are never touched.
+ */
+async function rollbackFees(u: SessionUser, ay: Record<string, any>, scope: { where: any; what: string }, feeTypes: string[], onDate: string) {
+  // students in scope by their placement on the date (any status – withdrawn students included)
+  const lines = await sql`
+    select d.id, d.person_id, a.assignment_number,
+      exists (select 1 from fee_allocation fa where fa.demand_id = d.id) paid,
+      exists (select 1 from fee_exemption fe where fe.demand_id = d.id) excepted
+    from fee_demand d
+    join assignment a on a.person_id = d.person_id and a.assignment_type = 'STUDENT'
+    join lateral (select * from assignment_f x where x.id = a.id order by (${onDate}::date between x.effective_start_date and x.effective_end_date) desc, x.effective_start_date desc limit 1) af on true
+    where d.enterprise_id = ${u.enterpriseId} and d.academic_year_id = ${ay.id} and d.source_type = 'STRUCTURE'
+      ${feeTypes.length ? sql`and d.fee_type_code in ${sql(feeTypes)}` : sql``}
+      ${scope.where}`;
+  if (!lines.length) throw new Error(`There are no generated fees to roll back for ${scope.what} in ${ay.name}.`);
+  const blocked = new Map<string, string>();
+  for (const l of lines) if (l.paid || l.excepted) blocked.set(String(l.person_id), l.assignment_number);
+  const ids = lines.filter((l) => !blocked.has(String(l.person_id))).map((l) => l.id);
+  const students = new Set(lines.filter((l) => !blocked.has(String(l.person_id))).map((l) => String(l.person_id)));
+  if (ids.length) await sql`delete from fee_demand where id in ${sql(ids)}`;
+  const kept = [...blocked.values()];
+  const keptMsg = kept.length ? ` ${kept.length} student(s) kept because payments or fee exceptions are recorded: ${kept.slice(0, 10).join(', ')}${kept.length > 10 ? ` and ${kept.length - 10} more` : ''}.` : '';
+  if (!ids.length) throw new Error(`Nothing was rolled back for ${scope.what}: payments or fee exceptions are recorded for ${kept.slice(0, 10).join(', ')}${kept.length > 10 ? ` and ${kept.length - 10} more` : ''}.`);
+  return { msg: `${ids.length} generated fee installment(s) have been rolled back for ${students.size} student(s) – ${scope.what}, ${ay.name}.${keptMsg}` };
 }
 
 // ---------------------------------------------------- student fee page
