@@ -22,7 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <input id="nav" type="checkbox" className="peer hidden" />
       {/* sidebar */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col overflow-y-auto peer-checked:flex lg:flex no-print" style={{ background: 'var(--sidebar-bg)', color: 'var(--sidebar-text)' }}>
-        <Link href="/" className="flex items-center gap-2 px-6 pb-2 pt-5">
+        <Link href="/" className="flex items-center justify-center gap-2 px-6 pb-2 pt-5">
           <span className="text-lg font-extrabold tracking-tight text-white">ca<span className="text-[var(--accent-color)]">M</span>pus d<span className="text-[var(--accent-color)]">A</span>y</span>
         </Link>
         <div className="flex flex-col items-center px-6 pb-6 pt-4 text-center">
