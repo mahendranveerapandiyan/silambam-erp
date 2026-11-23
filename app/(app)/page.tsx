@@ -33,7 +33,7 @@ export default async function Dashboard() {
     join assignment_f af on af.id = a.id and ${today}::date between af.effective_start_date and af.effective_end_date
     join assignment_status_f st on st.id = af.assignment_status_id and ${today}::date between st.effective_start_date and st.effective_end_date
     where a.enterprise_id = ${E} and a.assignment_type = 'STAFF' and st.system_status_code = 'ACTIVE'`;
-  const [pendEx] = await sql`select count(*)::int n from fee_exemption where status_code = 'PENDING'`;
+  const [pendEx] = await sql`select count(*)::int n from approval_task t join approval_request r on r.id = t.request_id where t.approver_user_id = ${u.id} and t.status_code = 'PENDING' and r.status_code = 'PENDING'`;
   const [lowStock] = await sql`select count(*)::int n from (select i.id, t.business_unit_id, sum(t.quantity) q, i.reorder_level from item i join stock_txn t on t.item_id = i.id
     where i.enterprise_id = ${E} and i.active_flag = 'Y' group by 1, 2, 4 having sum(t.quantity) <= i.reorder_level) x`;
   const exams = await sql`select id, name, exam_date, exam_type_code from exam where enterprise_id = ${E} and exam_date between ${today} and ${addDays(today, 60)} and status_code = 'SCHEDULED' order by exam_date limit 5`;
@@ -79,7 +79,7 @@ export default async function Dashboard() {
         <Stat icon="rupee" label={can(u, 'CD_ALL_STUDENTS_DATA_PRV') ? 'Collected This Month' : 'Collected by Me This Month'} value={money(coll.a)} href="/fees/summary" />
         {<>
           {can(u, 'CD_STAFF_ATTENDANCE_PRV') && <Stat icon="staff" label="Active Staff" value={staff.n} sub={`${staff.present} checked in today`} href="/attendance/staff" />}
-          {can(u, 'CD_FEE_EXCEPTION_APPROVAL_PRV') && <Stat icon="alert" label="Exception Approvals" value={pendEx.n} sub="waiting for you" href="/fees/exemptions" />}
+          {can(u, 'CD_MY_APPROVALS_PRV') && <Stat icon="alert" label="My Approvals" value={pendEx.n} sub="waiting for you" href="/approvals" />}
           {can(u, 'CD_INVENTORY_ITEM_PRV') && <Stat icon="box" label="Low Stock Items" value={lowStock.n} sub="at or below reorder level" href="/inventory" />}
         </>}
       </div>

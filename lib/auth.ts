@@ -41,34 +41,39 @@ export async function destroySession() {
   (await cookies()).delete(COOKIE);
 }
 
+/** A user's session data (roles, privileges) by id – also used to act on a requester's behalf. */
+export async function loadUserById(userId: string): Promise<SessionUser | null> {
+  const [u] = await sql`
+    select u.id, u.username, u.display_name, u.enterprise_id, u.person_id, u.must_change_password,
+           coalesce(array_agg(r.role_code) filter (where r.role_code is not null), '{}') roles
+    from user_account u
+    left join user_role r on r.user_id = u.id and exists (select 1 from app_role ar where ar.code = r.role_code and ar.active_flag = 'Y')
+    where u.id = ${userId} and u.active_flag = 'Y'
+    group by u.id`;
+  if (!u) return null;
+  const pr = await sql`
+    select rp.privilege_code, max(case when rp.can_write = 'Y' then 3 when rp.can_read = 'Y' then 2 when rp.can_view = 'Y' then 1 else 0 end)::int lvl
+    from user_role ur join app_role ar on ar.code = ur.role_code and ar.active_flag = 'Y'
+    join role_privilege rp on rp.role_code = ur.role_code
+    where ur.user_id = ${u.id} group by 1`;
+  return {
+    privs: Object.fromEntries(pr.filter((r) => r.lvl > 0).map((r) => [r.privilege_code, r.lvl])),
+    id: u.id,
+    username: u.username,
+    displayName: u.display_name,
+    enterpriseId: u.enterprise_id,
+    personId: u.person_id,
+    roles: u.roles,
+    mustChangePassword: u.must_change_password === 'Y',
+  };
+}
+
 export const getUser = cache(async (): Promise<SessionUser | null> => {
   const token = (await cookies()).get(COOKIE)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secret());
-    const [u] = await sql`
-      select u.id, u.username, u.display_name, u.enterprise_id, u.person_id, u.must_change_password,
-             coalesce(array_agg(r.role_code) filter (where r.role_code is not null), '{}') roles
-      from user_account u
-      left join user_role r on r.user_id = u.id and exists (select 1 from app_role ar where ar.code = r.role_code and ar.active_flag = 'Y')
-      where u.id = ${String(payload.uid)} and u.active_flag = 'Y'
-      group by u.id`;
-    if (!u) return null;
-    const pr = await sql`
-      select rp.privilege_code, max(case when rp.can_write = 'Y' then 3 when rp.can_read = 'Y' then 2 when rp.can_view = 'Y' then 1 else 0 end)::int lvl
-      from user_role ur join app_role ar on ar.code = ur.role_code and ar.active_flag = 'Y'
-      join role_privilege rp on rp.role_code = ur.role_code
-      where ur.user_id = ${u.id} group by 1`;
-    return {
-      privs: Object.fromEntries(pr.filter((r) => r.lvl > 0).map((r) => [r.privilege_code, r.lvl])),
-      id: u.id,
-      username: u.username,
-      displayName: u.display_name,
-      enterpriseId: u.enterprise_id,
-      personId: u.person_id,
-      roles: u.roles,
-      mustChangePassword: u.must_change_password === 'Y',
-    };
+    return await loadUserById(String(payload.uid));
   } catch {
     return null;
   }

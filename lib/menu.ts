@@ -12,6 +12,7 @@ export const MENU: MenuGroup[] = [
     items: [
       { label: 'Student Directory', href: '/students', priv: 'CD_STUDENT_DIRECTORY_PRV' },
       { label: 'New Admission', href: '/students/new', priv: 'CD_STUDENT_ADMISSION_PRV' },
+      { label: 'Admission Form', href: '/students/admission-form', priv: 'CD_ADMISSION_FORM_PRV' },
       { label: 'QR ID Cards', href: '/students/cards', priv: 'CD_STUDENT_ID_CARD_PRV' },
     ],
   },
@@ -58,9 +59,16 @@ export const MENU: MenuGroup[] = [
       { label: 'Collect Fees', href: '/fees', priv: 'CD_FEE_COLLECT_PRV' },
       { label: 'Fee Structures', href: '/fees/structures', priv: 'CD_FEE_STRUCTURE_PRV' },
       { label: 'Generate Fees', href: '/fees/generate', priv: 'CD_FEE_GENERATE_PRV' },
-      { label: 'Exception Approvals', href: '/fees/exemptions', priv: 'CD_FEE_EXCEPTION_APPROVAL_PRV' },
       { label: 'Fee Summary', href: '/fees/summary', priv: 'CD_FEE_SUMMARY_PRV' },
       { label: 'Payment QR Codes', href: '/fees/payment-qr', priv: 'CD_PAYMENT_QR_PRV' },
+    ],
+  },
+  {
+    label: 'Approvals',
+    items: [
+      { label: 'My Approvals', href: '/approvals', priv: 'CD_MY_APPROVALS_PRV' },
+      { label: 'My Requests', href: '/approvals/requests', priv: 'CD_MY_APPROVALS_PRV' },
+      { label: 'Transaction Console', href: '/approvals/console', priv: 'CD_TRANSACTION_CONSOLE_PRV' },
     ],
   },
   {
@@ -97,6 +105,8 @@ export const MENU: MenuGroup[] = [
       { label: 'Number Generation', href: '/config/numbering', priv: 'CD_NUMBERING_PRV' },
       { label: 'UI Theme', href: '/config/theme', priv: 'CD_THEME_PRV' },
       { label: 'User Name Rules', href: '/config/user-names', priv: 'CD_USER_NAME_RULE_PRV' },
+      { label: 'User Groups', href: '/config/user-groups', priv: 'CD_USER_GROUP_PRV' },
+      { label: 'Approval Rules', href: '/config/approval-rules', priv: 'CD_APPROVAL_RULE_PRV' },
       { label: 'Users', href: '/config/users', priv: 'CD_USER_PRV' },
       { label: 'Roles & Privileges', href: '/config/roles', priv: 'CD_ROLE_PRV' },
     ],

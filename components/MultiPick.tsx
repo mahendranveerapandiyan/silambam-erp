@@ -7,9 +7,9 @@ type Opt = { value: string; label: string; code?: string | null };
  * Searchable multi-select: type to filter by name or code, tick any number of
  * values. Each chosen value is submitted as a hidden input named `name`.
  */
-export function MultiPick({ name, options, placeholder = 'Search by code or name…', emptyText = 'None chosen – all' }: { name: string; options: Opt[]; placeholder?: string; emptyText?: string }) {
+export function MultiPick({ name, options, placeholder = 'Search by code or name…', emptyText = 'None chosen – all', initial = [] }: { name: string; options: Opt[]; placeholder?: string; emptyText?: string; initial?: string[] }) {
   const [q, setQ] = useState('');
-  const [chosen, setChosen] = useState<string[]>([]);
+  const [chosen, setChosen] = useState<string[]>(initial);
   const byValue = useMemo(() => new Map(options.map((o) => [o.value, o])), [options]);
   const needle = q.trim().toLowerCase();
   const shown = needle ? options.filter((o) => o.label.toLowerCase().includes(needle) || (o.code ?? '').toLowerCase().includes(needle)) : options;

@@ -7,6 +7,7 @@ import { getAsOf } from '@/lib/asof';
 import { act, backOf, formObj, fileToBytes, todayISO } from '@/lib/util';
 import { assertStudentAccess } from '@/lib/scope';
 import { generateStudentFees, recordPayment, addDemand } from '@/lib/fees';
+import { submitRequest } from '@/lib/approvals';
 
 const FREQS = ['MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUAL', 'ONE_TIME'];
 
@@ -285,10 +286,24 @@ export async function demandAction(demandId: string, fd: FormData) {
         if (!(ex > 0)) throw new Error('Enter the exception amount');
         if (ex > open + 0.001) throw new Error(`Exception exceeds the open balance (${open})`);
         if (!o.reason_code) throw new Error('Exception reason is required');
+        // own exceptions of approvers apply at once; others go through the Fee Exception approval rule
         const auto = can(u, 'CD_FEE_EXCEPTION_APPROVAL_PRV', 'WRITE');
-        await sql`insert into fee_exemption (demand_id, amount, reason_code, remarks, status_code, requested_by, decided_by, decided_at)
-          values (${demandId}, ${ex}, ${o.reason_code}, ${o.remarks}, ${auto ? 'APPROVED' : 'PENDING'}, ${u.username}, ${auto ? u.username : null}, ${auto ? new Date() : null})`;
-        return { msg: auto ? 'The fee exception has been applied.' : 'The fee exception has been submitted for administrator approval.' };
+        let submitted: { id: string; status: string } | null = null;
+        await sql.begin(async (tx) => {
+          const [e] = await tx`insert into fee_exemption (demand_id, amount, reason_code, remarks, status_code, requested_by, decided_by, decided_at)
+            values (${demandId}, ${ex}, ${o.reason_code}, ${o.remarks}, ${auto ? 'APPROVED' : 'PENDING'}, ${u.username}, ${auto ? u.username : null}, ${auto ? new Date() : null}) returning id`;
+          if (auto) return;
+          const [st] = await tx`select a.assignment_number, (select trim(concat_ws(' ', first_name, last_name)) from person_f x where x.id = a.person_id order by effective_start_date desc limit 1) n
+            from assignment a where a.person_id = ${personId} and a.assignment_type = 'STUDENT'`;
+          submitted = await submitRequest(tx, u, {
+            process: 'FEE_EXCEPTION', refTable: 'fee_exemption', refId: String(e.id), payload: { personId },
+            title: `Fee exception ${ex.toFixed(2)} – ${st?.n ?? ''} (${st?.assignment_number ?? ''})`,
+            summary: `${d.description}${d.period_label ? ` ${d.period_label}` : ''} · reason ${o.reason_code}${o.remarks ? ` · ${o.remarks}` : ''}`,
+          });
+        });
+        if (auto) return { msg: 'The fee exception has been applied.' };
+        const done = (submitted as { status: string } | null)?.status === 'APPROVED';
+        return { msg: done ? 'The fee exception has been applied (no approver was needed).' : 'The fee exception has been submitted for approval. Follow it under Approvals › My Requests.' };
       }
       case 'CANCEL': {
         if (!can(u, 'CD_FEE_CANCEL_PRV', 'WRITE')) throw new Error('You do not have permission to cancel fee lines');
@@ -401,17 +416,6 @@ export async function changeFrequency(personId: string, fd: FormData) {
 }
 
 // ----------------------------------------------------------- exemptions
-export async function decideExemption(id: string, decision: 'APPROVED' | 'REJECTED', fd: FormData) {
-  const u = await requirePriv('CD_FEE_EXCEPTION_APPROVAL_PRV', 'WRITE');
-  await act(backOf(fd, '/fees/exemptions'), async () => {
-    const [e] = await sql`select e.*, d.balance_amount from fee_exemption e join fee_demand_v d on d.id = e.demand_id where e.id = ${id}`;
-    if (!e || e.status_code !== 'PENDING') throw new Error('Request is no longer pending');
-    if (decision === 'APPROVED' && Number(e.amount) > Number(e.balance_amount) + 0.001) throw new Error('Exception now exceeds the open balance (payments were recorded since)');
-    await sql`update fee_exemption set status_code = ${decision}, decided_by = ${u.username}, decided_at = now() where id = ${id}`;
-    return { msg: `The fee exception has been ${decision.toLowerCase()}.` };
-  });
-}
-
 // ------------------------------------------------------------ payment QR
 export async function uploadPaymentQr(fd: FormData) {
   const u = await requirePriv('CD_PAYMENT_QR_PRV', 'WRITE');

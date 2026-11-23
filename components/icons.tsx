@@ -30,5 +30,5 @@ export function Icon({ name, className = 'h-5 w-5' }: { name: string; className?
 }
 export const GROUP_ICON: Record<string, string> = {
   Home: 'home', Students: 'students', 'Academic Structure': 'academic', Staff: 'staff', 'Workforce Structure': 'workforce',
-  Attendance: 'attendance', Fees: 'fees', Exams: 'exams', Events: 'events', Inventory: 'inventory', Finance: 'finance', Configuration: 'config',
+  Attendance: 'attendance', Fees: 'fees', Exams: 'exams', Events: 'events', Inventory: 'inventory', Finance: 'finance', Configuration: 'config', Approvals: 'check',
 };

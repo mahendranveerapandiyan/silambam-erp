@@ -13,11 +13,16 @@ import { PhotoInput } from '../PhotoInput';
 import { IdentificationFields, employerWatch } from './IdentificationFields';
 import { AssignmentFields } from './AssignmentFields';
 import { AorFields } from './AorFields';
-import { hirePerson } from '@/app/(app)/people/actions';
+import { hirePerson, submitAdmissionForm } from '@/app/(app)/people/actions';
 import { userNameRule } from '@/lib/usernames';
 import { UsernamePreview } from '../UsernamePreview';
 
-export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: PersonKind; asOf: string; sp: Record<string, any> }) {
+/**
+ * Hire Staff / New Admission. With `request` (students only) it is the staff
+ * Admission Form: the same fields, the user's own classes, and saving sends
+ * the admission for approval instead of admitting at once.
+ */
+export async function HireForm({ u, kind, asOf, sp, request = false }: { u: SessionUser; kind: PersonKind; asOf: string; sp: Record<string, any>; request?: boolean }) {
   const stu = kind === 'STUDENT';
   const [manualPerson, manualAsg] = [await isManual(sql, u.enterpriseId, 'PERSON'), await isManual(sql, u.enterpriseId, kind)];
   const { actions, reasons } = await actionAndReasonOptions(u.enterpriseId, kind, 'HIRE');
@@ -27,17 +32,21 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
   const staffRule = await userNameRule(u.enterpriseId, 'STAFF');
   return (
     <div className="max-w-6xl">
-      <PageHeader title={stu ? 'New Student Admission' : 'Hire Staff'} actions={<Link href={stu ? '/students' : '/staff'} className="btn">Back</Link>} />
+      <PageHeader title={request ? 'Admission Form' : stu ? 'New Student Admission' : 'Hire Staff'}
+        subtitle={request ? 'Fill in the admission – it is sent for approval and the student is admitted once it is approved. Only your own classes are offered.' : undefined}
+        actions={<Link href={request ? '/approvals/requests' : stu ? '/students' : '/staff'} className="btn">{request ? 'My Requests' : 'Back'}</Link>} />
       <Flash sp={sp} />
-      <form action={hirePerson.bind(null, kind)} className="space-y-4">
-        <Back to={stu ? '/students/new' : '/staff/new'} />
+      <form action={request ? submitAdmissionForm : hirePerson.bind(null, kind)} className="space-y-4">
+        <Back to={request ? '/students/admission-form' : stu ? '/students/new' : '/staff/new'} />
         <div className="card">
           <h2 className="h2">{stu ? 'Admission' : 'Hire'} Details</h2>
           <div className="grid-form">
             <Field label={`${stu ? 'Admission' : 'Hire'} Date *`}><input type="date" name="hire_date" defaultValue={asOf} required className="input" /></Field>
             {manualAsg
               ? <Field label={`${stu ? 'Student' : 'Staff'} Number *`}><input name="assignment_number" required className="input" /></Field>
-              : <Field label={`${stu ? 'Student' : 'Staff'} Number`} help="Generated automatically when you save"><NumberPreview previews={previews} dateField="hire_date" /></Field>}
+              : request
+                ? <Field label="Student Number"><input value="Assigned when approved" readOnly className="input bg-slate-50" /></Field>
+                : <Field label={`${stu ? 'Student' : 'Staff'} Number`} help="Generated automatically when you save"><NumberPreview previews={previews} dateField="hire_date" /></Field>}
             <Field label="Action *"><DatedSelect name="action_id" options={actions} dateField="hire_date" value={defaultAction} required empty={false} /></Field>
             {manualPerson && <Field label="Person Number *"><input name="person_number" className="input" /></Field>}
             <Field label="Action Reason"><DatedSelect name="action_reason_code" options={reasons} dateField="hire_date" parentField="action_id" value={stu ? 'NEW_ADMISSION' : 'HIRE'} /></Field>
@@ -121,7 +130,7 @@ export async function HireForm({ u, kind, asOf, sp }: { u: SessionUser; kind: Pe
             </div>
           </div>
         )}
-        <button className="btn btn-primary">{stu ? 'Admit Student' : 'Hire'}</button>
+        <button className="btn btn-primary">{request ? 'Submit for Approval' : stu ? 'Admit Student' : 'Hire'}</button>
       </form>
     </div>
   );

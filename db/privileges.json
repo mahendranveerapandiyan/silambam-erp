@@ -549,5 +549,47 @@
   "module": "Configuration",
   "defaults": {},
   "seq": 680
+ },
+ {
+  "code": "CD_APPROVAL_RULE_PRV",
+  "name": "Approval Rules",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 657
+ },
+ {
+  "code": "CD_USER_GROUP_PRV",
+  "name": "User Groups",
+  "module": "Configuration",
+  "defaults": {},
+  "seq": 658
+ },
+ {
+  "code": "CD_TRANSACTION_CONSOLE_PRV",
+  "name": "Transaction Console (monitor and act on all approval requests)",
+  "module": "Approvals",
+  "defaults": {},
+  "seq": 700
+ },
+ {
+  "code": "CD_MY_APPROVALS_PRV",
+  "name": "My Approvals & Requests",
+  "module": "Approvals",
+  "defaults": {
+   "INCHARGE": "W",
+   "STAFF": "W",
+   "ACCOUNTANT": "W"
+  },
+  "seq": 705
+ },
+ {
+  "code": "CD_ADMISSION_FORM_PRV",
+  "name": "Admission Form (staff – goes for approval)",
+  "module": "Students",
+  "defaults": {
+   "INCHARGE": "W",
+   "STAFF": "W"
+  },
+  "seq": 112
  }
 ]

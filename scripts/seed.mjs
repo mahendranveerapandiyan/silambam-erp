@@ -54,7 +54,7 @@ const LOOKUPS = {
   FEE_PAYMENT_STATUS: ['Fee Payment Status', 'FEES', 'SYSTEM', null, [['PAID', 'Paid'], ['UNPAID', 'Unpaid'], ['PARTIAL', 'Partially Paid'], ['FULL_EXEMPT', 'Exception - Full'], ['PARTIAL_EXEMPT', 'Exception - Partial'], ['CANCELLED', 'Cancelled']]],
   PAYMENT_MODE: ['Payment Mode', 'FEES', 'USER', null, [['CASH', 'Cash'], ['UPI', 'UPI'], ['BANK_TRANSFER', 'Bank Transfer'], ['CARD', 'Card'], ['CHEQUE', 'Cheque']]],
   EXEMPTION_REASON: ['Exception Reason', 'FEES', 'USER', null, [['SCHOLARSHIP', 'Scholarship'], ['SIBLING', 'Sibling Concession'], ['HARDSHIP', 'Financial Hardship'], ['STAFF_CHILD', 'Staff Child'], ['MERIT', 'Merit'], ['MANAGEMENT', 'Management Decision']]],
-  APPROVAL_STATUS: ['Approval Status', 'SYSTEM', 'SYSTEM', null, [['PENDING', 'Pending Approval'], ['APPROVED', 'Approved'], ['REJECTED', 'Rejected']]],
+  APPROVAL_STATUS: ['Approval Status', 'SYSTEM', 'SYSTEM', null, [['PENDING', 'Pending Approval'], ['APPROVED', 'Approved'], ['REJECTED', 'Rejected'], ['WITHDRAWN', 'Withdrawn'], ['SKIPPED', 'Skipped'], ['NOT_REQUIRED', 'Not Required'], ['REASSIGNED', 'Reassigned']]],
   EXAM_TYPE: ['Exam Type', 'EXAMS', 'SYSTEM', null, [['GRADE_EXAM', 'Grade Exam'], ['ASSESSMENT', 'Assessment'], ['TERM_EXAM', 'Term Exam']]],
   EXAM_STATUS: ['Exam Status', 'EXAMS', 'SYSTEM', null, [['SCHEDULED', 'Scheduled'], ['COMPLETED', 'Completed'], ['PUBLISHED', 'Results Published'], ['CANCELLED', 'Cancelled']]],
   EXAM_RESULT: ['Exam Result', 'EXAMS', 'SYSTEM', null, [['PENDING', 'Pending'], ['PASS', 'Pass'], ['FAIL', 'Fail'], ['ABSENT', 'Absent']]],
@@ -134,6 +134,11 @@ try {
       { object_code: 'STAFF', prefix: 'EMP', separator: '-', padding: 4, scope_code: 'ENTERPRISE' },
       { object_code: 'RECEIPT', prefix: 'RC', separator: '/', padding: 5, scope_code: 'BU', include_scope_code_flag: 'Y', include_year_flag: 'Y', reset_yearly_flag: 'Y' },
     ]) await tx`insert into number_rule ${tx({ enterprise_id: E, created_by: BY, ...r })}`;
+    // default approval rules: an Administrator approves admission-form requests and fee exceptions
+    for (const [proc, name] of [['STUDENT_ADMISSION', 'Admission form approval'], ['FEE_EXCEPTION', 'Fee exception approval']]) {
+      const [r] = await tx`insert into approval_rule (enterprise_id, process_code, name, description, created_by) values (${E}, ${proc}, ${name}, 'Default rule – change it under Configuration › Approval Rules.', ${BY}) returning id`;
+      await tx`insert into approval_rule_step (rule_id, step_no, approver_type, approver_ref, approval_mode) values (${r.id}, 1, 'ROLE', 'ADMIN', 'ANY')`;
+    }
     for (const [cat, method] of [['STAFF', 'STAFF_NUMBER'], ['STUDENT', 'STUDENT_NUMBER'], ['PARENT', 'MANUAL']])
       await tx`insert into user_name_rule (enterprise_id, person_category, method_code, last_updated_by) values (${E}, ${cat}, ${method}, ${BY}) on conflict do nothing`;
 
