@@ -203,14 +203,25 @@ async function rollbackFees(u: SessionUser, ay: Record<string, any>, scope: { wh
       ${scope.where}`;
   if (!lines.length) throw new Error(`There are no generated fees to roll back for ${scope.what} in ${ay.name}.`);
   const blocked = new Map<string, string>();
-  for (const l of lines) if (l.paid || l.excepted) blocked.set(String(l.person_id), l.assignment_number);
+  const blockedIds = [...new Set(lines.filter((l) => l.paid || l.excepted).map((l) => String(l.person_id)))];
+  if (blockedIds.length) {
+    // name what blocks each student: their receipts and fee exceptions on these lines
+    const inScope = lines.map((l) => l.id);
+    const why = await sql`select a.person_id, a.assignment_number,
+        (select string_agg(distinct fp.receipt_number || case when fp.status_code = 'CANCELLED' then ' (cancelled)' else '' end, ', ')
+           from fee_allocation fa join fee_payment fp on fp.id = fa.payment_id where fa.demand_id in ${sql(inScope)} and fp.person_id = a.person_id) receipts,
+        (select count(*) from fee_exemption fe join fee_demand d on d.id = fe.demand_id where fe.demand_id in ${sql(inScope)} and d.person_id = a.person_id)::int exceptions
+      from assignment a where a.person_id in ${sql(blockedIds)} and a.assignment_type = 'STUDENT'`;
+    for (const w of why) blocked.set(String(w.person_id), `${w.assignment_number} (${[w.receipts && `receipt ${w.receipts}`, w.exceptions && `${w.exceptions} fee exception(s)`].filter(Boolean).join('; ')})`);
+  }
   const ids = lines.filter((l) => !blocked.has(String(l.person_id))).map((l) => l.id);
   const students = new Set(lines.filter((l) => !blocked.has(String(l.person_id))).map((l) => String(l.person_id)));
   if (ids.length) await sql`delete from fee_demand where id in ${sql(ids)}`;
   const kept = [...blocked.values()];
   const keptMsg = kept.length ? ` ${kept.length} student(s) kept because payments or fee exceptions are recorded: ${kept.slice(0, 10).join(', ')}${kept.length > 10 ? ` and ${kept.length - 10} more` : ''}.` : '';
-  if (!ids.length) throw new Error(`Nothing was rolled back for ${scope.what}: payments or fee exceptions are recorded for ${kept.slice(0, 10).join(', ')}${kept.length > 10 ? ` and ${kept.length - 10} more` : ''}.`);
-  return { msg: `${ids.length} generated fee installment(s) have been rolled back for ${students.size} student(s) – ${scope.what}, ${ay.name}.${keptMsg}` };
+  const hint = ' To roll them back too, delete those receipts / fee exceptions on the student\'s fee page (Fees › Collect Fees › the student) and run Roll Back again.';
+  if (!ids.length) throw new Error(`Nothing was rolled back for ${scope.what}: payments or fee exceptions are recorded for ${kept.slice(0, 10).join(', ')}${kept.length > 10 ? ` and ${kept.length - 10} more` : ''}.${hint}`);
+  return { msg: `${ids.length} generated fee installment(s) have been rolled back for ${students.size} student(s) – ${scope.what}, ${ay.name}.${keptMsg}${kept.length ? hint : ''}` };
 }
 
 // ---------------------------------------------------- student fee page
@@ -298,6 +309,36 @@ export async function cancelPayment(paymentId: string, fd: FormData) {
   await act(backOf(fd), async () => {
     await sql`update fee_payment set status_code = 'CANCELLED', remarks = coalesce(remarks || ' · ', '') || ${'Cancelled by ' + u.username} where id = ${paymentId}`;
     return { msg: 'The receipt has been cancelled; its amounts are outstanding again.' };
+  });
+}
+
+/**
+ * Delete a receipt completely (e.g. entered by mistake or for testing). Its
+ * amounts become outstanding again; the fee lines themselves stay.
+ */
+export async function deletePayment(paymentId: string, fd: FormData) {
+  const u = await requirePriv('CD_FEE_CANCEL_PRV', 'WRITE');
+  await act(backOf(fd), async () => {
+    const [p] = await sql`select fp.receipt_number, fp.amount, fp.person_id, a.assignment_number from fee_payment fp
+      left join assignment a on a.person_id = fp.person_id and a.assignment_type = 'STUDENT'
+      where fp.id = ${paymentId} and fp.enterprise_id = ${u.enterpriseId}`;
+    if (!p) throw new Error('Receipt not found');
+    await assertStudentAccess(u, p.person_id, await getAsOf());
+    await sql`delete from fee_payment where id = ${paymentId}`; // its allocations go with it
+    return { msg: `Receipt ${p.receipt_number} (${Number(p.amount).toFixed(2)}) for ${p.assignment_number ?? 'the student'} has been deleted. The amounts are outstanding again.` };
+  });
+}
+
+/** Delete a fee exception (requested, approved or rejected); the line's balance returns. */
+export async function deleteExemption(exemptionId: string, fd: FormData) {
+  const u = await requirePriv('CD_FEE_CANCEL_PRV', 'WRITE');
+  await act(backOf(fd), async () => {
+    const [e] = await sql`select e.amount, d.person_id, d.description, d.period_label from fee_exemption e join fee_demand d on d.id = e.demand_id
+      where e.id = ${exemptionId} and d.enterprise_id = ${u.enterpriseId}`;
+    if (!e) throw new Error('Fee exception not found');
+    await assertStudentAccess(u, e.person_id, await getAsOf());
+    await sql`delete from fee_exemption where id = ${exemptionId}`;
+    return { msg: `The fee exception of ${Number(e.amount).toFixed(2)} on ${e.description}${e.period_label ? ` ${e.period_label}` : ''} has been deleted.` };
   });
 }
 

@@ -10,7 +10,7 @@ import { fmtDate, money, todayISO } from '@/lib/util';
 import { PageHeader, Flash, Back, Badge, Empty, Field, Select, STATUS_COLOR, type SP, here } from '@/components/ui';
 import { ConfirmButton, CheckAll } from '@/components/client';
 import { AccessGuard } from '@/components/people/AccessGuard';
-import { demandAction, bulkPayment, addCharge, cancelPayment, changeFrequency } from '../../actions';
+import { demandAction, bulkPayment, addCharge, cancelPayment, deletePayment, deleteExemption, changeFrequency } from '../../actions';
 
 export default async function StudentFees({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
   const u = await requirePriv('CD_FEE_COLLECT_PRV', 'READ');
@@ -144,7 +144,10 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
                   <tr key={r.id} className={r.status_code === 'CANCELLED' ? 'line-through opacity-50' : ''}>
                     <td><Link className="link" href={`/fees/receipt/${r.id}`}>{r.receipt_number}</Link></td><td>{fmtDate(r.payment_date)}</td><td className="text-right">{money(r.amount)}</td>
                     <td>{L('PAYMENT_MODE', r.payment_mode_code)}</td><td>{r.reference}</td><td className="text-xs">{r.applied_to}</td><td className="text-xs">{r.collected_by}</td>
-                    <td>{canCancel && r.status_code === 'ACTIVE' && <form action={cancelPayment.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message="Cancel this receipt?">Cancel</ConfirmButton></form>}</td>
+                    <td className="whitespace-nowrap">{canCancel && <div className="flex gap-1">
+                      {r.status_code === 'ACTIVE' && <form action={cancelPayment.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message={`Cancel receipt ${r.receipt_number}? It stays on record as cancelled and its amounts become outstanding again.`}>Cancel</ConfirmButton></form>}
+                      <form action={deletePayment.bind(null, r.id)}><Back to={back} /><ConfirmButton className="btn btn-sm btn-danger" message={`Delete receipt ${r.receipt_number} (${money(r.amount)}) completely? Its amounts become outstanding again. This cannot be undone.`}>Delete</ConfirmButton></form>
+                    </div>}</td>
                   </tr>))}</tbody></table>
               {!payments.length && <Empty>No payments yet.</Empty>}
             </div>
@@ -152,10 +155,11 @@ export default async function StudentFees({ params, searchParams }: { params: Pr
             {exemptions.length > 0 && (
               <div className="card overflow-x-auto">
                 <h2 className="h2">Exceptions</h2>
-                <table className="tbl"><thead><tr><th>Fee</th><th className="text-right">Amount</th><th>Reason</th><th>Status</th><th>Requested</th><th>Decided</th></tr></thead>
+                <table className="tbl"><thead><tr><th>Fee</th><th className="text-right">Amount</th><th>Reason</th><th>Status</th><th>Requested</th><th>Decided</th><th></th></tr></thead>
                   <tbody>{exemptions.map((e) => (
                     <tr key={e.id}><td>{e.description} {e.period_label}</td><td className="text-right">{money(e.amount)}</td><td>{L('EXEMPTION_REASON', e.reason_code)}{e.remarks && ` – ${e.remarks}`}</td>
-                      <td><Badge color={STATUS_COLOR[e.status_code]}>{L('APPROVAL_STATUS', e.status_code)}</Badge></td><td className="text-xs">{e.requested_by}</td><td className="text-xs">{e.decided_by}</td></tr>))}</tbody></table>
+                      <td><Badge color={STATUS_COLOR[e.status_code]}>{L('APPROVAL_STATUS', e.status_code)}</Badge></td><td className="text-xs">{e.requested_by}</td><td className="text-xs">{e.decided_by}</td>
+                      <td>{canCancel && <form action={deleteExemption.bind(null, e.id)}><Back to={back} /><ConfirmButton className="btn btn-sm btn-danger" message={`Delete the fee exception of ${money(e.amount)} on ${e.description}? The line's balance returns.`}>Delete</ConfirmButton></form>}</td></tr>))}</tbody></table>
               </div>
             )}
           </div>
