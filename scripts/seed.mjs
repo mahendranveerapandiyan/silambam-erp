@@ -63,8 +63,9 @@ const LOOKUPS = {
   PARTICIPATION: ['Participation Role', 'EVENTS', 'USER', null, [['PARTICIPANT', 'Participant'], ['PERFORMER', 'Performer'], ['CAPTAIN', 'Team Captain'], ['VOLUNTEER', 'Volunteer']]],
   ITEM_CATEGORY: ['Item Category', 'INVENTORY', 'USER', null, [['STICK', 'Silambam Stick'], ['UNIFORM', 'Uniform'], ['PROTECTIVE_GEAR', 'Protective Gear'], ['ACCESSORY', 'Accessory'], ['BOOK', 'Book / Material']]],
   UOM: ['Unit of Measure', 'INVENTORY', 'USER', null, [['EA', 'Each'], ['PAIR', 'Pair'], ['SET', 'Set']]],
-  STOCK_TXN_TYPE: ['Stock Transaction Type', 'INVENTORY', 'SYSTEM', null, [['RECEIPT', 'Stock Receipt'], ['SALE', 'Sale to Student'], ['RETURN', 'Return'], ['ADJUSTMENT', 'Adjustment']]],
-  INCOME_CATEGORY: ['Income Category', 'FINANCE', 'USER', null, [['DONATION', 'Donation'], ['SPONSORSHIP', 'Sponsorship'], ['EVENT_INCOME', 'Event Income'], ['OTHER', 'Other Income']]],
+  STOCK_TXN_TYPE: ['Stock Transaction Type', 'INVENTORY', 'SYSTEM', null, [['RECEIPT', 'Stock Receipt'], ['SALE', 'Sale'], ['RETURN', 'Return'], ['ADJUSTMENT', 'Adjustment']]],
+  INCOME_CATEGORY: ['Income Category', 'FINANCE', 'USER', null, [['DONATION', 'Donation'], ['SPONSORSHIP', 'Sponsorship'], ['EVENT_INCOME', 'Event Income'], ['INVENTORY_SALE', 'Equipment / Uniform Sales'], ['OTHER', 'Other Income']]],
+  SALE_BUYER_TYPE: ['Sale Buyer Type', 'INVENTORY', 'SYSTEM', null, [['STUDENT', 'Student'], ['STAFF', 'Staff'], ['OTHER', 'Other']]],
   EXPENSE_CATEGORY: ['Expense Category', 'FINANCE', 'USER', null, [['RENT', 'Rent'], ['SALARY', 'Salary / Honorarium'], ['UTILITIES', 'Electricity & Utilities'], ['EQUIPMENT', 'Equipment Purchase'], ['EVENT', 'Event Expense'], ['TRAVEL', 'Travel'], ['MAINTENANCE', 'Maintenance'], ['MARKETING', 'Marketing'], ['OTHER', 'Other']]],
   ROLE: ['Application Role', 'SYSTEM', 'SYSTEM', null, [['ADMIN', 'Administrator'], ['INCHARGE', 'Class Incharge'], ['STAFF', 'Staff'], ['ACCOUNTANT', 'Accountant'], ['PARENT', 'Parent / Guardian'], ['STUDENT', 'Student']]],
   NUMBER_OBJECT: ['Number Generation Object', 'SYSTEM', 'SYSTEM', null, [['PERSON', 'Person Number'], ['STUDENT', 'Student Number'], ['STAFF', 'Staff Number'], ['RECEIPT', 'Fee Receipt Number']]],
@@ -101,7 +102,7 @@ try {
     // codes the application logic relies on are locked even in extensible lookups
     await tx`update lookup_value set system_flag = 'Y' where (lookup_type, lookup_code) in
       (('FEE_TYPE','TUITION'),('FEE_TYPE','ADMISSION'),('FEE_TYPE','GRADE_EXAM'),('FEE_TYPE','ASSESSMENT'),('FEE_TYPE','TERM_EXAM'),('FEE_TYPE','EVENT'),('FEE_TYPE','INVENTORY'),
-       ('ATTENDANCE_STATUS','P'),('ATTENDANCE_STATUS','A'),('ACTION_REASON','HIRE'),('ACTION_REASON','NEW_ADMISSION'),('STUDENT_AOR','CLASS_INCHARGE'),('STAFF_AOR','STAFF_REP'))`;
+       ('ATTENDANCE_STATUS','P'),('ATTENDANCE_STATUS','A'),('ACTION_REASON','HIRE'),('ACTION_REASON','NEW_ADMISSION'),('STUDENT_AOR','CLASS_INCHARGE'),('STAFF_AOR','STAFF_REP'),('INCOME_CATEGORY','INVENTORY_SALE'))`;
 
     const [ent] = await tx`insert into enterprise (code, name, short_name, country_code, currency_code, created_by)
       values ('SA', 'Silambam Academy', 'Silambam Academy', 'IN', 'INR', ${BY}) returning id`;

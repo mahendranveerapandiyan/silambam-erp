@@ -14,7 +14,7 @@ export default async function Stock({ searchParams }: { searchParams: SP }) {
   const items = (await sql`select id, code, name, size_label from item where enterprise_id = ${u.enterpriseId} and active_flag = 'Y' order by name, size_label`).map((i) => ({ value: String(i.id), label: `${i.name}${i.size_label ? ' – ' + i.size_label : ''} (${i.code})` }));
   const [bus, types] = [await refOptions('business-units', u.enterpriseId, asOf), (await lookupOptions('STOCK_TXN_TYPE', asOf)).filter((t) => t.value !== 'SALE')];
   const txns = await sql`select t.*, i.name, i.size_label, (select name from business_unit_f b where b.id = t.business_unit_id order by effective_start_date desc limit 1) bu_name,
-      (select a.assignment_number from assignment a where a.person_id = t.person_id and a.assignment_type = 'STUDENT') student
+      coalesce(t.buyer_name, (select a.assignment_number from assignment a where a.person_id = t.person_id and a.assignment_type = coalesce(t.buyer_type, 'STUDENT'))) student, t.buyer_type
     from stock_txn t join item i on i.id = t.item_id where i.enterprise_id = ${u.enterpriseId} order by t.txn_date desc, t.id desc limit 200`;
   return (
     <div className="max-w-6xl">
@@ -34,11 +34,11 @@ export default async function Stock({ searchParams }: { searchParams: SP }) {
       </form>
       <div className="card overflow-x-auto">
         <h2 className="h2">Stock Ledger (latest 200)</h2>
-        <table className="tbl"><thead><tr><th>Date</th><th>Item</th><th>Business Unit</th><th>Type</th><th className="text-right">Qty</th><th className="text-right">Price</th><th>Student</th><th>Reference</th><th>By</th></tr></thead>
+        <table className="tbl"><thead><tr><th>Date</th><th>Item</th><th>Business Unit</th><th>Type</th><th className="text-right">Qty</th><th className="text-right">Price</th><th>Buyer</th><th>Reference</th><th>By</th></tr></thead>
           <tbody>{txns.map((t) => (
             <tr key={t.id}><td>{fmtDate(t.txn_date)}</td><td>{t.name} {t.size_label}</td><td>{t.bu_name}</td><td>{L('STOCK_TXN_TYPE', t.txn_type_code)}</td>
               <td className={`text-right ${Number(t.quantity) < 0 ? 'text-red-700' : 'text-green-700'}`}>{Number(t.quantity)}</td><td className="text-right">{t.unit_price && money(t.unit_price)}</td>
-              <td>{t.student}</td><td>{t.reference}</td><td className="text-xs">{t.created_by}</td></tr>))}</tbody></table>
+              <td>{t.student}{t.buyer_type === 'STAFF' ? ' (staff)' : t.buyer_type === 'OTHER' ? ' (other)' : ''}</td><td>{t.reference}</td><td className="text-xs">{t.created_by}</td></tr>))}</tbody></table>
         {!txns.length && <Empty />}
       </div>
     </div>

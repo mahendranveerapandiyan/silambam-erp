@@ -83,7 +83,7 @@ export const MENU: MenuGroup[] = [
     label: 'Inventory',
     items: [
       { label: 'Items & Stock', href: '/inventory', priv: 'CD_INVENTORY_ITEM_PRV' },
-      { label: 'Sell to Student', href: '/inventory/sale', priv: 'CD_INVENTORY_SALE_PRV' },
+      { label: 'Sell Items', href: '/inventory/sale', priv: 'CD_INVENTORY_SALE_PRV' },
       { label: 'Stock Entry', href: '/inventory/stock', priv: 'CD_STOCK_ENTRY_PRV' },
     ],
   },
