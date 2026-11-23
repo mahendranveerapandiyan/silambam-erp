@@ -262,8 +262,13 @@ export async function actionAndReasonOptions(enterpriseId: string, kind: PersonK
 export async function deletionBlockers(personId: string, kind: PersonKind): Promise<string[]> {
   const [a] = await sql`select id from assignment where person_id = ${personId} and assignment_type = ${kind}`;
   if (!a) return ['No record found'];
+  // students: only recorded payments block deletion – everything else is removed with the record
+  if (kind === 'STUDENT') {
+    const [r] = await sql`select count(*)::int n, string_agg(receipt_number, ', ' order by payment_date) receipts from fee_payment where person_id = ${personId}`;
+    return r.n > 0 ? [`${r.n} fee payment(s) (receipt ${r.receipts})`] : [];
+  }
   const checks: [string, any][] = [
-    ['assignment change(s) after the ' + (kind === 'STUDENT' ? 'admission' : 'hire'), sql`select count(*) - 1 from assignment_f where id = ${a.id}`],
+    ['assignment change(s) after the hire', sql`select count(*) - 1 from assignment_f where id = ${a.id}`],
   ];
   if (kind === 'STAFF') {
     checks.push(['class incharge assignment(s)', sql`select count(*) from class_incharge where person_id = ${personId}`]);

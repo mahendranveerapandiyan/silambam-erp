@@ -182,11 +182,13 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         <Back to={back} />
         <h2 className="h2">Delete {stu ? 'Student' : 'Staff'}</h2>
         {blockers.length ? (
-          <p className="text-sm text-gray-600">Cannot be deleted: {blockers.join(', ')}. Use a {stu ? 'Withdrawal' : 'Termination'} action instead.</p>
+          <p className="text-sm text-gray-600">Cannot be deleted: {blockers.join(', ')}. {stu ? <>Delete those receipts on the <a className="link" href={`/fees/students/${personId}`}>fee page</a> first, or use a Withdrawal action.</> : 'Use a Termination action instead.'}</p>
         ) : (
           <>
-            <p className="muted mb-2">For records entered by mistake. Removes the {stu ? 'admission (and its unpaid fee lines)' : 'hire'} and the personal record; linked logins are deactivated.</p>
-            <ConfirmButton className="btn btn-danger" message={`Delete ${stu ? 'student' : 'staff'} ${p.full_name} (${ab!.assignment_number})? This cannot be undone.`}>Delete</ConfirmButton>
+            <p className="muted mb-2">{stu
+              ? 'For records entered by mistake. Removes the student with their assignment history, attendance, fee lines and exceptions, exam and event entries; linked logins are deactivated. Not possible once a payment is recorded.'
+              : 'For records entered by mistake. Removes the hire and the personal record; linked logins are deactivated.'}</p>
+            <ConfirmButton className="btn btn-danger" message={stu ? `Delete student ${p.full_name} (${ab!.assignment_number}) with all their attendance, fee lines, exam and event entries? This cannot be undone.` : `Delete staff ${p.full_name} (${ab!.assignment_number})? This cannot be undone.`}>Delete</ConfirmButton>
           </>
         )}
       </form>

@@ -413,7 +413,9 @@ export async function deletePerson(kind: PersonKind, personId: string, fd: FormD
     await guard(u, kind, personId, (await getAsOf()));
     const { deletionBlockers } = await import('@/lib/people');
     const blockers = await deletionBlockers(personId, kind);
-    if (blockers.length) throw new Error(`Cannot delete – found ${blockers.join(', ')}. Use a ${kind === 'STUDENT' ? 'Withdrawal' : 'Termination'} action instead.`);
+    if (blockers.length) throw new Error(kind === 'STUDENT'
+      ? `Cannot delete – ${blockers.join(', ')} recorded. Delete the receipts on the student's fee page (Fees › Collect Fees) first, or use a Withdrawal action.`
+      : `Cannot delete – found ${blockers.join(', ')}. Use a Termination action instead.`);
     let number = '';
     let who = '';
     await sql.begin(async (tx) => {
@@ -421,7 +423,22 @@ export async function deletePerson(kind: PersonKind, personId: string, fd: FormD
       number = a.assignment_number;
       const [pn] = await tx`select trim(concat_ws(' ', first_name, last_name)) n from person_f where id = ${personId} order by effective_start_date desc limit 1`;
       who = pn?.n ?? '';
-      await tx`delete from fee_demand where assignment_id = ${a.id} or (person_id = ${personId} and ${kind} = 'STUDENT')`;
+      if (kind === 'STUDENT') {
+        // everything recorded for the student (payments already ruled out); attendance and
+        // assignment history go with the assignment, fee exceptions with their fee lines
+        await tx`delete from exam_candidate where assignment_id = ${a.id} or person_id = ${personId}`;
+        await tx`delete from event_participant where person_id = ${personId}`;
+        await tx`delete from fee_demand where assignment_id = ${a.id} or person_id = ${personId}`;
+        await tx`delete from fee_structure where person_id = ${personId}`;
+        // parent logins that could see only this child stop working
+        await tx`update user_account ua set active_flag = 'N', last_updated_by = ${u.username}, last_update_date = now()
+          where ua.person_id is null and exists (select 1 from user_student_access x where x.user_id = ua.id and x.person_id = ${personId})
+            and not exists (select 1 from user_student_access y where y.user_id = ua.id and y.person_id <> ${personId})`;
+        await tx`delete from user_student_access where person_id = ${personId}`;
+        await tx`update stock_txn set person_id = null where person_id = ${personId}`; // items stay sold; only the link goes
+      } else {
+        await tx`delete from fee_demand where assignment_id = ${a.id}`;
+      }
       await tx`delete from assignment where id = ${a.id}`;
       const [other] = await tx`select 1 from assignment where person_id = ${personId}`;
       // logins of this person stop working
