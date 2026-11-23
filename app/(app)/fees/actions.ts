@@ -60,6 +60,23 @@ export async function saveStructure(id: string | null, fd: FormData) {
   });
 }
 
+/** Delete a fee structure that has not been used – no fee lines were generated from it. */
+export async function deleteStructure(id: string, fd: FormData) {
+  const u = await requirePriv('CD_FEE_STRUCTURE_PRV', 'WRITE');
+  await act(backOf(fd, '/fees/structures'), async () => {
+    const [fs] = await sql`select name, academic_year_id from fee_structure where id = ${id} and enterprise_id = ${u.enterpriseId}`;
+    if (!fs) throw new Error('Fee structure not found');
+    const [n] = await sql`select count(*)::int n from fee_demand where fee_structure_id = ${id}`;
+    if (n.n > 0) throw new Error(`${fs.name} cannot be deleted: ${n.n} fee line(s) were generated from it. Roll them back first (Fees › Generate Fees) or set it inactive.`);
+    await sql.begin(async (tx) => {
+      // copies made for a later year stay; they just forget where they came from
+      await tx`update fee_structure set copied_from_id = null where copied_from_id = ${id}`;
+      await tx`delete from fee_structure where id = ${id}`;
+    });
+    return { to: `/fees/structures?ay=${fs.academic_year_id}`, msg: `${fs.name} fee structure has been deleted.` };
+  });
+}
+
 export async function copyStructures(fd: FormData) {
   const u = await requirePriv('CD_FEE_STRUCTURE_PRV', 'WRITE');
   await act(backOf(fd, '/fees/structures'), async () => {

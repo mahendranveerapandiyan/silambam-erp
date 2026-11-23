@@ -6,13 +6,14 @@ import { lk, lookupOptions } from '@/lib/lookups';
 import { academicYearOn } from '@/lib/people';
 import { money } from '@/lib/util';
 import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s } from '@/components/ui';
-import { AutoSubmit } from '@/components/client';
-import { saveStructure, copyStructures } from '../actions';
+import { AutoSubmit, ConfirmButton } from '@/components/client';
+import { saveStructure, copyStructures, deleteStructure } from '../actions';
 
 const FREQS = ['MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUAL', 'ONE_TIME'];
 
 export default async function Structures({ searchParams }: { searchParams: SP }) {
   const u = await requirePriv('CD_FEE_STRUCTURE_PRV');
+  const write = can(u, 'CD_FEE_STRUCTURE_PRV', 'WRITE');
   const sp = await searchParams;
   const asOf = await getAsOf();
   const years = await sql`select * from academic_year where enterprise_id = ${u.enterpriseId} order by start_date desc`;
@@ -46,7 +47,7 @@ export default async function Structures({ searchParams }: { searchParams: SP })
       <form className="card mb-4 flex gap-2"><Select name="ay" options={yearOpts} value={ay} empty={false} className="input max-w-xs" /><AutoSubmit /></form>
       <div className="card mb-4 overflow-x-auto">
         <table className="tbl">
-          <thead><tr><th>Fee Type</th><th>Name</th><th>Applies To</th>{FREQS.map((f) => <th key={f} className="text-right">{L('FEE_FREQUENCY', f)}</th>)}<th>Active</th><th>Used</th><th></th></tr></thead>
+          <thead><tr><th>Fee Type</th><th>Name</th><th>Applies To</th>{FREQS.map((f) => <th key={f} className="text-right">{L('FEE_FREQUENCY', f)}</th>)}<th>Active</th><th title="Fee lines generated from it">Used</th><th></th></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.id}>
               <td>{L('FEE_TYPE', r.fee_type_code)}</td><td>{r.name}</td>
@@ -55,7 +56,15 @@ export default async function Structures({ searchParams }: { searchParams: SP })
                 : [r.business_unit_id && buN[r.business_unit_id], r.branch_id && brN[r.branch_id], r.class_id && clN[r.class_id], r.section_id && seN[r.section_id], r.student_grade_id && grN[r.student_grade_id]].filter(Boolean).join(' · ') || 'All students'}</td>
               {FREQS.map((f) => <td key={f} className="text-right">{r.amounts[f] !== undefined ? money(r.amounts[f]) : ''}</td>)}
               <td>{r.active_flag === 'Y' ? <Badge color="green">Yes</Badge> : <Badge>No</Badge>}</td><td>{r.used}</td>
-              <td><a className="btn btn-sm" href={`?ay=${ay}&edit=${r.id}#form`}>Edit</a></td>
+              <td className="whitespace-nowrap">
+                <div className="flex gap-1">
+                  <a className="btn btn-sm" href={`?ay=${ay}&edit=${r.id}#form`}>Edit</a>
+                  {write && r.used === 0 && (
+                    <form action={deleteStructure.bind(null, r.id)}><Back to={`/fees/structures?ay=${ay}`} />
+                      <ConfirmButton className="btn btn-sm btn-danger" message={`Delete the ${r.name} fee structure? No fee lines have been generated from it.`}>Delete</ConfirmButton></form>
+                  )}
+                </div>
+              </td>
             </tr>))}</tbody>
         </table>
         {!rows.length && <Empty>No fee structures for this year. Create one below or copy from a previous year.</Empty>}

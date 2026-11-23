@@ -38,8 +38,8 @@ export default async function Generate({ searchParams }: { searchParams: SP }) {
         </div>
         <p className="muted">Choose only the narrowest level – a section fills in its class, branch and business unit. Students are taken by where they are placed today (within the academic year).</p>
         <div className="grid-form">
-          <Field label="Fee Type" help="Exam, event and equipment fees are added on their own pages">
-            <Select name="fee_types" options={feeTypes.filter((f) => !['GRADE_EXAM', 'ASSESSMENT', 'TERM_EXAM', 'EVENT', 'INVENTORY'].includes(f.value))} empty="All fee types" />
+          <Field label="Fee Type" help="Values from the Fee Type lookup. Generate uses the fee structures of that type.">
+            <Select name="fee_types" options={feeTypes} empty="All fee types" />
           </Field>
         </div>
         {write && (
