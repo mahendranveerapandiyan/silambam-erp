@@ -10,7 +10,8 @@ export default async function EnterprisePage({ searchParams }: { searchParams: S
   const u = await requirePriv('CD_ENTERPRISE_PRV');
   const write = can(u, 'CD_ENTERPRISE_PRV', 'WRITE');
   const asOf = await getAsOf();
-  const [e] = await sql`select *, logo_data is not null has_logo from enterprise where id = ${u.enterpriseId}`;
+  const [e] = await sql`select *, logo_data is not null has_logo,
+    case when logo_data is not null then '/api/logo?e=' || id || '&v=' || substr(md5(logo_data), 1, 12) end logo_url from enterprise where id = ${u.enterpriseId}`;
   const [countries, currencies, zones] = [await lookupOptions('COUNTRY', asOf), await lookupOptions('CURRENCY', asOf), await lookupOptions('TIMEZONE', asOf)];
   const locked = e.code_locked_flag === 'Y';
   return (
@@ -35,7 +36,7 @@ export default async function EnterprisePage({ searchParams }: { searchParams: S
           <Field label="Address" className="sm:col-span-2 lg:col-span-3"><textarea name="address" defaultValue={e.address ?? ''} className="input" rows={2} /></Field>
           <Field label="Logo (PNG/JPG, max 2 MB)"><input type="file" name="logo" accept="image/*" className="input" /></Field>
           {e.has_logo && (
-            <div className="flex items-end gap-3"><img src="/api/logo" alt="logo" className="h-14 rounded border bg-white p-1" />
+            <div className="flex items-end gap-3"><img src={e.logo_url} alt="logo" className="h-14 rounded border bg-white p-1" />
               <label className="flex items-center gap-1 text-sm"><input type="checkbox" name="remove_logo" value="Y" /> Remove logo</label></div>
           )}
         </div>

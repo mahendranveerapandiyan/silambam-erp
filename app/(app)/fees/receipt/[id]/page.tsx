@@ -22,7 +22,7 @@ export default async function Receipt({ params }: { params: Promise<{ id: string
       <div className="mb-3 flex justify-end no-print"><PrintButton /></div>
       <div className="card">
         <div className="mb-3 border-b pb-3 text-center">
-          {ent?.has_logo && <img src="/api/logo" alt="" className="mx-auto mb-1 h-12" />}
+          {ent?.logo_url && <img src={ent.logo_url} alt="" className="mx-auto mb-1 h-12" />}
           <div className="text-lg font-bold">{ent?.name}</div><div className="text-sm">{p.bu_name}</div>
           <div className="mt-2 text-base font-semibold uppercase tracking-wider">Fee Receipt {p.status_code === 'CANCELLED' && <span className="text-red-600">(Cancelled)</span>}</div>
         </div>

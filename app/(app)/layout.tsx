@@ -41,7 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-slate-200/70 px-4 backdrop-blur no-print lg:px-8" style={{ background: 'color-mix(in srgb, var(--header-bg) 90%, transparent)', color: 'var(--header-text)' }}>
           <label htmlFor="nav" className="cursor-pointer rounded-lg p-2 hover:bg-slate-100 lg:hidden" aria-label="Menu"><Icon name="menu" /></label>
           <Link href="/" className="flex min-w-0 items-center gap-2">
-            {ent?.has_logo && <img src="/api/logo" alt="" className="h-9 w-9 rounded-lg object-contain" />}
+            {ent?.logo_url && <img src={ent.logo_url} alt="" className="h-9 w-9 rounded-lg object-contain" />}
             <span className="truncate text-lg font-semibold">{ent?.short_name || ent?.name}</span>
           </Link>
           <div className="ml-auto flex items-center gap-1">

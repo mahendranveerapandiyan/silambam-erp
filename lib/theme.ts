@@ -50,7 +50,9 @@ export async function enterpriseInfo(enterpriseId?: string | null) {
 
 async function loadEnterprise(enterpriseId?: string | null) {
   const [e] = enterpriseId
-    ? await sql`select id, name, short_name, currency_code, logo_data is not null as has_logo from enterprise where id = ${enterpriseId}`
-    : await sql`select id, name, short_name, currency_code, logo_data is not null as has_logo from enterprise order by id limit 1`;
+    ? await sql`select id, name, short_name, currency_code, logo_data is not null as has_logo,
+      case when logo_data is not null then '/api/logo?e=' || id || '&v=' || substr(md5(logo_data), 1, 12) end as logo_url from enterprise where id = ${enterpriseId}`
+    : await sql`select id, name, short_name, currency_code, logo_data is not null as has_logo,
+      case when logo_data is not null then '/api/logo?e=' || id || '&v=' || substr(md5(logo_data), 1, 12) end as logo_url from enterprise order by id limit 1`;
   return e;
 }
