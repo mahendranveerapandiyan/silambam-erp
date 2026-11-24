@@ -25,7 +25,19 @@ export function nameUsername(first: string | null | undefined, last: string | nu
   return [clean(first), clean(last)].filter(Boolean).join(separator);
 }
 
-const taken = async (tx: Tx, username: string) => (await tx`select 1 from user_account where lower(username) = lower(${username})`).length > 0;
+/**
+ * Is the user name used? A login left behind by a deleted record (inactive and
+ * linked to nobody) does not count: it is renamed out of the way (kept for history).
+ */
+const taken = async (tx: Tx, username: string) => {
+  const [x] = await tx`select id, active_flag, person_id from user_account where lower(username) = lower(${username})`;
+  if (!x) return false;
+  if (x.active_flag === 'N' && x.person_id === null) {
+    await tx`update user_account set username = ${`${username.toLowerCase()}~old-${x.id}`} where id = ${x.id}`;
+    return false;
+  }
+  return true;
+};
 
 /**
  * The user name for a new login, following the rule:

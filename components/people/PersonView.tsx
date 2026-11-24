@@ -197,8 +197,8 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         ) : (
           <>
             <p className="muted mb-2">{stu
-              ? 'For records entered by mistake. Removes the student with their assignment history, attendance, fee lines and exceptions, exam and event entries; linked logins are deactivated. Not possible once a payment is recorded.'
-              : 'For records entered by mistake. Removes the hire and the personal record; linked logins are deactivated.'}</p>
+              ? 'For records entered by mistake. Removes the student with their assignment history, attendance, fee lines and exceptions, exam and event entries and the student’s own login (parent logins that see only this child are switched off). Not possible once a payment is recorded.'
+              : 'For records entered by mistake. Removes the hire, the personal record and their own login.'}</p>
             <ConfirmButton className="btn btn-danger" message={stu ? `Delete student ${p.full_name} (${ab!.assignment_number}) with all their attendance, fee lines, exam and event entries? This cannot be undone.` : `Delete staff ${p.full_name} (${ab!.assignment_number})? This cannot be undone.`}>Delete</ConfirmButton>
           </>
         )}

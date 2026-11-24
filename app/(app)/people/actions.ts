@@ -285,9 +285,15 @@ export async function deletePerson(kind: PersonKind, personId: string, fd: FormD
       }
       await tx`delete from assignment where id = ${a.id}`;
       const [other] = await tx`select 1 from assignment where person_id = ${personId}`;
-      // logins of this person stop working
-      await tx`update user_account set active_flag = 'N', last_updated_by = ${u.username}, last_update_date = now() where person_id = ${personId}`;
-      if (!other) await tx`delete from person where id = ${personId}`;
+      if (other) {
+        // the person stays (e.g. also staff): their login only loses this record's roles
+        const roles = kind === 'STUDENT' ? ['STUDENT'] : ['STAFF', 'INCHARGE', 'ACCOUNTANT'];
+        await tx`delete from user_role where role_code in ${tx(roles)} and user_id in (select id from user_account where person_id = ${personId})`;
+      } else {
+        // the person's own logins go with them, so their user names (e.g. the student number) are free again
+        await tx`delete from user_account where person_id = ${personId}`;
+        await tx`delete from person where id = ${personId}`;
+      }
       // no counter to rewind: the next number is always the highest in use + 1,
       // so deleting the newest record gives its number back automatically
     });

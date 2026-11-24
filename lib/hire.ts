@@ -134,8 +134,12 @@ export const hashForRequest = async (pw: string | null | undefined) => {
 export async function createLogin(tx: Tx, u: SessionUser, username: string, password: string, display: string, personId: string | null, roles: string[], students: string[] = []) {
   const prehashed = password.startsWith(HASHED);
   if (!prehashed && password.length < 6) throw new Error('Login password must be at least 6 characters');
-  const [ex] = await tx`select id from user_account where lower(username) = lower(${username})`;
+  const [ex] = await tx`select id, active_flag from user_account where lower(username) = lower(${username})`;
   let uid = ex?.id;
+  // an existing login that was switched off (e.g. a parent whose only child was deleted) is reactivated with the new password
+  if (ex && ex.active_flag === 'N')
+    await tx`update user_account set active_flag = 'Y', password_hash = ${prehashed ? password.slice(HASHED.length) : await bcrypt.hash(password, 10)}, must_change_password = 'Y',
+      last_updated_by = ${u.username}, last_update_date = now() where id = ${uid}`;
   if (!uid) {
     const [n] = await tx`insert into user_account (enterprise_id, username, password_hash, display_name, person_id, must_change_password, created_by)
       values (${u.enterpriseId}, ${username.toLowerCase()}, ${prehashed ? password.slice(HASHED.length) : await bcrypt.hash(password, 10)}, ${display}, ${personId}, 'Y', ${u.username}) returning id`;
