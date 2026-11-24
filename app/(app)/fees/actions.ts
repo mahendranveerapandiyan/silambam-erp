@@ -297,12 +297,16 @@ export async function demandAction(demandId: string, fd: FormData) {
             from assignment a where a.person_id = ${personId} and a.assignment_type = 'STUDENT'`;
           submitted = await submitRequest(tx, u, {
             process: 'FEE_EXCEPTION', refTable: 'fee_exemption', refId: String(e.id), payload: { personId },
+            facts: { FEE_TYPE: d.fee_type_code, AMOUNT: ex, BUSINESS_UNIT: d.business_unit_id },
             title: `Fee exception ${ex.toFixed(2)} – ${st?.n ?? ''} (${st?.assignment_number ?? ''})`,
             summary: `${d.description}${d.period_label ? ` ${d.period_label}` : ''} · reason ${o.reason_code}${o.remarks ? ` · ${o.remarks}` : ''}`,
           });
+          // a "No approval required" rule matched: applied at once
+          if (!submitted) await tx`update fee_exemption set status_code = 'APPROVED', decided_by = ${u.username + ' (no approval required)'}, decided_at = now() where id = ${e.id}`;
         });
         if (auto) return { msg: 'The fee exception has been applied.' };
-        const done = (submitted as { status: string } | null)?.status === 'APPROVED';
+        if (!submitted) return { msg: 'The fee exception has been applied – no approval is required for it.' };
+        const done = (submitted as { status: string }).status === 'APPROVED';
         return { msg: done ? 'The fee exception has been applied (no approver was needed).' : 'The fee exception has been submitted for approval. Follow it under Approvals › My Requests.' };
       }
       case 'CANCEL': {

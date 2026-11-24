@@ -22,18 +22,45 @@ export type ProcessCode = 'STUDENT_ADMISSION' | 'STAFF_HIRE' | 'FEE_EXCEPTION';
 /** Processes that always need approval (a default Administrator step is used when no rule is active). */
 const ALWAYS: ProcessCode[] = ['STUDENT_ADMISSION', 'FEE_EXCEPTION'];
 
-export async function activeRule(tx: Tx, enterpriseId: string, process: string) {
-  const [rule] = await tx`select * from approval_rule where enterprise_id = ${enterpriseId} and process_code = ${process} and active_flag = 'Y'`;
-  if (!rule) return null;
-  const steps = await tx`select * from approval_rule_step where rule_id = ${rule.id} order by step_no`;
-  return { rule, steps };
+/** Details of a transaction that approval rule conditions test (e.g. FEE_TYPE, AMOUNT, BUSINESS_UNIT). */
+export type Facts = Record<string, string | number | null | undefined>;
+
+function conditionMatches(c: Row, fact: string | number | null | undefined) {
+  const values = String(c.value_text).split(',').map((v) => v.trim()).filter(Boolean);
+  const f = fact === null || fact === undefined || fact === '' ? null : String(fact);
+  switch (c.operator_code) {
+    case 'IN': return f !== null && values.includes(f);
+    case 'NOT_IN': return f === null || !values.includes(f);
+    case 'GE': return f !== null && Number(f) >= Number(values[0]);
+    case 'LE': return f !== null && Number(f) <= Number(values[0]);
+    default: return false;
+  }
 }
 
-/** Does this process need approval right now (an active rule with steps, or always)? */
-export async function needsApproval(enterpriseId: string, process: ProcessCode) {
-  if (ALWAYS.includes(process)) return true;
-  const r = await activeRule(sql, enterpriseId, process);
-  return !!r && r.steps.length > 0;
+/**
+ * The rule that applies: active rules of the process in priority order (lower
+ * first); the first whose conditions all match (no conditions = matches all).
+ */
+export async function matchRule(tx: Tx, enterpriseId: string, process: string, facts: Facts = {}) {
+  const rules = await tx`select * from approval_rule where enterprise_id = ${enterpriseId} and process_code = ${process} and active_flag = 'Y' order by priority, id`;
+  for (const rule of rules) {
+    const conds = await tx`select * from approval_rule_condition where rule_id = ${rule.id}`;
+    if (conds.every((c) => conditionMatches(c, facts[c.attribute_code]))) {
+      const steps = await tx`select * from approval_rule_step where rule_id = ${rule.id} order by step_no`;
+      return { rule, steps, conds };
+    }
+  }
+  return null;
+}
+
+/**
+ * Does this transaction need approval? The matching rule decides; with no
+ * matching rule, processes that always need approval go to an Administrator.
+ */
+export async function needsApproval(enterpriseId: string, process: ProcessCode, facts: Facts = {}) {
+  const m = await matchRule(sql, enterpriseId, process, facts);
+  if (m) return m.rule.outcome_code !== 'AUTO';
+  return ALWAYS.includes(process);
 }
 
 const history = (tx: Tx, requestId: string, action: string, by: string | null, comments: string | null = null) =>
@@ -124,17 +151,22 @@ async function complete(tx: Tx, req: Row, actor: string, note = 'Approved – tr
  * Submit a request. Returns null when the process needs no approval (no active
  * rule) – the caller then does the transaction directly.
  */
-export async function submitRequest(tx: Tx, u: SessionUser, p: { process: ProcessCode; title: string; summary?: string | null; refTable?: string | null; refId?: string | null; payload?: unknown }) {
-  const r = await activeRule(tx, u.enterpriseId, p.process);
-  const hasSteps = !!r && r.steps.length > 0;
-  if (!hasSteps && !ALWAYS.includes(p.process)) return null;
+export async function submitRequest(tx: Tx, u: SessionUser, p: { process: ProcessCode; title: string; summary?: string | null; refTable?: string | null; refId?: string | null; payload?: unknown; facts?: Facts }) {
+  const m = await matchRule(tx, u.enterpriseId, p.process, p.facts ?? {});
+  // no approval: a matching "No approval required" rule, or no rule for a process that does not always need one
+  if (m ? m.rule.outcome_code === 'AUTO' : !ALWAYS.includes(p.process)) return null;
   const [req] = await tx`insert into approval_request ${tx({
     enterprise_id: u.enterpriseId, process_code: p.process, title: p.title, summary: p.summary ?? null, ref_table: p.refTable ?? null, ref_id: p.refId ?? null,
-    payload: (p.payload ?? null) as any, rule_id: hasSteps ? r!.rule.id : null, requested_by_user_id: u.id, requested_by: u.username, current_step: 0,
+    payload: (p.payload ?? null) as any, rule_id: m ? m.rule.id : null, requested_by_user_id: u.id, requested_by: u.username, current_step: 0,
   })} returning *`;
-  await history(tx, req.id, 'Submitted', u.username);
+  await history(tx, req.id, 'Submitted', u.username, m ? `Rule: ${m.rule.name}` : 'No rule matched – an Administrator approves');
   const status = await advance(tx, req, u.username);
   return { id: String(req.id), status };
+}
+
+/** The rule that would apply – for messages ("no approval required by rule …"). */
+export async function ruleNameFor(enterpriseId: string, process: ProcessCode, facts: Facts) {
+  return (await matchRule(sql, enterpriseId, process, facts))?.rule.name as string | undefined;
 }
 
 async function lockRequest(tx: Tx, requestId: string, enterpriseId: string) {
@@ -250,3 +282,31 @@ export async function skipTask(u: SessionUser, taskId: string, comments: string 
 
 /** Ids of requests the user may see as an approver. */
 export const myTaskFilter = (userId: string) => sql`exists (select 1 from approval_task t where t.request_id = r.id and t.approver_user_id = ${userId})`;
+
+/** Where the values of each condition attribute come from. */
+export const ATTRIBUTE_SOURCE: Record<string, { lookup?: string; entity?: string; table?: string; numeric?: boolean }> = {
+  FEE_TYPE: { lookup: 'FEE_TYPE' },
+  AMOUNT: { numeric: true },
+  BUSINESS_UNIT: { entity: 'business-units', table: 'business_unit' },
+  BRANCH: { entity: 'branches', table: 'branch' },
+  CLASS: { entity: 'classes', table: 'class' },
+  DEPARTMENT: { entity: 'departments', table: 'department' },
+  JOB: { entity: 'jobs', table: 'job' },
+};
+
+/** "Fee Type is one of Grade Exam Fee, Term Exam Fee" */
+export async function describeCondition(tx: Tx, c: Row) {
+  const [attr] = await tx`select meaning from lookup_value where lookup_type = 'APPROVAL_ATTRIBUTE' and lookup_code = ${c.attribute_code}`;
+  const [op] = await tx`select meaning from lookup_value where lookup_type = 'APPROVAL_OPERATOR' and lookup_code = ${c.operator_code}`;
+  const src = ATTRIBUTE_SOURCE[c.attribute_code] ?? {};
+  const values = String(c.value_text).split(',').filter(Boolean);
+  let names: string[] = values;
+  if (src.lookup) {
+    const rows = await tx`select lookup_code, meaning from lookup_value where lookup_type = ${src.lookup} and lookup_code in ${tx(values)}`;
+    names = values.map((v) => rows.find((r) => r.lookup_code === v)?.meaning ?? v);
+  } else if (src.table) {
+    const rows = await tx`select distinct on (id) id, name from ${tx(src.table + '_f')} where id in ${tx(values)} order by id, effective_start_date desc`;
+    names = values.map((v) => rows.find((r) => String(r.id) === v)?.name ?? v);
+  }
+  return `${attr?.meaning ?? c.attribute_code} ${op?.meaning ?? c.operator_code} ${names.join(', ')}`;
+}

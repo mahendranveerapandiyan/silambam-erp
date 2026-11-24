@@ -32,7 +32,7 @@ export async function hirePerson(kind: PersonKind, fd: FormData) {
     const o = formObj(fd);
     const x = await hireExtras(u, kind, o, fd);
     // a staff hire goes for approval when an active Staff Hire approval rule exists
-    if (kind === 'STAFF' && await needsApproval(u.enterpriseId, 'STAFF_HIRE')) return submitHire(u, kind, o, x, 'STAFF_HIRE');
+    if (kind === 'STAFF' && await needsApproval(u.enterpriseId, 'STAFF_HIRE', hireFacts(o))) return submitHire(u, kind, o, x, 'STAFF_HIRE');
     let r = { personId: '', msg: '' };
     await sql.begin(async (tx) => { r = await hireInTx(tx, u, kind, o, x); });
     return { to: `${base(kind)}/${r.personId}`, msg: r.msg };
@@ -60,14 +60,24 @@ async function submitHire(u: SessionUser, kind: PersonKind, o: Record<string, st
     : null;
   const payload: HirePayload = { o: form, attributes: x.attributes, loginRoles: x.loginRoles, photo: x.photo ? { mime: x.photo.mime, b64: x.photo.data.toString('base64') } : null };
   const r = await sql.begin((tx) => submitRequest(tx, u, {
-    process, payload,
+    process, payload, facts: hireFacts(o),
     title: `${kind === 'STUDENT' ? 'Admission' : 'Hire'}: ${name}`,
     summary: [placement ? `${placement.c} › ${placement.s}` : null, `from ${o.hire_date}`, o.fee_amount ? `fee ${o.fee_amount} (${o.fee_frequency_code})` : null].filter(Boolean).join(' · '),
   }));
-  if (!r) throw new Error('No approval rule applies.');
+  if (!r) {
+    // a "No approval required" rule matched: do it now
+    let done = { personId: '', msg: '' };
+    await sql.begin(async (tx) => { done = await hireInTx(tx, u, kind, o, x); });
+    return { to: `${base(kind)}/${done.personId}`, msg: `${done.msg} No approval was required.` };
+  }
   const [done] = r.status === 'APPROVED' ? await sql`select result_ref, result_message from approval_request where id = ${r.id}` : [];
   if (done?.result_ref) return { to: `${base(kind)}/${done.result_ref}`, msg: `${done.result_message} (no approver was needed)` };
   return { to: `/approvals/requests/${r.id}`, msg: `The ${kind === 'STUDENT' ? 'admission' : 'hire'} of ${name} has been submitted for approval.` };
+}
+
+/** What approval rule conditions can test on a hire / admission. */
+function hireFacts(o: Record<string, string | null>) {
+  return { BUSINESS_UNIT: o.business_unit_id, BRANCH: o.branch_id, CLASS: o.class_id, DEPARTMENT: o.department_id, JOB: o.job_id };
 }
 
 /** Photo, additional fields and login roles of a hire / admission form. */

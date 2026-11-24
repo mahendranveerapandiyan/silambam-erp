@@ -56,13 +56,12 @@ export async function saveRule(id: string | null, fd: FormData) {
     const o = formObj(fd);
     if (!o.process_code || !o.name) throw new Error('Process and rule name are required');
     const active = o.active_flag === 'N' ? 'N' : 'Y';
+    const priority = Number(o.priority ?? 10);
+    if (!Number.isInteger(priority) || priority < 0) throw new Error('Priority must be a whole number (lower is checked first)');
+    const outcome = o.outcome_code === 'AUTO' ? 'AUTO' : 'APPROVAL';
     let rid = id;
     await sql.begin(async (tx) => {
-      if (active === 'Y') {
-        const [other] = await tx`select name from approval_rule where enterprise_id = ${u.enterpriseId} and process_code = ${o.process_code} and active_flag = 'Y' ${rid ? tx`and id <> ${rid}` : tx``}`;
-        if (other) throw new Error(`"${other.name}" is already the active rule for this process. Deactivate it first – one active rule per process.`);
-      }
-      const v = { process_code: o.process_code, name: o.name, description: o.description, active_flag: active, last_updated_by: u.username, last_update_date: new Date() };
+      const v = { process_code: o.process_code, name: o.name, description: o.description, active_flag: active, priority, outcome_code: outcome, last_updated_by: u.username, last_update_date: new Date() };
       if (rid) await tx`update approval_rule set ${tx(v)} where id = ${rid} and enterprise_id = ${u.enterpriseId}`;
       else rid = String((await tx`insert into approval_rule ${tx({ ...v, enterprise_id: u.enterpriseId, created_by: u.username })} returning id`)[0].id);
     });
@@ -111,6 +110,30 @@ export async function saveStep(ruleId: string, stepId: string | null, fd: FormDa
     if (stepId) await sql`update approval_rule_step set ${sql(v)} where id = ${stepId} and rule_id = ${ruleId}`;
     else await sql`insert into approval_rule_step ${sql({ ...v, rule_id: ruleId })}`;
     return { msg: `Step ${stepNo} has been ${stepId ? 'updated' : 'added'}.` };
+  });
+}
+
+/** Add or remove a condition of a rule. All conditions of a rule must match. */
+export async function saveCondition(ruleId: string, conditionId: string | null, fd: FormData) {
+  const u = await requirePriv('CD_APPROVAL_RULE_PRV', 'WRITE');
+  await act(backOf(fd, `/config/approval-rules/${ruleId}`), async () => {
+    const o = formObj(fd);
+    const [r] = await sql`select id from approval_rule where id = ${ruleId} and enterprise_id = ${u.enterpriseId}`;
+    if (!r) throw new Error('Rule not found');
+    if (o._delete) {
+      await sql`delete from approval_rule_condition where id = ${conditionId} and rule_id = ${ruleId}`;
+      return { msg: 'The condition has been removed.' };
+    }
+    const attr = o.attribute_code;
+    if (!attr) throw new Error('Choose what the condition tests');
+    const numeric = attr === 'AMOUNT';
+    const op = o.operator_code ?? (numeric ? 'GE' : 'IN');
+    if (numeric !== ['GE', 'LE'].includes(op)) throw new Error(numeric ? 'An amount is compared with "is at least" or "is at most".' : 'Use "is one of" or "is not one of" for this attribute.');
+    const value = numeric ? o.amount : fd.getAll(`values_${attr}`).map(String).filter(Boolean).join(',');
+    if (!value) throw new Error(numeric ? 'Enter the amount' : 'Choose at least one value');
+    if (numeric && !(Number(value) >= 0)) throw new Error('The amount must be a number');
+    await sql`insert into approval_rule_condition (rule_id, attribute_code, operator_code, value_text) values (${ruleId}, ${attr}, ${op}, ${value})`;
+    return { msg: 'The condition has been added.' };
   });
 }
 
