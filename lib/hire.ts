@@ -69,7 +69,17 @@ export async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record
     if (String(sec.class_id) !== String(classId)) throw new Error('That section does not belong to the chosen class.');
     if (!seesAllStudents(u)) {
       const allowed = (await myClasses(u, date)).some((c) => String(c.class_id) === String(classId) && String(c.section_id) === String(sectionId));
-      if (!allowed) throw new Error('You can only place students in your own classes.');
+      if (!allowed) {
+        // say why: not this class / section at all, or not on this date
+        const mine = await sql`select ci.start_date, ci.end_date, ci.section_id from class_incharge ci
+          where ci.person_id = ${u.personId ?? '0'} and ci.class_id = ${classId} and (ci.section_id is null or ci.section_id = ${sectionId}) order by ci.start_date`;
+        const [names] = await sql`select (select name from class_f where id = ${classId} order by effective_start_date desc limit 1) c,
+          (select name from section_f where id = ${sectionId} order by effective_start_date desc limit 1) s`;
+        const what = `${names?.c ?? 'this class'} › ${names?.s ?? 'this section'}`;
+        const fmt = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/ /g, '-');
+        if (!mine.length) throw new Error(`You are not the incharge of ${what}. You can only place students in your own classes (Staff › Class Incharges).`);
+        throw new Error(`You are the incharge of ${what} only ${mine.map((m) => `from ${fmt(m.start_date)} to ${fmt(m.end_date)}`).join(', ')} – choose an admission date in that period.`);
+      }
     }
     const h = await classHierarchy(classId, date);
     if (o.branch_id && String(o.branch_id) !== String(h.branch_id)) throw new Error('That class does not belong to the chosen branch on this date.');

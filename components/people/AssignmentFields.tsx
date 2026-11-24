@@ -29,9 +29,18 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
       .map((y) => ({ value: String(y.id), label: y.name, start: y.start_date, end: y.end_date }));
     // Business Unit → Branch → Class → Section, limited to the user's own classes when they are an incharge
     const allowed = await allowedClassKeys(u);
-    const classes = (await datedRefOptions('classes', E, { plain: true })).filter((c) => !allowed || allowed.has(c.value));
-    const sections = (await datedRefOptions('sections', E, { plain: true }))
-      .filter((s) => !allowed || allowed.has(`${s.parent}:*`) || allowed.has(`${s.parent}:${s.value}`));
+    // an incharge only gets the classes / sections they look after on the chosen date
+    const periods = allowed ? await sql`select class_id, section_id, start_date, end_date from class_incharge where person_id = ${u.personId ?? '0'}` : [];
+    const clip = (o: { start: string; end: string }, p: { start_date: string; end_date: string }) => {
+      const start = o.start > p.start_date ? o.start : p.start_date;
+      const end = o.end < p.end_date ? o.end : p.end_date;
+      return start <= end ? { start, end } : null;
+    };
+    const within = <T extends { start: string; end: string }>(opts: T[], match: (o: T, p: Row) => boolean): T[] =>
+      !allowed ? opts : opts.flatMap((o) => periods.filter((p) => match(o, p)).map((p) => clip(o, p as any)).filter((x) => !!x).map((x) => ({ ...o, ...x! })));
+    const classes = within(await datedRefOptions('classes', E, { plain: true }), (c, p) => String(p.class_id) === c.value);
+    const sections = within(await datedRefOptions('sections', E, { plain: true }),
+      (s, p) => String(p.class_id) === String(s.parent) && (!p.section_id || String(p.section_id) === s.value));
     const branches = (await datedRefOptions('branches', E)).filter((b) => !allowed || classes.some((c) => c.parent === b.value));
     const bus = (await datedRefOptions('business-units', E)).filter((b) => !allowed || branches.some((x) => x.parent === b.value));
     const feeFields = (
