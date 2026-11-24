@@ -3,6 +3,7 @@ import { sql } from '@/lib/db';
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, addDays, todayISO } from '@/lib/util';
 import { eligibleStudents, examFeeFor } from '@/lib/exams';
+import { examSubjects, templateSections, partMark, subjectScore, recomputeCandidate, evaluatorGrades } from '@/lib/examSetup';
 import { addDemand, cancelDemandIfUnpaid } from '@/lib/fees';
 import { dtChange } from '@/lib/dt';
 import { actionByType } from '@/lib/people';
@@ -16,65 +17,13 @@ async function loadExam(id: string, enterpriseId: string) {
   return e;
 }
 
-export async function saveExam(id: string | null, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
-  await act(backOf(fd, '/exams'), async () => {
-    const o = formObj(fd);
-    if (!o.academic_year_id || !o.exam_type_code || !o.name || !o.exam_date) throw new Error('Academic year, type, name and date are required');
-    const [ay] = await sql`select * from academic_year where id = ${o.academic_year_id}`;
-    if (o.exam_date < ay.start_date || o.exam_date > ay.end_date) throw new Error(`Exam date must fall within ${ay.name}`);
-    const v = {
-      academic_year_id: o.academic_year_id, exam_type_code: o.exam_type_code, name: o.name, description: o.description, exam_date: o.exam_date,
-      business_unit_id: o.business_unit_id, class_id: o.class_id, from_grade_id: o.from_grade_id, target_grade_id: o.exam_type_code === 'GRADE_EXAM' ? o.target_grade_id : null,
-      min_attendance_pct: num(o.min_attendance_pct), fees_cleared_flag: o.fees_cleared_flag === 'Y' ? 'Y' : 'N', min_months_in_grade: num(o.min_months_in_grade),
-      min_age: num(o.min_age), pass_percentage: num(o.pass_percentage), status_code: o.status_code ?? 'SCHEDULED',
-    };
-    if (v.exam_type_code === 'GRADE_EXAM' && !v.target_grade_id) {
-      if (v.from_grade_id) {
-        const [g] = await sql`select next_grade_id from student_grade_f where id = ${v.from_grade_id} order by effective_start_date desc limit 1`;
-        v.target_grade_id = g?.next_grade_id ?? null;
-      }
-      if (!v.target_grade_id) throw new Error('Grade exams need a target grade (or an eligible grade that has a next grade)');
-    }
-    let eid = id;
-    if (id) await sql`update exam set ${sql({ ...v, last_updated_by: u.username, last_update_date: new Date() })} where id = ${id} and enterprise_id = ${u.enterpriseId}`;
-    else {
-      eid = (await sql`insert into exam ${sql({ ...v, enterprise_id: u.enterpriseId, created_by: u.username })} returning id`)[0].id;
-      // pre-load subjects mapped by default marks
-      const subs = fd.getAll('subjects').map(String);
-      for (const [i, s] of subs.entries()) {
-        const [sf] = await sql`select * from subject_f where id = ${s} order by effective_start_date desc limit 1`;
-        if (sf) await sql`insert into exam_subject (exam_id, subject_id, subject_type_code, max_marks, pass_marks, display_seq) values (${eid}, ${s}, ${sf.subject_type_code}, ${sf.default_max_marks ?? 100}, ${sf.default_pass_marks ?? 35}, ${i})`;
-      }
-    }
-    return { to: `/exams/${eid}`, msg: `${o.name} exam has been ${id ? 'updated' : 'created'}.` };
-  });
-}
-
-export async function saveSubject(examId: string, rowId: string | null, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
-  await act(backOf(fd), async () => {
-    await loadExam(examId, u.enterpriseId);
-    const o = formObj(fd);
-    if (o._delete && rowId) {
-      await sql`delete from exam_subject where id = ${rowId} and exam_id = ${examId}`;
-      return { msg: 'The subject has been removed from the exam.' };
-    }
-    if (!o.subject_id || !o.subject_type_code || !o.max_marks || !o.pass_marks) throw new Error('Subject, type, max and pass marks are required');
-    if (Number(o.pass_marks) > Number(o.max_marks)) throw new Error('Pass marks cannot exceed max marks');
-    const v = { subject_id: o.subject_id, subject_type_code: o.subject_type_code, max_marks: Number(o.max_marks), pass_marks: Number(o.pass_marks), display_seq: Number(o.display_seq ?? 0) };
-    if (rowId) await sql`update exam_subject set ${sql(v)} where id = ${rowId} and exam_id = ${examId}`;
-    else await sql`insert into exam_subject ${sql({ ...v, exam_id: examId })}`;
-    return { msg: 'The exam subject has been updated.' };
-  });
-}
-
 /** Incharges select eligible students; an exam fee line is created per candidate. */
 export async function assignCandidates(examId: string, fd: FormData) {
   const u = await requirePriv('CD_EXAM_CANDIDATE_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
     if (['PUBLISHED', 'CANCELLED'].includes(exam.status_code)) throw new Error('Exam is closed');
+    if (exam.status_code === 'DRAFT') throw new Error(`${exam.name} is still a draft – finish its setup first`);
     const ids = new Set(fd.getAll('person').map(String));
     const override = formObj(fd).override === 'Y' && can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
     if (!ids.size) throw new Error('Select at least one student');
@@ -118,59 +67,91 @@ export async function removeCandidate(examId: string, candidateId: string, fd: F
   });
 }
 
-export async function saveMarks(examId: string, fd: FormData) {
+/**
+ * Marks of one subject for the candidates of one grade: section ratings (evaluation
+ * template) or marks per part; the subject mark, pass and the candidate's result follow.
+ */
+export async function saveSubjectMarks(examId: string, esId: string, gradeId: string, fd: FormData) {
   const u = await requirePriv('CD_EXAM_CANDIDATE_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
-    if (exam.status_code === 'PUBLISHED' && !can(u, 'CD_EXAM_SETUP_PRV', 'WRITE')) throw new Error('Results are published; only users who can set up exams can change marks');
+    const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+    if (exam.status_code === 'DRAFT') throw new Error('Finish the exam setup first');
+    if (exam.status_code === 'CANCELLED') throw new Error('The exam is cancelled');
+    if (exam.status_code === 'PUBLISHED' && !admin) throw new Error('Results are published; only users who can set up exams can change marks');
+    const grades = await evaluatorGrades(u, examId);
+    if (grades !== 'ALL' && !grades.has(gradeId)) throw new Error('You are not an examiner for this grade');
+    const [es] = (await examSubjects(examId, gradeId)).filter((x) => String(x.id) === esId);
+    if (!es) throw new Error('Subject not found for this grade');
+    const sections = await templateSections(exam.evaluation_template_id);
+    const examiner = admin || (await sql`select 1 from exam_examiner where exam_id = ${examId} and grade_id = ${gradeId} and person_id = ${u.personId ?? 0}`).length > 0;
     const o = formObj(fd);
-    const subjects = await sql`select * from exam_subject where exam_id = ${examId}`;
-    if (!subjects.length) throw new Error('Add subjects before entering marks');
-    const cands = await sql`select * from exam_candidate where exam_id = ${examId}`;
+    const cands = await sql`select * from exam_candidate where exam_id = ${examId} and current_grade_id = ${gradeId}`;
+    const rng = (v: string | null | undefined, lo: number, hi: number, what: string) => {
+      if (v === null || v === undefined) return null;
+      const n = Number(v);
+      if (Number.isNaN(n) || n < lo || n > hi) throw new Error(`${what} must be between ${lo} and ${hi}`);
+      return n;
+    };
     let n = 0;
     await sql.begin(async (tx) => {
       for (const c of cands) {
-        if (!(`m_${c.id}_${subjects[0].id}` in o)) continue;
-        try { await assertStudentAccess(u, c.person_id, todayISO()); } catch { continue; }
-        let total = 0, max = 0, allPass = true, anyMark = false, allAbsent = true;
-        for (const s of subjects) {
-          const absent = o[`a_${c.id}_${s.id}`] === 'Y';
-          const raw = o[`m_${c.id}_${s.id}`];
-          const marks = raw === null || raw === undefined ? null : Number(raw);
-          if (marks !== null && (Number.isNaN(marks) || marks < 0 || marks > Number(s.max_marks))) throw new Error(`Marks must be between 0 and ${s.max_marks}`);
-          await tx`insert into exam_mark (candidate_id, exam_subject_id, marks, absent_flag, entered_by) values (${c.id}, ${s.id}, ${absent ? null : marks}, ${absent ? 'Y' : 'N'}, ${u.username})
-            on conflict (candidate_id, exam_subject_id) do update set marks = excluded.marks, absent_flag = excluded.absent_flag, entered_by = excluded.entered_by, entered_at = now()`;
-          max += Number(s.max_marks);
-          if (!absent) allAbsent = false;
-          if (marks !== null && !absent) { anyMark = true; total += marks; }
-          if (absent || marks === null || marks < Number(s.pass_marks)) allPass = false;
+        if (!(`seen_${c.id}` in o)) continue;
+        if (!examiner) { try { await assertStudentAccess(u, c.person_id, todayISO()); } catch { continue; } }
+        const absent = o[`ab_${c.id}`] === 'Y';
+        const partMarks: (number | null)[] = [];
+        for (const p of es.parts) {
+          const secs = sections.get(p.subjectId);
+          if (secs?.length) {
+            const ratings = new Map<string, number | null>();
+            for (const sec of secs) {
+              const r = absent ? null : rng(o[`r_${c.id}_${p.id}_${sec.id}`], sec.min_rating, sec.max_rating, `${p.name} – ${sec.name} rating`);
+              ratings.set(sec.id, r);
+              await tx`insert into exam_section_rating (candidate_id, exam_subject_id, component_id, section_id, rating, entered_by) values (${c.id}, ${esId}, ${p.id}, ${sec.id}, ${r}, ${u.username})
+                on conflict (candidate_id, exam_subject_id, component_id, section_id) do update set rating = excluded.rating, entered_by = excluded.entered_by, entered_at = now()`;
+            }
+            partMarks.push(partMark(p, secs, ratings, null));
+          } else {
+            const m = absent ? null : rng(o[`u_${c.id}_${p.id}`], 0, p.max, `${p.name} marks`);
+            partMarks.push(m);
+          }
+          await tx`insert into exam_unit_mark (candidate_id, exam_subject_id, component_id, marks, absent_flag, entered_by)
+            values (${c.id}, ${esId}, ${p.id}, ${partMarks[partMarks.length - 1]}, ${absent ? 'Y' : 'N'}, ${u.username})
+            on conflict (candidate_id, exam_subject_id, component_id) do update set marks = excluded.marks, absent_flag = excluded.absent_flag, entered_by = excluded.entered_by, entered_at = now()`;
         }
-        const pct = max ? Math.round((total / max) * 10000) / 100 : 0;
-        const result = allAbsent ? 'ABSENT' : !anyMark ? 'PENDING' : allPass && (exam.pass_percentage === null || pct >= Number(exam.pass_percentage)) ? 'PASS' : 'FAIL';
-        await tx`update exam_candidate set total_marks = ${anyMark ? total : null}, percentage = ${anyMark ? pct : null}, result_code = ${result} where id = ${c.id}`;
+        const sc = absent ? { marks: null, pass: false } : subjectScore(es, partMarks);
+        await tx`insert into exam_mark (candidate_id, exam_subject_id, marks, absent_flag, pass_flag, entered_by)
+          values (${c.id}, ${esId}, ${sc.marks}, ${absent ? 'Y' : 'N'}, ${sc.marks === null ? null : sc.pass ? 'Y' : 'N'}, ${u.username})
+          on conflict (candidate_id, exam_subject_id) do update set marks = excluded.marks, absent_flag = excluded.absent_flag, pass_flag = excluded.pass_flag, entered_by = excluded.entered_by, entered_at = now()`;
+        await recomputeCandidate(tx as unknown as typeof sql, exam, c.id);
         n++;
       }
     });
-    return { msg: `Marks have been saved for ${n} candidate(s).` };
+    return { msg: `${es.subject_name} marks have been saved for ${n} student(s).` };
   });
 }
 
-/** Publish results; for grade exams, promote passed students to the target grade. */
+/** Publish results; when the exam promotes, passed students move to their grade's target grade. */
 export async function publishResults(examId: string, fd: FormData) {
   const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
+    if (exam.status_code === 'DRAFT') throw new Error('Finish the exam setup first');
     const o = formObj(fd);
     const date = o.promotion_date ?? todayISO();
     let promoted = 0;
     await sql.begin(async (tx) => {
-      if (exam.exam_type_code === 'GRADE_EXAM' && o.promote === 'Y') {
+      if (exam.outcome_code === 'PROMOTE' && o.promote === 'Y') {
         const action = await actionByType(u.enterpriseId, 'STUDENT', 'PROMOTION', date);
         if (!action) throw new Error('No Promotion action is configured for students');
-        const passed = await tx`select * from exam_candidate where exam_id = ${examId} and result_code = 'PASS' and promoted_flag = 'N'`;
+        const passed = await tx`select c.*, coalesce(eg.target_grade_id, (select next_grade_id from student_grade_f g where g.id = c.current_grade_id order by effective_start_date desc limit 1)) target
+          from exam_candidate c left join exam_grade eg on eg.exam_id = c.exam_id and eg.grade_id = c.current_grade_id
+          where c.exam_id = ${examId} and c.result_code = 'PASS' and c.promoted_flag = 'N'`;
+        const none = passed.filter((c) => !c.target);
+        if (none.length) throw new Error(`${none.length} passed student(s) have no grade to be promoted to – set it in stop 6 of the exam setup.`);
         for (const c of passed) {
           await dtChange(tx, 'assignment', c.assignment_id, date, 'UPDATE', {
-            student_grade_id: exam.target_grade_id, action_id: action.id, action_reason_code: 'GRADE_EXAM_PASSED', comments: `Passed ${exam.name}`,
+            student_grade_id: c.target, action_id: action.id, action_reason_code: 'GRADE_EXAM_PASSED', comments: `Passed ${exam.name}`,
             ...(action.assignment_status_id ? { assignment_status_id: action.assignment_status_id } : {}),
           }, u.username);
           await tx`update exam_candidate set promoted_flag = 'Y' where id = ${c.id}`;
@@ -179,7 +160,7 @@ export async function publishResults(examId: string, fd: FormData) {
       }
       await tx`update exam set status_code = 'PUBLISHED', last_updated_by = ${u.username}, last_update_date = now() where id = ${examId}`;
     });
-    return { msg: `Results have been published${promoted ? ` · ${promoted} student(s) promoted effective ${date}` : ''}` };
+    return { msg: `${exam.name} results have been published${promoted ? ` · ${promoted} student(s) promoted effective ${date}` : ' and recorded on the student profiles'}.` };
   });
 }
 

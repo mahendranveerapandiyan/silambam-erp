@@ -13,6 +13,8 @@ export type Eligibility = Row & { checks: { label: string; ok: boolean; detail: 
  */
 export async function eligibleStudents(u: SessionUser, exam: Row): Promise<Eligibility[]> {
   const [ay] = await sql`select * from academic_year where id = ${exam.academic_year_id}`;
+  const grades = new Map((await sql`select eg.grade_id, (select name from student_grade_f g where g.id = eg.grade_id order by effective_start_date desc limit 1) name
+    from exam_grade eg where eg.exam_id = ${exam.id}`).map((g) => [String(g.grade_id), g.name as string]));
   const today = todayISO();
   const asOf = exam.exam_date < today ? exam.exam_date : today < ay.start_date ? ay.start_date : today;
   const attTo = asOf > ay.end_date ? ay.end_date : asOf;
@@ -42,7 +44,7 @@ export async function eligibleStudents(u: SessionUser, exam: Row): Promise<Eligi
     order by full_name`;
   return rows.map((r) => {
     const checks: Eligibility['checks'] = [];
-    if (exam.from_grade_id) checks.push({ label: 'Grade', ok: String(r.student_grade_id) === String(exam.from_grade_id), detail: r.grade_name ?? 'none' });
+    if (grades.size) checks.push({ label: 'Grade', ok: grades.has(String(r.student_grade_id)), detail: r.grade_name ?? 'none' });
     if (exam.min_attendance_pct !== null) {
       const pct = Number(r.att_total) ? (Number(r.att_present) / Number(r.att_total)) * 100 : 0;
       checks.push({ label: 'Attendance', ok: pct >= Number(exam.min_attendance_pct), detail: `${pct.toFixed(0)}% (${r.att_total} days)` });
@@ -63,10 +65,15 @@ export async function eligibleStudents(u: SessionUser, exam: Row): Promise<Eligi
   });
 }
 
-/** Exam fee for a student: by exam type and the grade being examined. */
+/** Exam fee for a student: by exam type and grade – the grade they move to when the exam promotes, else their current grade. */
 export async function examFeeFor(exam: Row, currentGradeId: string | null) {
-  const grade = exam.exam_type_code === 'GRADE_EXAM' ? exam.target_grade_id ?? currentGradeId : currentGradeId;
-  if (!grade) return null;
+  if (!currentGradeId) return null;
+  let grade = currentGradeId;
+  if (exam.outcome_code === 'PROMOTE') {
+    const [t] = await sql`select coalesce(eg.target_grade_id, (select next_grade_id from student_grade_f g where g.id = ${currentGradeId} order by effective_start_date desc limit 1)) t
+      from (select 1) x left join exam_grade eg on eg.exam_id = ${exam.id} and eg.grade_id = ${currentGradeId}`;
+    grade = t?.t ?? currentGradeId;
+  }
   const [f] = await sql`select amount from exam_fee where academic_year_id = ${exam.academic_year_id} and exam_type_code = ${exam.exam_type_code} and student_grade_id = ${grade}`;
   return f ? Number(f.amount) : null;
 }

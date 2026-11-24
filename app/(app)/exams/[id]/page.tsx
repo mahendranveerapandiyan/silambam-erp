@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
@@ -10,16 +10,14 @@ import { studentScopeSql, seesAllStudents } from '@/lib/scope';
 import { fmtDate, money, todayISO } from '@/lib/util';
 import { PageHeader, Flash, Back, Badge, Empty, Select, Tabs, STATUS_COLOR, type SP, here } from '@/components/ui';
 import { CheckAll, ConfirmButton } from '@/components/client';
-import { ExamForm } from '@/components/ExamForm';
-import { saveExam, saveSubject, assignCandidates, removeCandidate, saveMarks, publishResults } from '../actions';
+import { assignCandidates, removeCandidate, publishResults } from '../actions';
+import { examGrades, examSubjects, evaluatorGrades } from '@/lib/examSetup';
 
 export default async function ExamPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
   const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_EXAM_CANDIDATE_PRV'], 'READ');
   const { id } = await params;
   const sp = await searchParams;
-  const [exam] = await sql`select e.*, y.name ay_name,
-      (select name from student_grade_f g where g.id = e.from_grade_id order by effective_start_date desc limit 1) from_grade,
-      (select name from student_grade_f g where g.id = e.target_grade_id order by effective_start_date desc limit 1) target_grade
+  const [exam] = await sql`select e.*, y.name ay_name, (select name from evaluation_template t where t.id = e.evaluation_template_id) template_name
     from exam e join academic_year y on y.id = e.academic_year_id where e.id = ${id} and e.enterprise_id = ${u.enterpriseId}`;
   if (!exam) notFound();
   const asOf = await getAsOf();
@@ -28,7 +26,10 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
   const back = here(`/exams/${id}`, sp);
   const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
   const canMarks = can(u, 'CD_EXAM_CANDIDATE_PRV', 'WRITE') || admin;
-  const subjects = await sql`select es.*, (select name from subject_f s where s.id = es.subject_id order by effective_start_date desc limit 1) subject_name from exam_subject es where exam_id = ${id} order by display_seq, id`;
+  if (exam.status_code === 'DRAFT') redirect(`/exams/${id}/setup?step=${Math.min(7, Number(exam.setup_step) + 1)}`);
+  const grades = await examGrades(id, exam.exam_date);
+  const subjects = await examSubjects(id);
+  const mine = await evaluatorGrades(u, id);
   const closed = ['PUBLISHED', 'CANCELLED'].includes(exam.status_code);
   const today = todayISO();
   const cands = await sql`
@@ -41,25 +42,26 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
     where c.exam_id = ${id} ${studentScopeSql(u, today)}
     order by full_name`;
   const rules = [
-    exam.from_grade && `Grade: ${exam.from_grade}`, exam.min_attendance_pct !== null && `Attendance ≥ ${exam.min_attendance_pct}%`,
+    grades.length ? `Grades: ${grades.map((g) => g.name).join(', ')}` : 'Any grade', exam.min_attendance_pct !== null && `Attendance ≥ ${exam.min_attendance_pct}%`,
     exam.fees_cleared_flag === 'Y' && 'Fees cleared', exam.min_months_in_grade !== null && `≥ ${exam.min_months_in_grade} months in grade`,
     exam.min_age !== null && `Age ≥ ${exam.min_age}`, exam.exam_type_code === 'GRADE_EXAM' && 'One grade exam per year',
+    exam.outcome_code === 'PROMOTE' ? `Promotes: ${grades.map((g) => `${g.name} → ${g.target_name ?? '?'}`).join(', ') || 'to the next grade'}` : 'Result recorded on the profile only',
+    exam.template_name && `Evaluation: ${exam.template_name}`,
   ].filter(Boolean);
-  const tabs: [string, string][] = [['candidates', `Candidates (${cands.length})`], ['eligible', 'Assign Students'], ['marks', 'Marks & Results'], ['subjects', `Subjects (${subjects.length})`], ...(admin ? [['details', 'Exam Details'] as [string, string]] : [])];
+  const tabs: [string, string][] = [['candidates', `Candidates (${cands.length})`], ['eligible', 'Assign Students'], ['results', 'Marks & Results'], ['subjects', `Subjects (${subjects.length})`]];
 
   return (
     <div className="max-w-7xl">
       <PageHeader title={exam.name}
-        subtitle={<>{L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} {exam.target_grade && <>· promotes to <b>{exam.target_grade}</b></>} · <Badge color={exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
-        actions={<Link href="/exams" className="btn">All exams</Link>} />
+        subtitle={<><span className="font-mono">{exam.code}</span> · {L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
+        actions={<>{can(u, 'CD_EXAM_SETUP_PRV') && <Link href={`/exams/${id}/setup?step=1`} className="btn">{admin && !closed ? '✎ Exam Setup' : 'Exam Setup'}</Link>}<Link href="/exams" className="btn">All exams</Link></>} />
       <Flash sp={sp} />
       {rules.length > 0 && <div className="mb-3 flex flex-wrap gap-2 text-xs">{rules.map((r) => <Badge key={r as string} color="gray">{r}</Badge>)}</div>}
       <Tabs tabs={tabs} active={tab} base={`/exams/${id}`} />
       {tab === 'candidates' && <Candidates />}
       {tab === 'eligible' && <Eligible />}
-      {tab === 'marks' && <Marks />}
+      {tab === 'results' && <Results />}
       {tab === 'subjects' && <Subjects />}
-      {tab === 'details' && admin && <ExamForm action={saveExam.bind(null, id)} exam={exam} back={back} o={await examOptions(u.enterpriseId, asOf)} />}
     </div>
   );
 
@@ -109,43 +111,37 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
     );
   }
 
-  async function Marks() {
-    if (!subjects.length) return <div className="card muted">Add subjects first.</div>;
+  async function Results() {
     const marks = await sql`select m.* from exam_mark m join exam_candidate c on c.id = m.candidate_id where c.exam_id = ${id}`;
     const mk = new Map(marks.map((m) => [`${m.candidate_id}_${m.exam_subject_id}`, m]));
-    const locked = (exam.status_code === 'PUBLISHED' && !admin) || !canMarks;
+    const canEnter = (mine === 'ALL' || mine.size > 0) && !(exam.status_code === 'PUBLISHED' && !admin) && exam.status_code !== 'CANCELLED';
+    const byGrade = new Map<string, typeof cands>();
+    for (const c of cands) { const k = String(c.current_grade_id ?? ''); if (!byGrade.has(k)) byGrade.set(k, [] as unknown as typeof cands); byGrade.get(k)!.push(c); }
     return (
       <div className="space-y-4">
-        <form action={saveMarks.bind(null, id)} className="card overflow-x-auto">
-          <Back to={back} />
-          <table className="tbl"><thead><tr><th>Student</th>{subjects.map((s) => <th key={s.id}>{s.subject_name}<div className="font-normal normal-case">{L('SUBJECT_TYPE', s.subject_type_code)} · max {Number(s.max_marks)} / pass {Number(s.pass_marks)}</div></th>)}<th>Total</th><th>Result</th></tr></thead>
-            <tbody>{cands.map((c) => (
-              <tr key={c.id}>
-                <td>{c.full_name}</td>
-                {subjects.map((s) => {
-                  const m = mk.get(`${c.id}_${s.id}`);
-                  return (
-                    <td key={s.id}>
-                      <div className="flex items-center gap-1">
-                        <input name={`m_${c.id}_${s.id}`} type="number" step="0.5" min="0" max={Number(s.max_marks)} defaultValue={m?.marks ?? ''} disabled={locked} className="input w-20" />
-                        <label className="text-[10px]"><input type="checkbox" name={`a_${c.id}_${s.id}`} value="Y" defaultChecked={m?.absent_flag === 'Y'} disabled={locked} /> AB</label>
-                      </div>
-                    </td>);
-                })}
-                <td>{c.total_marks} {c.percentage !== null && <span className="text-xs">({c.percentage}%)</span>}</td>
-                <td><Badge color={STATUS_COLOR[c.result_code]}>{L('EXAM_RESULT', c.result_code)}</Badge></td>
-              </tr>))}</tbody></table>
-          {!cands.length && <Empty />}
-          {!locked && cands.length > 0 && <button className="btn btn-primary mt-3">Save Marks</button>}
-        </form>
+        {canEnter && <div className="card flex flex-wrap items-center gap-3"><div className="flex-1"><b>Enter marks</b><div className="muted">One grade and subject at a time{mine !== 'ALL' ? ' – the grades you examine' : ''}.</div></div><Link href={`/exams/${id}/marks`} className="btn btn-primary">Enter Marks</Link></div>}
+        {[...byGrade.entries()].map(([g, list]) => {
+          const subs = subjects.filter((s) => s.grade_id === null || String(s.grade_id) === g);
+          return (
+            <div key={g} className="card overflow-x-auto">
+              <h3 className="mb-2 font-semibold">{list[0].grade_name ?? 'Grade not set'} <span className="text-sm font-normal text-slate-500">({list.length})</span></h3>
+              <table className="tbl"><thead><tr><th>Student</th>{subs.map((s) => <th key={s.id}>{s.subject_name}<div className="font-normal normal-case">max {Number(s.max_marks)} / pass {Number(s.pass_marks)}</div></th>)}<th>Total</th><th>%</th><th>Result</th></tr></thead>
+                <tbody>{list.map((c) => (
+                  <tr key={c.id}><td>{c.full_name}<div className="text-xs text-gray-500">{c.assignment_number}</div></td>
+                    {subs.map((s) => { const m = mk.get(`${c.id}_${s.id}`); return <td key={s.id} className={m?.pass_flag === 'N' ? 'font-semibold text-red-700' : ''}>{m?.absent_flag === 'Y' ? 'AB' : m?.marks ?? '—'}</td>; })}
+                    <td>{c.total_marks ?? '—'}</td><td>{c.percentage ?? '—'}</td>
+                    <td><Badge color={STATUS_COLOR[c.result_code]}>{L('EXAM_RESULT', c.result_code)}</Badge>{c.promoted_flag === 'Y' && <Badge color="purple">Promoted</Badge>}</td></tr>))}</tbody></table>
+            </div>);
+        })}
+        {!cands.length && <div className="card"><Empty>No candidates yet.</Empty></div>}
         {admin && exam.status_code !== 'PUBLISHED' && cands.length > 0 && (
           <form action={publishResults.bind(null, id)} className="card flex flex-wrap items-end gap-3">
             <Back to={back} />
-            <div><h2 className="h2 mb-1">Publish Results</h2><p className="muted">Results become visible on the parent/student portal.</p></div>
-            {exam.exam_type_code === 'GRADE_EXAM' && <>
-              <label className="flex items-center gap-1 text-sm"><input type="checkbox" name="promote" value="Y" defaultChecked /> Promote passed students to <b>{exam.target_grade}</b></label>
+            <div><h2 className="h2 mb-1">Publish Results</h2><p className="muted">Results become visible on the student profile and the parent/student portal.</p></div>
+            {exam.outcome_code === 'PROMOTE' ? <>
+              <label className="flex items-center gap-1 text-sm"><input type="checkbox" name="promote" value="Y" defaultChecked /> Promote passed students ({grades.map((g) => `${g.name} → ${g.target_name ?? '?'}`).join(', ') || 'to their next grade'})</label>
               <label className="text-sm">effective <input type="date" name="promotion_date" defaultValue={exam.exam_date > today ? exam.exam_date : today} className="input inline-block w-40" /></label>
-            </>}
+            </> : <span className="text-sm">Outcome: results are recorded only – no promotion.</span>}
             <ConfirmButton className="btn btn-primary" message="Publish results?">Publish</ConfirmButton>
           </form>
         )}
@@ -153,24 +149,16 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
     );
   }
 
-  async function Subjects() {
-    const o = await examOptions(u.enterpriseId, asOf);
-    const row = (s?: any) => (
-      <form key={s?.id ?? 'new'} action={saveSubject.bind(null, id, s?.id ?? null)} className={`grid items-end gap-2 sm:grid-cols-6 ${s ? '' : 'rounded bg-green-50 p-2'}`}>
-        <Back to={back} />
-        <Select name="subject_id" options={o.subjects} value={s?.subject_id} required disabled={!admin} />
-        <Select name="subject_type_code" options={o.subjectTypes} value={s?.subject_type_code} required disabled={!admin} />
-        <input name="max_marks" type="number" step="0.5" defaultValue={s?.max_marks ?? 100} placeholder="Max" className="input" disabled={!admin} />
-        <input name="pass_marks" type="number" step="0.5" defaultValue={s?.pass_marks ?? 35} placeholder="Pass" className="input" disabled={!admin} />
-        <input name="display_seq" type="number" defaultValue={s?.display_seq ?? subjects.length} className="input" disabled={!admin} />
-        {admin && <div className="flex gap-1"><button className="btn btn-sm">{s ? 'Save' : 'Add'}</button>{s && <button name="_delete" value="1" className="btn btn-sm">✕</button>}</div>}
-      </form>
-    );
+  function Subjects() {
     return (
-      <div className="card space-y-2">
-        <div className="grid gap-2 text-xs font-semibold uppercase text-gray-600 sm:grid-cols-6"><div>Subject</div><div>Type</div><div>Max Marks</div><div>Pass Marks</div><div>Order</div></div>
-        {subjects.map(row)}
-        {admin && !closed && row()}
+      <div className="card overflow-x-auto">
+        <table className="tbl"><thead><tr><th>Grade</th><th>Subject</th><th>Type</th><th>Max</th><th>Pass</th><th>Made up of</th></tr></thead>
+          <tbody>{subjects.map((s) => (
+            <tr key={s.id}><td>{s.grade_id === null ? 'All grades' : grades.find((g) => String(g.grade_id) === String(s.grade_id))?.name}</td><td>{s.subject_name}</td>
+              <td>{L('SUBJECT_TYPE', s.subject_type_code)}</td><td>{Number(s.max_marks)}</td><td>{Number(s.pass_marks)}</td>
+              <td className="text-xs">{s.combined_flag === 'Y' ? s.parts.map((p) => `${p.name} ${s.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight}%`} (pass ${p.pass}/${p.max})`).join(' + ') : '—'}</td></tr>))}</tbody></table>
+        {!subjects.length && <Empty />}
+        {admin && !closed && <Link className="btn btn-sm mt-2" href={`/exams/${id}/setup?step=4`}>Change subjects (stop 4)</Link>}
       </div>
     );
   }

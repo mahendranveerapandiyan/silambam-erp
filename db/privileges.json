@@ -603,5 +603,12 @@
   "module": "Attendance",
   "defaults": {},
   "seq": 266
+ },
+ {
+  "code": "CD_EVALUATION_TEMPLATE_PRV",
+  "name": "Evaluation Templates",
+  "module": "Exams",
+  "defaults": {},
+  "seq": 465
  }
 ]

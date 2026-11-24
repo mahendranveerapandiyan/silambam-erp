@@ -56,7 +56,7 @@ const LOOKUPS = {
   EXEMPTION_REASON: ['Exception Reason', 'FEES', 'USER', null, [['SCHOLARSHIP', 'Scholarship'], ['SIBLING', 'Sibling Concession'], ['HARDSHIP', 'Financial Hardship'], ['STAFF_CHILD', 'Staff Child'], ['MERIT', 'Merit'], ['MANAGEMENT', 'Management Decision']]],
   APPROVAL_STATUS: ['Approval Status', 'SYSTEM', 'SYSTEM', null, [['PENDING', 'Pending Approval'], ['APPROVED', 'Approved'], ['REJECTED', 'Rejected'], ['WITHDRAWN', 'Withdrawn'], ['SKIPPED', 'Skipped'], ['NOT_REQUIRED', 'Not Required'], ['REASSIGNED', 'Reassigned']]],
   EXAM_TYPE: ['Exam Type', 'EXAMS', 'SYSTEM', null, [['GRADE_EXAM', 'Grade Exam'], ['ASSESSMENT', 'Assessment'], ['TERM_EXAM', 'Term Exam']]],
-  EXAM_STATUS: ['Exam Status', 'EXAMS', 'SYSTEM', null, [['SCHEDULED', 'Scheduled'], ['COMPLETED', 'Completed'], ['PUBLISHED', 'Results Published'], ['CANCELLED', 'Cancelled']]],
+  EXAM_STATUS: ['Exam Status', 'EXAMS', 'SYSTEM', null, [['DRAFT', 'Draft – being set up'], ['SCHEDULED', 'Scheduled'], ['COMPLETED', 'Completed'], ['PUBLISHED', 'Results Published'], ['CANCELLED', 'Cancelled']]],
   EXAM_RESULT: ['Exam Result', 'EXAMS', 'SYSTEM', null, [['PENDING', 'Pending'], ['PASS', 'Pass'], ['FAIL', 'Fail'], ['ABSENT', 'Absent']]],
   EVENT_TYPE: ['Event Type', 'EVENTS', 'USER', null, [['TOURNAMENT', 'Tournament'], ['DEMONSTRATION', 'Demonstration'], ['WORKSHOP', 'Workshop / Seminar'], ['ARANGETRAM', 'Arangetram'], ['CULTURAL', 'Cultural Program'], ['CAMP', 'Training Camp']]],
   EVENT_STATUS: ['Event Status', 'EVENTS', 'SYSTEM', null, [['PLANNED', 'Planned'], ['OPEN', 'Registration Open'], ['COMPLETED', 'Completed'], ['CANCELLED', 'Cancelled']]],
@@ -77,6 +77,7 @@ const LOOKUPS = {
   // values (with tags) come from migration 023
   APPROVAL_ATTRIBUTE: ['Approval Condition Attribute', 'SYSTEM', 'SYSTEM', null, []],
   APPROVAL_OPERATOR: ['Approval Condition Operator', 'SYSTEM', 'SYSTEM', null, [['IN', 'is one of'], ['NOT_IN', 'is not one of'], ['GE', 'is at least'], ['LE', 'is at most']]],
+  EXAM_OUTCOME: ['Exam Outcome', 'EXAMS', 'SYSTEM', null, [['PROMOTE', 'Promote passed students to the next grade'], ['RECORD', 'Record the result on the profile only']]],
   NUMBER_SCOPE: ['Number Generation Level', 'SYSTEM', 'SYSTEM', null, [['ENTERPRISE', 'Enterprise'], ['LE', 'Legal Employer'], ['BU', 'Business Unit'], ['BRANCH', 'Branch']]],
 };
 
