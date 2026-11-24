@@ -12,7 +12,7 @@ import { generateStudentFees } from './fees';
 import { assertEffective } from './integrity';
 import { readIdForm, validateIdentifier, assertIdUnique, insertIdentifier, normId, employerCountry } from './identifiers';
 
-// Hire (staff) / admission (students). Used by the Hire / New Admission pages
+// Hire (staff) / admission (students). Used by the Hire Staff / Add New Student pages
 // directly, and by the approval engine when a request (e.g. the staff
 // Admission Form) is finally approved.
 

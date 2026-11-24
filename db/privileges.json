@@ -42,11 +42,9 @@
  },
  {
   "code": "CD_STUDENT_ADMISSION_PRV",
-  "name": "New Admission",
+  "name": "Add New Student (direct admission, no approval)",
   "module": "Students",
-  "defaults": {
-   "INCHARGE": "W"
-  },
+  "defaults": {},
   "seq": 50
  },
  {

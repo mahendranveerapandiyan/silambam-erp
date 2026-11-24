@@ -22,7 +22,9 @@ export async function PeopleList({ u, kind, asOf, sp }: { u: SessionUser; kind: 
   return (
     <div>
       <PageHeader title={stu ? 'Student Directory' : 'Staff Directory'} subtitle={`${total} record(s) as of ${fmtDate(asOf)}${stu && !seesAllStudents(u) ? ' · your classes only' : ''}`}
-        actions={can(u, stu ? 'CD_STUDENT_ADMISSION_PRV' : 'CD_STAFF_HIRE_PRV', 'WRITE') ? <Link href={`${base}/new`} className="btn btn-primary">{stu ? '+ New Admission' : '+ Hire Staff'}</Link> : null} />
+        actions={can(u, stu ? 'CD_STUDENT_ADMISSION_PRV' : 'CD_STAFF_HIRE_PRV', 'WRITE')
+          ? <Link href={`${base}/new`} className="btn btn-primary">{stu ? '+ Add New Student' : '+ Hire Staff'}</Link>
+          : stu && can(u, 'CD_ADMISSION_FORM_PRV', 'WRITE') ? <Link href="/students/admission-form" className="btn btn-primary">+ Admission Form</Link> : null} />
       <Flash sp={sp} />
       <div className="card">
         <form className="mb-3 grid gap-2 sm:grid-cols-3 lg:grid-cols-7">

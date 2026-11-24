@@ -1,5 +1,6 @@
 // Menu: every item is a task guarded by its own privilege (VIEW shows it).
-export type MenuItem = { label: string; href: string; priv: string };
+/** `hideWith`: not shown to users who hold that privilege with write access (they have a better task). */
+export type MenuItem = { label: string; href: string; priv: string; hideWith?: string };
 export type MenuGroup = { label: string; items: MenuItem[] };
 
 const lk = (t: string, label: string, priv: string): MenuItem => ({ label, href: `/config/lookups/${t}`, priv });
@@ -11,8 +12,8 @@ export const MENU: MenuGroup[] = [
     label: 'Students',
     items: [
       { label: 'Student Directory', href: '/students', priv: 'CD_STUDENT_DIRECTORY_PRV' },
-      { label: 'New Admission', href: '/students/new', priv: 'CD_STUDENT_ADMISSION_PRV' },
-      { label: 'Admission Form', href: '/students/admission-form', priv: 'CD_ADMISSION_FORM_PRV' },
+      { label: 'Add New Student', href: '/students/new', priv: 'CD_STUDENT_ADMISSION_PRV' },
+      { label: 'Admission Form', href: '/students/admission-form', priv: 'CD_ADMISSION_FORM_PRV', hideWith: 'CD_STUDENT_ADMISSION_PRV' },
       { label: 'QR ID Cards', href: '/students/cards', priv: 'CD_STUDENT_ID_CARD_PRV' },
     ],
   },
@@ -123,5 +124,5 @@ export function lookupPrivs(type: string): string[] {
 
 export function menuFor(privs: Record<string, number>): MenuGroup[] {
   const has = (p: string) => p.split('|').some((c) => (privs[c] ?? 0) >= 1);
-  return MENU.map((g) => ({ ...g, items: g.items.filter((i) => has(i.priv)) })).filter((g) => g.items.length);
+  return MENU.map((g) => ({ ...g, items: g.items.filter((i) => has(i.priv) && !(i.hideWith && (privs[i.hideWith] ?? 0) >= 3)) })).filter((g) => g.items.length);
 }

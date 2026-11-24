@@ -354,7 +354,7 @@ export async function saveAor(kind: PersonKind, personId: string, aorId: string 
 }
 
 // ------------------------------------------------------------ admission form (staff)
-/** Admission by staff: the same form as New Admission, limited to the staff member's classes, always approved first. */
+/** Admission by staff: the same form as Add New Student, limited to the staff member's classes, always approved first. */
 export async function submitAdmissionForm(fd: FormData) {
   const u = await requirePriv('CD_ADMISSION_FORM_PRV', 'WRITE');
   await act(backOf(fd, '/students/admission-form'), async () => {

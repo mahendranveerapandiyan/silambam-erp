@@ -18,7 +18,7 @@ import { userNameRule } from '@/lib/usernames';
 import { UsernamePreview } from '../UsernamePreview';
 
 /**
- * Hire Staff / New Admission. With `request` (students only) it is the staff
+ * Hire Staff / Add New Student. With `request` (students only) it is the staff
  * Admission Form: the same fields, the user's own classes, and saving sends
  * the admission for approval instead of admitting at once.
  */
@@ -32,7 +32,7 @@ export async function HireForm({ u, kind, asOf, sp, request = false }: { u: Sess
   const staffRule = await userNameRule(u.enterpriseId, 'STAFF');
   return (
     <div className="max-w-6xl">
-      <PageHeader title={request ? 'Admission Form' : stu ? 'New Student Admission' : 'Hire Staff'}
+      <PageHeader title={request ? 'Admission Form' : stu ? 'Add New Student' : 'Hire Staff'}
         subtitle={request ? 'Fill in the admission – it is sent for approval and the student is admitted once it is approved. Only your own classes are offered.' : undefined}
         actions={<Link href={request ? '/approvals/requests' : stu ? '/students' : '/staff'} className="btn">{request ? 'My Requests' : 'Back'}</Link>} />
       <Flash sp={sp} />
@@ -130,7 +130,7 @@ export async function HireForm({ u, kind, asOf, sp, request = false }: { u: Sess
             </div>
           </div>
         )}
-        <button className="btn btn-primary">{request ? 'Submit for Approval' : stu ? 'Admit Student' : 'Hire'}</button>
+        <button className="btn btn-primary">{request ? 'Submit for Approval' : stu ? 'Add Student' : 'Hire'}</button>
       </form>
     </div>
   );
