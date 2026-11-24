@@ -15,7 +15,7 @@ export function ActionPopups() {
   const ok = sp.get('ok');
   const err = sp.get('err');
   const [closed, setClosed] = useState<string | null>(null);
-  const key = ok || err ? `${pathname}?${ok ?? ''}|${err ?? ''}` : null;
+  const key = ok || err ? `${pathname}?${ok ?? ''}|${err ?? ''}|${sp.get('n') ?? ''}` : null;
   const showResult = !!key && closed !== key;
 
   const okBtn = useRef<HTMLButtonElement>(null);
@@ -25,7 +25,7 @@ export function ActionPopups() {
   const closeResult = useCallback(() => {
     setClosed(key);
     const q = new URLSearchParams(sp.toString());
-    q.delete('ok'); q.delete('err');
+    q.delete('ok'); q.delete('err'); q.delete('n');
     const s = q.toString();
     // instant, no reload: Next.js keeps useSearchParams in step with history.replaceState
     window.history.replaceState(window.history.state, '', (s ? `${pathname}?${s}` : pathname) + window.location.hash);

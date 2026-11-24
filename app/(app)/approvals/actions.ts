@@ -2,7 +2,7 @@
 import { sql } from '@/lib/db';
 import { requirePriv, can } from '@/lib/auth';
 import { act, backOf, formObj } from '@/lib/util';
-import { decideTask, forceApprove, forceReject, withdrawRequest, reassignTask, skipTask } from '@/lib/approvals';
+import { decideTask, forceApprove, forceReject, withdrawRequest, reassignTask, skipTask, attributeSource } from '@/lib/approvals';
 
 const outcome: Record<string, string> = {
   APPROVED: 'Approved – the transaction has been completed.',
@@ -126,12 +126,14 @@ export async function saveCondition(ruleId: string, conditionId: string | null, 
     }
     const attr = o.attribute_code;
     if (!attr) throw new Error('Choose what the condition tests');
-    const numeric = attr === 'AMOUNT';
+    const numeric = attributeSource(attr, '').numeric === true;
     const op = o.operator_code ?? (numeric ? 'GE' : 'IN');
-    if (numeric !== ['GE', 'LE'].includes(op)) throw new Error(numeric ? 'An amount is compared with "is at least" or "is at most".' : 'Use "is one of" or "is not one of" for this attribute.');
+    if (numeric !== ['GE', 'LE'].includes(op)) throw new Error(numeric ? 'A number is compared with "is at least" or "is at most".' : 'Use "is one of" or "is not one of" for this attribute.');
     const value = numeric ? o.amount : fd.getAll(`values_${attr}`).map(String).filter(Boolean).join(',');
-    if (!value) throw new Error(numeric ? 'Enter the amount' : 'Choose at least one value');
-    if (numeric && !(Number(value) >= 0)) throw new Error('The amount must be a number');
+    if (!value) throw new Error(numeric ? 'Enter the value' : 'Choose at least one value');
+    if (numeric && !(Number(value) >= 0)) throw new Error('The value must be a number');
+    const [dup] = await sql`select 1 from approval_rule_condition where rule_id = ${ruleId} and attribute_code = ${attr} and operator_code = ${op}`;
+    if (dup) throw new Error('This rule already has that condition – delete it first to change it.');
     await sql`insert into approval_rule_condition (rule_id, attribute_code, operator_code, value_text) values (${ruleId}, ${attr}, ${op}, ${value})`;
     return { msg: 'The condition has been added.' };
   });

@@ -283,22 +283,35 @@ export async function skipTask(u: SessionUser, taskId: string, comments: string 
 /** Ids of requests the user may see as an approver. */
 export const myTaskFilter = (userId: string) => sql`exists (select 1 from approval_task t where t.request_id = r.id and t.approver_user_id = ${userId})`;
 
-/** Where the values of each condition attribute come from. */
-export const ATTRIBUTE_SOURCE: Record<string, { lookup?: string; entity?: string; table?: string; numeric?: boolean }> = {
-  FEE_TYPE: { lookup: 'FEE_TYPE' },
-  AMOUNT: { numeric: true },
-  BUSINESS_UNIT: { entity: 'business-units', table: 'business_unit' },
-  BRANCH: { entity: 'branches', table: 'branch' },
-  CLASS: { entity: 'classes', table: 'class' },
-  DEPARTMENT: { entity: 'departments', table: 'department' },
-  JOB: { entity: 'jobs', table: 'job' },
+/** Where the values of each condition attribute come from (labels are in the APPROVAL_ATTRIBUTE lookup). */
+export type AttrSource = { lookup?: string; entity?: string; table?: string; years?: boolean; numeric?: boolean };
+const SRC: Record<string, AttrSource | ((process: string) => AttrSource)> = {
+  FEE_TYPE: { lookup: 'FEE_TYPE' }, EXCEPTION_REASON: { lookup: 'EXEMPTION_REASON' }, FEE_FREQUENCY: { lookup: 'FEE_FREQUENCY' },
+  EMPLOYMENT_TYPE: { lookup: 'EMPLOYMENT_TYPE' }, EMPLOYMENT_CATEGORY: { lookup: 'EMPLOYMENT_CATEGORY' }, PAYROLL_STATUS: { lookup: 'PAYROLL_STATUS' },
+  ACTION_REASON: { lookup: 'ACTION_REASON' }, GENDER: { lookup: 'GENDER' }, NATIONALITY: { lookup: 'NATIONALITY' }, RELIGION: { lookup: 'RELIGION' },
+  MOTHER_TONGUE: { lookup: 'MOTHER_TONGUE' },
+  AMOUNT: { numeric: true }, FEE_LINE_AMOUNT: { numeric: true }, EXCEPTION_PERCENT: { numeric: true }, FEE_AMOUNT: { numeric: true }, AGE: { numeric: true },
+  ACADEMIC_YEAR: { years: true },
+  LEGAL_EMPLOYER: { entity: 'legal-employers', table: 'legal_employer' }, BUSINESS_UNIT: { entity: 'business-units', table: 'business_unit' },
+  BRANCH: { entity: 'branches', table: 'branch' }, CLASS: { entity: 'classes', table: 'class' }, SECTION: { entity: 'sections', table: 'section' },
+  STUDENT_GRADE: { entity: 'student-grades', table: 'student_grade' }, HOUSE: { entity: 'houses', table: 'house' }, CLUB: { entity: 'clubs', table: 'club' },
+  COMMUNITY: { entity: 'communities', table: 'community' }, LOCATION: { entity: 'locations', table: 'location' },
+  DEPARTMENT: { entity: 'departments', table: 'department' }, JOB: { entity: 'jobs', table: 'job' }, POSITION: { entity: 'positions', table: 'position' },
+  STAFF_GRADE: { entity: 'staff-grades', table: 'staff_grade' },
+  PERSON_TYPE: (process) => ({ entity: process === 'STAFF_HIRE' ? 'staff-person-types' : 'student-person-types', table: 'person_type' }),
 };
+export const attributeSource = (attr: string, process: string): AttrSource => {
+  const x = SRC[attr];
+  return typeof x === 'function' ? x(process) : x ?? {};
+};
+/** @deprecated kept for older imports */
+export const ATTRIBUTE_SOURCE: Record<string, AttrSource> = Object.fromEntries(Object.keys(SRC).map((k) => [k, attributeSource(k, '')]));
 
 /** "Fee Type is one of Grade Exam Fee, Term Exam Fee" */
 export async function describeCondition(tx: Tx, c: Row) {
   const [attr] = await tx`select meaning from lookup_value where lookup_type = 'APPROVAL_ATTRIBUTE' and lookup_code = ${c.attribute_code}`;
   const [op] = await tx`select meaning from lookup_value where lookup_type = 'APPROVAL_OPERATOR' and lookup_code = ${c.operator_code}`;
-  const src = ATTRIBUTE_SOURCE[c.attribute_code] ?? {};
+  const src = attributeSource(c.attribute_code, '');
   const values = String(c.value_text).split(',').filter(Boolean);
   let names: string[] = values;
   if (src.lookup) {
@@ -306,6 +319,9 @@ export async function describeCondition(tx: Tx, c: Row) {
     names = values.map((v) => rows.find((r) => r.lookup_code === v)?.meaning ?? v);
   } else if (src.table) {
     const rows = await tx`select distinct on (id) id, name from ${tx(src.table + '_f')} where id in ${tx(values)} order by id, effective_start_date desc`;
+    names = values.map((v) => rows.find((r) => String(r.id) === v)?.name ?? v);
+  } else if (src.years) {
+    const rows = await tx`select id, name from academic_year where id in ${tx(values)}`;
     names = values.map((v) => rows.find((r) => String(r.id) === v)?.name ?? v);
   }
   return `${attr?.meaning ?? c.attribute_code} ${op?.meaning ?? c.operator_code} ${names.join(', ')}`;

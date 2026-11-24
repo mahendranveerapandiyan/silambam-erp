@@ -8,6 +8,7 @@ import { act, backOf, formObj, fileToBytes, todayISO } from '@/lib/util';
 import { assertStudentAccess } from '@/lib/scope';
 import { generateStudentFees, recordPayment, addDemand } from '@/lib/fees';
 import { submitRequest } from '@/lib/approvals';
+import { feeExceptionFacts } from '@/lib/approvalFacts';
 
 const FREQS = ['MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUAL', 'ONE_TIME'];
 
@@ -297,7 +298,7 @@ export async function demandAction(demandId: string, fd: FormData) {
             from assignment a where a.person_id = ${personId} and a.assignment_type = 'STUDENT'`;
           submitted = await submitRequest(tx, u, {
             process: 'FEE_EXCEPTION', refTable: 'fee_exemption', refId: String(e.id), payload: { personId },
-            facts: { FEE_TYPE: d.fee_type_code, AMOUNT: ex, BUSINESS_UNIT: d.business_unit_id },
+            facts: await feeExceptionFacts(d, ex, o.reason_code, personId, todayISO()),
             title: `Fee exception ${ex.toFixed(2)} – ${st?.n ?? ''} (${st?.assignment_number ?? ''})`,
             summary: `${d.description}${d.period_label ? ` ${d.period_label}` : ''} · reason ${o.reason_code}${o.remarks ? ` · ${o.remarks}` : ''}`,
           });

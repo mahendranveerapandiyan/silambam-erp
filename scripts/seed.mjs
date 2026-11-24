@@ -74,9 +74,8 @@ const LOOKUPS = {
   STUDENT_AOR: ['Student Area of Responsibility', 'ACADEMIC', 'EXTENSIBLE', null, [['CLASS_INCHARGE', 'Class Incharge']]],
   STAFF_AOR: ['Staff Area of Responsibility', 'WORKFORCE', 'EXTENSIBLE', null, [['STAFF_REP', 'Staff Representative']]],
   APPROVAL_OUTCOME: ['Approval Outcome', 'SYSTEM', 'SYSTEM', null, [['APPROVAL', 'Needs approval (steps below)'], ['AUTO', 'No approval required – approved automatically']]],
-  APPROVAL_ATTRIBUTE: ['Approval Condition Attribute', 'SYSTEM', 'SYSTEM', null, [['FEE_TYPE', 'Fee Type', 'FEE_EXCEPTION'], ['AMOUNT', 'Exception Amount', 'FEE_EXCEPTION'],
-    ['BUSINESS_UNIT', 'Business Unit', 'FEE_EXCEPTION,STUDENT_ADMISSION,STAFF_HIRE'], ['BRANCH', 'Branch', 'STUDENT_ADMISSION'], ['CLASS', 'Class', 'STUDENT_ADMISSION'],
-    ['DEPARTMENT', 'Department', 'STAFF_HIRE'], ['JOB', 'Job', 'STAFF_HIRE']]],
+  // values (with tags) come from migration 023
+  APPROVAL_ATTRIBUTE: ['Approval Condition Attribute', 'SYSTEM', 'SYSTEM', null, []],
   APPROVAL_OPERATOR: ['Approval Condition Operator', 'SYSTEM', 'SYSTEM', null, [['IN', 'is one of'], ['NOT_IN', 'is not one of'], ['GE', 'is at least'], ['LE', 'is at most']]],
   NUMBER_SCOPE: ['Number Generation Level', 'SYSTEM', 'SYSTEM', null, [['ENTERPRISE', 'Enterprise'], ['LE', 'Legal Employer'], ['BU', 'Business Unit'], ['BRANCH', 'Branch']]],
 };

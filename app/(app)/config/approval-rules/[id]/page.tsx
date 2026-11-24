@@ -4,7 +4,7 @@ import { requirePriv, can } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { lk, lookupOptions } from '@/lib/lookups';
 import { getAsOf } from '@/lib/asof';
-import { stepLabel, describeCondition, ATTRIBUTE_SOURCE } from '@/lib/approvals';
+import { stepLabel, describeCondition, attributeSource } from '@/lib/approvals';
 import { refOptions } from '@/lib/dt';
 import { MultiPick } from '@/components/MultiPick';
 import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s as one } from '@/components/ui';
@@ -31,11 +31,15 @@ export default async function ApprovalRule({ params, searchParams }: { params: P
   const attrRows = await sql`select lookup_code, meaning, tag from lookup_value where lookup_type = 'APPROVAL_ATTRIBUTE' and enabled_flag = 'Y' order by display_seq`;
   const attributes = attrRows.filter((a) => String(a.tag ?? '').split(',').map((t) => t.trim()).includes(rule.process_code)).map((a) => ({ value: a.lookup_code as string, label: a.meaning as string }));
   const valueOptions: Record<string, { value: string; label: string; code?: string | null }[]> = {};
+  const yearOpts = (await sql`select id, code, name from academic_year where enterprise_id = ${u.enterpriseId} order by start_date desc`).map((y) => ({ value: String(y.id), label: y.name, code: y.code }));
   for (const a of attributes) {
-    const src = ATTRIBUTE_SOURCE[a.value];
-    if (src?.lookup) valueOptions[a.value] = await lookupOptions(src.lookup, asOf);
-    else if (src?.entity) valueOptions[a.value] = await refOptions(src.entity, u.enterpriseId, asOf);
+    const src = attributeSource(a.value, rule.process_code);
+    if (src.lookup) valueOptions[a.value] = await lookupOptions(src.lookup, asOf);
+    else if (src.entity) valueOptions[a.value] = await refOptions(src.entity, u.enterpriseId, asOf);
+    else if (src.years) valueOptions[a.value] = yearOpts;
   }
+  const numericAttrs = attributes.filter((a) => attributeSource(a.value, rule.process_code).numeric).map((a) => a.value);
+  const listAttrs = attributes.filter((a) => !numericAttrs.includes(a.value)).map((a) => a.value);
   const condRows = await Promise.all((await sql`select * from approval_rule_condition where rule_id = ${id} order by id`).map(async (c) => ({ id: c.id, label: await describeCondition(sql, c) })));
   const users = (await sql`select id, display_name, username from user_account where enterprise_id = ${u.enterpriseId} and active_flag = 'Y' order by display_name`)
     .map((x) => ({ value: String(x.id), label: x.display_name, code: x.username }));
@@ -65,7 +69,7 @@ export default async function ApprovalRule({ params, searchParams }: { params: P
 
         <div className="card overflow-x-auto">
           <h2 className="h2">Conditions</h2>
-          <p className="muted mb-2">The rule applies only when <b>all</b> its conditions match. No conditions = it matches every {L('APPROVAL_PROCESS', rule.process_code).toLowerCase()} (use that for the last, catch-all rule).</p>
+          <p className="muted mb-2">The rule applies only when <b>all</b> its conditions match – combine as many fields as you need (e.g. Business Unit is one of X, Class is one of Y, Z, Fee Type is one of A). No conditions = it matches every {L('APPROVAL_PROCESS', rule.process_code).toLowerCase()} (use that for the last, catch-all rule).</p>
           <table className="tbl">
             <tbody>{condRows.map((c) => (
               <tr key={c.id}><td>{c.label}</td>
@@ -76,14 +80,15 @@ export default async function ApprovalRule({ params, searchParams }: { params: P
           </table>
           {!condRows.length && <Empty>No conditions – this rule matches everything.</Empty>}
           {write && (
-            <form action={saveCondition.bind(null, id, null)} className="mt-3 space-y-2 border-t border-black/10 pt-3">
+            <form key={`cond-${condRows.length}`} action={saveCondition.bind(null, id, null)} className="mt-3 space-y-2 border-t border-black/10 pt-3">
               <Back to={back} />
               <div className="grid gap-3 sm:grid-cols-3">
                 <Field label="When"><Select name="attribute_code" options={attributes} value={attributes[0]?.value} empty={false} /></Field>
-                <Field label="Operator"><Select name="operator_code" options={operators} value="IN" empty={false} /></Field>
-                <div data-show-for-attribute_code="AMOUNT"><Field label="Amount *"><input name="amount" type="number" min={0} step="0.01" required className="input" /></Field></div>
+                <div data-show-for-attribute_code={listAttrs.join(',')}><Field label="Operator"><Select name="operator_code" options={operators.filter((x) => ['IN', 'NOT_IN'].includes(x.value))} value="IN" empty={false} /></Field></div>
+                <div data-show-for-attribute_code={numericAttrs.join(',')}><Field label="Operator"><Select name="operator_code" options={operators.filter((x) => ['GE', 'LE'].includes(x.value))} value="GE" empty={false} /></Field></div>
+                <div data-show-for-attribute_code={numericAttrs.join(',')}><Field label="Value *"><input name="amount" type="number" min={0} step="0.01" required className="input" /></Field></div>
               </div>
-              {attributes.filter((x) => x.value !== 'AMOUNT').map((x) => (
+              {attributes.filter((x) => !numericAttrs.includes(x.value)).map((x) => (
                 <div key={x.value} data-show-for-attribute_code={x.value}>
                   <Field label={`${x.label} values *`}><MultiPick name={`values_${x.value}`} options={valueOptions[x.value] ?? []} emptyText="Tick one or more" /></Field>
                 </div>
@@ -116,7 +121,7 @@ export default async function ApprovalRule({ params, searchParams }: { params: P
         </div>
 
         {write && (
-          <form id="step" action={saveStep.bind(null, id, e ? String(e.id) : null)} className="card">
+          <form id="step" key={`step-${steps.length}-${e?.id ?? 'new'}`} action={saveStep.bind(null, id, e ? String(e.id) : null)} className="card">
             <Back to={back} />
             <h2 className="h2">{e ? `Edit Step ${e.step_no}` : 'Add Step'}</h2>
             <div className="grid gap-3 sm:grid-cols-4">

@@ -63,6 +63,8 @@ function withParam(url: string, k: string, v: string) {
   sp.delete('ok');
   sp.delete('err');
   sp.set(k, v);
+  // a unique marker, so the same message twice in a row is still a new result (and a new pop-up)
+  sp.set('n', Date.now().toString(36));
   return `${p}?${sp.toString()}${hash}`;
 }
 
