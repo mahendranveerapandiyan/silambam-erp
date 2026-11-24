@@ -9,6 +9,7 @@ import { AutoSubmit, PrintButton } from '@/components/client';
 
 const COLORS: Record<string, string> = { P: 'bg-green-500', L: 'bg-amber-400', A: 'bg-red-500', LV: 'bg-blue-400', HD: 'bg-yellow-300', H: 'bg-gray-300' };
 
+import { attendanceWeights, trainingDays, dayCode } from '@/lib/attendance';
 export default async function Report({ searchParams }: { searchParams: SP }) {
   const u = await requirePriv('CD_ATTENDANCE_REPORT_PRV');
   const sp = await searchParams;
@@ -32,7 +33,10 @@ export default async function Report({ searchParams }: { searchParams: SP }) {
     const att = await sql`select person_id, attendance_date, status_code from student_attendance where class_id = ${c} and section_id = ${sec} and attendance_date between ${start} and ${end}`;
     for (const r of att) marks.set(`${r.person_id}|${r.attendance_date}`, r.status_code);
   }
-  const tags = Object.fromEntries((await sql`select lookup_code, tag from lookup_value where lookup_type = 'ATTENDANCE_STATUS'`).map((r) => [r.lookup_code, r.tag]));
+  // counting follows Attendance Settings (what each status counts as, half-day value)
+  const { tags, half } = await attendanceWeights(u.enterpriseId);
+  const training = cls ? await trainingDays(cls.split(':')[0], end) : null;
+  const isTraining = (d: string) => !training || !training.codes.length || training.codes.includes(dayCode(d));
   return (
     <div>
       <PageHeader title="Attendance Report" subtitle="Monthly class register" actions={<PrintButton />} />
@@ -44,7 +48,7 @@ export default async function Report({ searchParams }: { searchParams: SP }) {
       {cls && (
         <div className="card overflow-x-auto">
           <table className="tbl text-xs">
-            <thead><tr><th>Student</th>{days.map((d) => <th key={d} className="!px-1 text-center">{+d.slice(8)}</th>)}<th>P</th><th>A</th><th>%</th></tr></thead>
+            <thead><tr><th>Student</th>{days.map((d) => <th key={d} className={`!px-1 text-center ${isTraining(d) ? '' : 'bg-slate-100 text-slate-400'}`} title={isTraining(d) ? undefined : 'Not a training day'}>{+d.slice(8)}</th>)}<th>P</th><th>A</th><th>%</th></tr></thead>
             <tbody>{students.map((st) => {
               let p = 0, a = 0, h = 0;
               return (
@@ -53,9 +57,9 @@ export default async function Report({ searchParams }: { searchParams: SP }) {
                   {days.map((d) => {
                     const m = marks.get(`${st.person_id}|${d}`);
                     if (m) { const t = tags[m]; if (t === 'PRESENT') p++; else if (t === 'ABSENT') a++; else if (t === 'HALF') h++; }
-                    return <td key={d} className="!px-0.5 text-center" title={m}>{m && <span className={`inline-block h-4 w-4 rounded-sm text-[9px] leading-4 text-white ${COLORS[m] ?? 'bg-gray-400'}`}>{m[0]}</span>}</td>;
+                    return <td key={d} className={`!px-0.5 text-center ${isTraining(d) ? '' : 'bg-slate-100'}`} title={m}>{m && <span className={`inline-block h-4 w-4 rounded-sm text-[9px] leading-4 text-white ${COLORS[m] ?? 'bg-gray-400'}`}>{m[0]}</span>}</td>;
                   })}
-                  <td>{p + h / 2}</td><td>{a}</td><td className="font-semibold">{p + a + h ? Math.round(((p + h / 2) / (p + a + h)) * 100) : '–'}%</td>
+                  <td>{p + h * half}</td><td>{a + h * (1 - half)}</td><td className="font-semibold">{p + a + h ? Math.round(((p + h * half) / (p + a + h)) * 100) : '–'}%</td>
                 </tr>);
             })}</tbody>
           </table>

@@ -52,6 +52,7 @@ export const MENU: MenuGroup[] = [
       { label: 'QR Scan', href: '/attendance/scan', priv: 'CD_QR_SCAN_PRV' },
       { label: 'Staff Attendance', href: '/attendance/staff', priv: 'CD_STAFF_ATTENDANCE_PRV' },
       { label: 'Attendance Report', href: '/attendance/report', priv: 'CD_ATTENDANCE_REPORT_PRV' },
+      { label: 'Attendance Settings', href: '/attendance/settings', priv: 'CD_ATTENDANCE_SETTINGS_PRV' },
     ],
   },
   {

@@ -3,6 +3,7 @@ import { sql } from '@/lib/db';
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, todayISO } from '@/lib/util';
 import { myClasses, studentScopeSql } from '@/lib/scope';
+import { assertMarkableDate, notTrainingDayReason, attendanceSettings } from '@/lib/attendance';
 
 export async function saveStudentAttendance(fd: FormData) {
   const u = await requirePriv('CD_STUDENT_ATTENDANCE_PRV', 'WRITE');
@@ -10,9 +11,13 @@ export async function saveStudentAttendance(fd: FormData) {
     const o = formObj(fd);
     const date = o.date;
     if (!date || !o.cls) throw new Error('Date and class are required');
-    if (date > todayISO() && !can(u, 'CD_ALL_STUDENTS_DATA_PRV')) throw new Error('Attendance cannot be marked for a future date');
+    await assertMarkableDate(u, 'STUDENT', date);
     const [classId, sectionId] = o.cls.split(':');
     if (!(await myClasses(u, date)).some((c) => String(c.class_id) === classId && String(c.section_id) === sectionId)) throw new Error('Not your class on this date');
+    const notTraining = await notTrainingDayReason(classId, date);
+    if (notTraining) throw new Error(notTraining);
+    const times = (await attendanceSettings(u.enterpriseId)).capture_student_times;
+    const ts = (t: string | null) => (times && t ? `${date}T${t}:00+05:30` : null);
     const students = await sql`select a.id assignment_id, a.person_id, af.business_unit_id from assignment a
       join assignment_f af on af.id = a.id and ${date}::date between af.effective_start_date and af.effective_end_date
       where a.assignment_type = 'STUDENT' and af.class_id = ${classId} and af.section_id = ${sectionId} ${studentScopeSql(u, date)}`;
@@ -22,9 +27,10 @@ export async function saveStudentAttendance(fd: FormData) {
         const status = o[`st_${s.person_id}`];
         if (!status) continue;
         const remarks = o[`rm_${s.person_id}`];
-        await tx`insert into student_attendance (person_id, assignment_id, attendance_date, business_unit_id, class_id, section_id, status_code, source_code, remarks, marked_by)
-          values (${s.person_id}, ${s.assignment_id}, ${date}, ${s.business_unit_id}, ${classId}, ${sectionId}, ${status}, 'MANUAL', ${remarks}, ${u.username})
+        await tx`insert into student_attendance (person_id, assignment_id, attendance_date, business_unit_id, class_id, section_id, status_code, source_code, remarks, marked_by, check_in_time, check_out_time)
+          values (${s.person_id}, ${s.assignment_id}, ${date}, ${s.business_unit_id}, ${classId}, ${sectionId}, ${status}, 'MANUAL', ${remarks}, ${u.username}, ${ts(o[`in_${s.person_id}`])}, ${ts(o[`out_${s.person_id}`])})
           on conflict (person_id, attendance_date) do update set status_code = excluded.status_code, remarks = excluded.remarks,
+            ${times ? tx`check_in_time = excluded.check_in_time, check_out_time = excluded.check_out_time,` : tx``}
             class_id = excluded.class_id, section_id = excluded.section_id, marked_by = excluded.marked_by, marked_at = now(),
             source_code = case when student_attendance.status_code = excluded.status_code then student_attendance.source_code else 'MANUAL' end`;
         n++;
@@ -40,10 +46,12 @@ export async function saveStaffAttendance(fd: FormData) {
     const o = formObj(fd);
     const date = o.date;
     if (!date) throw new Error('Date is required');
+    await assertMarkableDate(u, 'STAFF', date);
+    const times = (await attendanceSettings(u.enterpriseId)).capture_staff_times;
     const staff = await sql`select a.id assignment_id, a.person_id, af.business_unit_id from assignment a
       join assignment_f af on af.id = a.id and ${date}::date between af.effective_start_date and af.effective_end_date
       where a.enterprise_id = ${u.enterpriseId} and a.assignment_type = 'STAFF' ${o.bu ? sql`and af.business_unit_id = ${o.bu}` : sql``}`;
-    const ts = (t: string | null) => (t ? `${date}T${t}:00+05:30` : null);
+    const ts = (t: string | null) => (times && t ? `${date}T${t}:00+05:30` : null);
     let n = 0;
     await sql.begin(async (tx) => {
       for (const s of staff) {
@@ -84,11 +92,30 @@ export async function scanAttendance(mode: 'STUDENT' | 'STAFF', code: string): P
   if (mode === 'STUDENT') {
     const [allowed] = await sql`select 1 from assignment_f af where af.id = ${p.assignment_id} and ${date}::date between af.effective_start_date and af.effective_end_date ${studentScopeSql(u, date)}`;
     if (!allowed) return { ok: false, ...who, message: 'Student is not in your class' };
-    const [ex] = await sql`select status_code from student_attendance where person_id = ${p.person_id} and attendance_date = ${date}`;
-    if (ex?.status_code === 'P' || ex?.status_code === 'L') return { ok: true, ...who, status: ex.status_code, message: 'Already marked present today' };
+    const notTraining = p.class_id ? await notTrainingDayReason(String(p.class_id), date) : null;
+    if (notTraining) return { ok: false, ...who, message: notTraining };
+    const times = (await attendanceSettings(u.enterpriseId)).capture_student_times;
+    const [ex] = await sql`select status_code, check_in_time, check_out_time from student_attendance where person_id = ${p.person_id} and attendance_date = ${date}`;
+    if (ex?.status_code === 'P' || ex?.status_code === 'L') {
+      // with times captured, the second scan of the day is the check-out
+      if (times && ex.check_in_time && !ex.check_out_time) {
+        await sql`update student_attendance set check_out_time = now(), marked_by = ${u.username}, marked_at = now() where person_id = ${p.person_id} and attendance_date = ${date}`;
+        return { ok: true, ...who, status: 'OUT', message: 'Checked OUT' };
+      }
+      return { ok: true, ...who, status: ex.status_code, message: times && ex.check_out_time ? 'Already checked in and out today' : 'Already marked present today' };
+    }
     await sql`insert into student_attendance (person_id, assignment_id, attendance_date, business_unit_id, class_id, section_id, status_code, source_code, check_in_time, marked_by)
-      values (${p.person_id}, ${p.assignment_id}, ${date}, ${p.business_unit_id}, ${p.class_id}, ${p.section_id}, 'P', 'QR', now(), ${u.username})
-      on conflict (person_id, attendance_date) do update set status_code = 'P', source_code = 'QR', check_in_time = now(), marked_by = excluded.marked_by, marked_at = now()`;
+      values (${p.person_id}, ${p.assignment_id}, ${date}, ${p.business_unit_id}, ${p.class_id}, ${p.section_id}, 'P', 'QR', ${times ? sql`now()` : null}, ${u.username})
+      on conflict (person_id, attendance_date) do update set status_code = 'P', source_code = 'QR', check_in_time = excluded.check_in_time, marked_by = excluded.marked_by, marked_at = now()`;
+    return { ok: true, ...who, status: 'P', message: times ? 'Marked PRESENT – checked IN' : 'Marked PRESENT' };
+  }
+  const staffTimes = (await attendanceSettings(u.enterpriseId)).capture_staff_times;
+  if (!staffTimes) {
+    const [sx] = await sql`select status_code from staff_attendance where person_id = ${p.person_id} and attendance_date = ${date}`;
+    if (sx?.status_code === 'P') return { ok: true, ...who, status: 'P', message: 'Already marked present today' };
+    await sql`insert into staff_attendance (person_id, assignment_id, attendance_date, business_unit_id, status_code, source_code, marked_by)
+      values (${p.person_id}, ${p.assignment_id}, ${date}, ${p.business_unit_id}, 'P', 'QR', ${u.username})
+      on conflict (person_id, attendance_date) do update set status_code = 'P', source_code = 'QR', marked_by = excluded.marked_by, marked_at = now()`;
     return { ok: true, ...who, status: 'P', message: 'Marked PRESENT' };
   }
   const [ex] = await sql`select check_in_time, check_out_time from staff_attendance where person_id = ${p.person_id} and attendance_date = ${date}`;
@@ -101,4 +128,32 @@ export async function scanAttendance(mode: 'STUDENT' | 'STAFF', code: string): P
     values (${p.person_id}, ${p.assignment_id}, ${date}, ${p.business_unit_id}, 'P', now(), 'QR', ${u.username})
     on conflict (person_id, attendance_date) do update set status_code = 'P', check_in_time = now(), source_code = 'QR', marked_by = excluded.marked_by`;
   return { ok: true, ...who, status: 'IN', message: 'Checked IN' };
+}
+
+// ------------------------------------------------------------ settings
+export async function saveAttendanceSettings(fd: FormData) {
+  const u = await requirePriv('CD_ATTENDANCE_SETTINGS_PRV', 'WRITE');
+  await act('/attendance/settings', async () => {
+    const o = formObj(fd);
+    const days = (k: string) => {
+      const n = Number(o[k]);
+      if (!Number.isInteger(n) || n < 0 || n > 366) throw new Error('Days back must be a whole number between 0 and 366');
+      return n;
+    };
+    const half = Number(o.half_day_value ?? 0.5);
+    if (!(half >= 0 && half <= 1)) throw new Error('A half day must count between 0 and 1');
+    const v = { student_back_days: days('student_back_days'), staff_back_days: days('staff_back_days'), capture_student_times: o.capture_student_times === 'Y' ? 'Y' : 'N',
+      capture_staff_times: o.capture_staff_times === 'Y' ? 'Y' : 'N', half_day_value: half, last_updated_by: u.username, last_update_date: new Date() };
+    await sql.begin(async (tx) => {
+      await tx`insert into attendance_setting ${tx({ enterprise_id: u.enterpriseId, ...v })}
+        on conflict (enterprise_id) do update set ${tx(v)}`;
+      // how each status counts in attendance % (kept as the ATTENDANCE_STATUS lookup tag)
+      for (const [k, val] of Object.entries(o)) {
+        if (!k.startsWith('counts_') || !val) continue;
+        if (!['PRESENT', 'ABSENT', 'HALF', 'EXCLUDE'].includes(val)) throw new Error('Unknown counting option');
+        await tx`update lookup_value set tag = ${val}, last_updated_by = ${u.username}, last_update_date = now() where lookup_type = 'ATTENDANCE_STATUS' and lookup_code = ${k.slice(7)}`;
+      }
+    });
+    return { msg: 'The attendance settings have been updated.' };
+  });
 }

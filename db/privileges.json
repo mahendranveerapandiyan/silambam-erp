@@ -589,5 +589,19 @@
    "STAFF": "W"
   },
   "seq": 112
+ },
+ {
+  "code": "CD_ATTENDANCE_SETTINGS_PRV",
+  "name": "Attendance Settings",
+  "module": "Attendance",
+  "defaults": {},
+  "seq": 265
+ },
+ {
+  "code": "CD_ATTENDANCE_ANY_DATE_PRV",
+  "name": "Mark attendance for any past date (beyond the back-dated limit)",
+  "module": "Attendance",
+  "defaults": {},
+  "seq": 266
  }
 ]

@@ -144,6 +144,7 @@ try {
       const [r] = await tx`insert into approval_rule (enterprise_id, process_code, name, description, created_by) values (${E}, ${proc}, ${name}, 'Default rule – change it under Configuration › Approval Rules.', ${BY}) returning id`;
       await tx`insert into approval_rule_step (rule_id, step_no, approver_type, approver_ref, approval_mode) values (${r.id}, 1, 'ROLE', 'ADMIN', 'ANY')`;
     }
+    await tx`insert into attendance_setting (enterprise_id, last_updated_by) values (${E}, ${BY})`;
     for (const [cat, method] of [['STAFF', 'STAFF_NUMBER'], ['STUDENT', 'STUDENT_NUMBER'], ['PARENT', 'MANUAL']])
       await tx`insert into user_name_rule (enterprise_id, person_category, method_code, last_updated_by) values (${E}, ${cat}, ${method}, ${BY}) on conflict do nothing`;
 
