@@ -185,8 +185,7 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
     if (!grades.length) return <div className="card muted">Choose the grades first (stop 2).</div>;
     const subs = await examSubjects(id);
     if (!subs.length) return <div className="card muted">Add the subjects first (stop 4).</div>;
-    const temps = await sql`select t.*, array(select distinct s.subject_id::text from evaluation_section s where s.template_id = t.id) subject_ids
-      from evaluation_template t where t.enterprise_id = ${u.enterpriseId} and (t.active_flag = 'Y' or t.id in (select evaluation_template_id from exam_subject where exam_id = ${id})) order by t.name`;
+    const temps = await sql`select t.* from evaluation_template t where t.enterprise_id = ${u.enterpriseId} and (t.active_flag = 'Y' or t.id in (select evaluation_template_id from exam_subject where exam_id = ${id})) order by t.name`;
     const secs = new Map<string, Awaited<ReturnType<typeof templateSections>>>();
     for (const t of temps) secs.set(String(t.id), await templateSections(String(t.id)));
     const marked = new Set((await sql`select distinct m.exam_subject_id from exam_mark m join exam_candidate c on c.id = m.candidate_id where c.exam_id = ${id} and (m.marks is not null or m.absent_flag = 'Y')`).map((r) => String(r.exam_subject_id)));
@@ -195,14 +194,13 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
     return (
       <form action={saveExamTemplates.bind(null, id)} className="space-y-3">
         <Back to={back} />
-        <p className="muted">Choose how each subject of each grade is evaluated: an evaluation template (examiners fill in its sections – manual marks or ratings – and the mark is worked out from the weights) or direct marks. Only templates with sections for the subject are offered. {can(u, 'CD_EVALUATION_TEMPLATE_PRV') && <Link className="link" href="/exams/templates">Manage templates</Link>}</p>
+        <p className="muted">Choose how each subject of each grade is evaluated: an evaluation template (examiners fill in its sections – manual marks or ratings – and the mark is worked out from the weights) or direct marks. Any template can be used for any subject; for a combined subject it is used for each part. {can(u, 'CD_EVALUATION_TEMPLATE_PRV') && <Link className="link" href="/exams/templates">Manage templates</Link>}</p>
         {groups.map((g) => (
           <div key={g.key} className="card overflow-x-auto">
             <h3 className="mb-2 font-semibold">{g.name}</h3>
             <table className="tbl"><thead><tr><th>Subject</th><th className="w-80">Evaluation *</th><th>Sections</th></tr></thead>
               <tbody>{g.list.map((x) => {
-                const partIds = x.parts.map((p) => p.subjectId);
-                const opts = temps.filter((t) => (t.subject_ids as string[]).some((sid) => partIds.includes(sid)));
+                const opts = temps.filter((t) => secs.get(String(t.id))!.length > 0);
                 const cur = x.evaluation_chosen_flag === 'Y' ? (x.evaluation_template_id ? String(x.evaluation_template_id) : 'NONE') : '';
                 const chosen = x.evaluation_template_id ? secs.get(String(x.evaluation_template_id)) : null;
                 const lockedRow = readOnly || marked.has(String(x.id));
@@ -216,12 +214,9 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
                         <option value="NONE">Direct marks – no template</option>
                         {opts.map((t) => <option key={t.id} value={t.id}>{t.name}{t.active_flag === 'N' ? ' (inactive)' : ''}</option>)}
                       </select>
-                      {!opts.length && <div className="text-xs text-slate-500">No template has sections for this subject yet.</div>}
+                      {!opts.length && <div className="text-xs text-slate-500">No evaluation template has sections yet.</div>}
                     </td>
-                    <td className="text-xs">{chosen ? x.parts.map((p) => {
-                      const l = chosen.get(p.subjectId);
-                      return <div key={p.id}>{x.combined_flag === 'Y' && <b>{p.name}: </b>}{l ? l.map((z) => `${z.name} ${z.weight_pct}% (${z.input_type === 'MARK' ? 'marks' : 'rating'} ${z.min_rating}–${z.max_rating})`).join(' · ') : 'direct marks'}</div>;
-                    }) : x.evaluation_chosen_flag === 'Y' ? 'Direct marks' : ''}</td>
+                    <td className="text-xs">{chosen ? <>{chosen.map((z) => `${z.name} ${z.weight_pct}% (${z.input_type === 'MARK' ? 'marks' : 'rating'} ${z.min_rating}–${z.max_rating})`).join(' · ')}{x.combined_flag === 'Y' && <div className="text-slate-500">used for each part: {x.parts.map((p) => p.name).join(', ')}</div>}</> : x.evaluation_chosen_flag === 'Y' ? 'Direct marks' : ''}</td>
                   </tr>);
               })}</tbody></table>
           </div>

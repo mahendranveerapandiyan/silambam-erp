@@ -74,7 +74,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
           <p className="muted mb-2">
             <b>{es.subject_name}</b> · out of {Number(es.max_marks)}, pass {Number(es.pass_marks)}
             {es.combined_flag === 'Y' && <> · combines {es.parts.map((p) => `${p.name} (${es.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight} %`}, pass ${p.pass}/${p.max})`).join(' + ')}</>}
-            {es.parts.some((p) => sections.get(p.subjectId)?.length) && <> · evaluated by sections – the mark is worked out from the weights</>}
+            {sections.length > 0 && <> · evaluated by sections – the mark is worked out from the weights</>}
           </p>
           {cands.length > 0 && open.length < cands.length && (
             <div className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
@@ -83,9 +83,9 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
           <table className="tbl">
             <thead>
               <tr><th rowSpan={2}>Student</th>
-                {es.parts.map((p) => { const secs = sections.get(p.subjectId) ?? []; return <th key={p.id} colSpan={Math.max(secs.length, 1)} className="text-center">{p.name}<div className="font-normal normal-case">{secs.length ? `rate → mark out of ${p.max}` : `mark out of ${p.max}`} · pass {p.pass}</div></th>; })}
+                {es.parts.map((p) => { const secs = sections; return <th key={p.id} colSpan={Math.max(secs.length, 1)} className="text-center">{p.name}<div className="font-normal normal-case">{secs.length ? `rate → mark out of ${p.max}` : `mark out of ${p.max}`} · pass {p.pass}</div></th>; })}
                 <th rowSpan={2}>Absent</th><th rowSpan={2}>{es.subject_name} mark</th><th rowSpan={2}>Subject</th><th rowSpan={2}>Exam result</th></tr>
-              <tr>{es.parts.flatMap((p) => { const secs = sections.get(p.subjectId) ?? []; return secs.length ? secs.map((s) => <th key={`${p.id}_${s.id}`} className="font-normal normal-case">{s.name}<div className="text-[10px]">{s.weight_pct}% · {s.input_type === 'MARK' ? 'marks' : 'rating'} {s.min_rating}–{s.max_rating}</div></th>) : [<th key={p.id} className="font-normal normal-case">Marks</th>]; })}</tr>
+              <tr>{es.parts.flatMap((p) => { const secs = sections; return secs.length ? secs.map((s) => <th key={`${p.id}_${s.id}`} className="font-normal normal-case">{s.name}<div className="text-[10px]">{s.weight_pct}% · {s.input_type === 'MARK' ? 'marks' : 'rating'} {s.min_rating}–{s.max_rating}</div></th>) : [<th key={p.id} className="font-normal normal-case">Marks</th>]; })}</tr>
             </thead>
             <tbody>{cands.map((c) => {
               const m = M.get(String(c.id));
@@ -96,7 +96,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
                 <tr key={c.id} className={pub ? 'bg-slate-100 text-slate-500' : ''}>
                   <td>{!pub && <input type="hidden" name={`seen_${c.id}`} value="1" />}{c.full_name}<div className="text-xs text-gray-500">{c.assignment_number}{pub && <> · <Badge color="green">Published</Badge></>}</div></td>
                   {es.parts.flatMap((p) => {
-                    const secs = sections.get(p.subjectId) ?? [];
+                    const secs = sections;
                     if (secs.length) return secs.map((s) => {
                       const ch = ratingChoices(s);
                       const nm = `r_${c.id}_${p.id}_${s.id}`;

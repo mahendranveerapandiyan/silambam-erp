@@ -101,7 +101,7 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
         const absent = o[`ab_${c.id}`] === 'Y';
         const partMarks: (number | null)[] = [];
         for (const p of es.parts) {
-          const secs = sections.get(p.subjectId);
+          const secs = sections;
           if (secs?.length) {
             const ratings = new Map<string, number | null>();
             for (const sec of secs) {

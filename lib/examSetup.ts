@@ -36,24 +36,19 @@ export async function examSubjects(examId: string, gradeId?: string | null): Pro
   })) as ExamSubject[];
 }
 
-export type Section = { id: string; subject_id: string; name: string; weight_pct: number; min_rating: number; max_rating: number; input_type: 'RATING' | 'MARK' };
+export type Section = { id: string; name: string; weight_pct: number; min_rating: number; max_rating: number; input_type: 'RATING' | 'MARK' };
 
-/** An evaluation template's sections, by subject. */
-export async function templateSections(templateId: string | null | undefined) {
-  const m = new Map<string, Section[]>();
-  if (!templateId) return m;
-  for (const s of await sql`select * from evaluation_section where template_id = ${templateId} order by display_seq, id`) {
-    const k = String(s.subject_id);
-    if (!m.has(k)) m.set(k, []);
-    m.get(k)!.push({ id: String(s.id), subject_id: k, name: s.name, weight_pct: Number(s.weight_pct), min_rating: Number(s.min_rating), max_rating: Number(s.max_rating), input_type: s.input_type === 'MARK' ? 'MARK' : 'RATING' });
-  }
-  return m;
+/** An evaluation template's sections (a template can be used for any subject). */
+export async function templateSections(templateId: string | null | undefined): Promise<Section[]> {
+  if (!templateId) return [];
+  return (await sql`select * from evaluation_section where template_id = ${templateId} order by display_seq, id`).map((s) => ({
+    id: String(s.id), name: s.name, weight_pct: Number(s.weight_pct), min_rating: Number(s.min_rating), max_rating: Number(s.max_rating),
+    input_type: s.input_type === 'MARK' ? 'MARK' : 'RATING',
+  }));
 }
 
-/** Subjects whose section weights do not add up to 100 %. */
-export function badWeights(sections: Map<string, Section[]>) {
-  return [...sections.entries()].filter(([, l]) => Math.abs(l.reduce((t, s) => t + s.weight_pct, 0) - 100) > 0.001).map(([k]) => k);
-}
+/** Total of the section weights (must be 100 % before the template can be used). */
+export const weightTotal = (sections: Section[]) => Math.round(sections.reduce((t, s) => t + s.weight_pct, 0) * 100) / 100;
 
 /** A part's mark: from the section ratings (template) or the mark entered directly. */
 export function partMark(part: Part, sections: Section[] | undefined, ratings: Map<string, number | null>, unit: number | null) {

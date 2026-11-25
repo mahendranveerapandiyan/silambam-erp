@@ -3,7 +3,7 @@ import { sql, type Row } from '@/lib/db';
 import { requirePriv, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj } from '@/lib/util';
 import { cancelDemandIfUnpaid } from '@/lib/fees';
-import { marksEntered, templateSections, badWeights, examGrades, examSubjects } from '@/lib/examSetup';
+import { marksEntered, templateSections, weightTotal, examGrades, examSubjects } from '@/lib/examSetup';
 
 const num = (v: string | null | undefined) => (v === null || v === undefined || v === '' ? null : Number(v));
 const stepUrl = (id: string, step: number, extra = '') => `/exams/${id}/setup?step=${step}${extra}`;
@@ -236,14 +236,12 @@ export async function saveExamTemplates(id: string, fd: FormData) {
           if (!checked.has(t)) {
             const [tp] = await tx`select * from evaluation_template where id = ${t} and enterprise_id = ${u.enterpriseId}`;
             if (!tp) throw new Error('Template not found');
-            const bad = badWeights(await templateSections(t));
-            if (bad.length) {
-              const names = await tx`select distinct on (id) name from subject_f where id in ${tx(bad)} order by id, effective_start_date desc`;
-              throw new Error(`In ${tp.name} the section weights of ${names.map((x) => x.name).join(', ')} do not add up to 100 % – fix the template first.`);
-            }
-            checked.set(t, (await tx`select distinct subject_id from evaluation_section where template_id = ${t}`).map((r) => String(r.subject_id)));
+            const secs = await templateSections(t);
+            if (!secs.length) throw new Error(`${tp.name} has no sections yet – add them under Exams › Evaluation Templates first.`);
+            const tot = weightTotal(secs);
+            if (Math.abs(tot - 100) > 0.001) throw new Error(`The section weights of ${tp.name} add up to ${tot} % instead of 100 % – fix the template first.`);
+            checked.set(t, []);
           }
-          if (!s.parts.some((p) => checked.get(t)!.includes(p.subjectId))) throw new Error(`The chosen template has no sections for ${label(s)}.`);
         }
         await tx`update exam_subject set evaluation_template_id = ${t}, evaluation_chosen_flag = 'Y' where id = ${s.id}`;
         n++;
