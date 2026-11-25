@@ -3,7 +3,7 @@ import { sql, type Row } from '@/lib/db';
 import { requirePriv, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj } from '@/lib/util';
 import { cancelDemandIfUnpaid } from '@/lib/fees';
-import { nextExamCode, marksEntered, templateSections, badWeights, examGrades, examSubjects } from '@/lib/examSetup';
+import { marksEntered, templateSections, badWeights, examGrades, examSubjects } from '@/lib/examSetup';
 
 const num = (v: string | null | undefined) => (v === null || v === undefined || v === '' ? null : Number(v));
 const stepUrl = (id: string, step: number, extra = '') => `/exams/${id}/setup?step=${step}${extra}`;
@@ -31,7 +31,10 @@ export async function saveExamDetails(id: string | null, fd: FormData) {
     const [ay] = await sql`select * from academic_year where id = ${o.academic_year_id} and enterprise_id = ${u.enterpriseId}`;
     if (!ay) throw new Error('Academic year not found');
     if (o.exam_date < ay.start_date || o.exam_date > ay.end_date) throw new Error(`The exam date must fall within ${ay.name}`);
-    const v = { name: o.name, exam_type_code: o.exam_type_code, academic_year_id: o.academic_year_id, exam_date: o.exam_date, description: o.description };
+    // the exam code is the exam name, unique within the academic year
+    const v = { name: o.name, code: o.name, exam_type_code: o.exam_type_code, academic_year_id: o.academic_year_id, exam_date: o.exam_date, description: o.description };
+    const [dup] = await sql`select 1 from exam where enterprise_id = ${u.enterpriseId} and academic_year_id = ${o.academic_year_id} and lower(code) = lower(${o.name}) and id <> ${id ?? 0}`;
+    if (dup) throw new Error(`An exam named ${o.name} already exists in ${ay.name} – the exam name is also its code, so choose a different name.`);
     if (id) {
       const e = await editable(u, id);
       const status = o.status_code && e.status_code !== 'DRAFT' ? o.status_code : e.status_code;
@@ -44,9 +47,8 @@ export async function saveExamDetails(id: string | null, fd: FormData) {
       return after(fd, id, 1, `${o.name} exam has been updated.`);
     }
     const newId = await sql.begin(async (tx) => {
-      const code = await nextExamCode(tx as unknown as typeof sql, u.enterpriseId, o.academic_year_id!);
       const [r] = await tx`insert into exam ${sql({
-        ...v, code, enterprise_id: u.enterpriseId, status_code: 'DRAFT', setup_step: 1, fees_cleared_flag: 'N',
+        ...v, enterprise_id: u.enterpriseId, status_code: 'DRAFT', setup_step: 1, fees_cleared_flag: 'N',
         outcome_code: o.exam_type_code === 'GRADE_EXAM' ? 'PROMOTE' : 'RECORD', created_by: u.username,
       })} returning id`;
       return String(r.id);

@@ -37,7 +37,7 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
   return (
     <div className="max-w-6xl">
       <PageHeader title={`${exam.name}`}
-        subtitle={<><span className="font-mono">{exam.code}</span> · {L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'DRAFT' ? 'amber' : exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
+        subtitle={<>{L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'DRAFT' ? 'amber' : exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
         actions={<>{exam.status_code !== 'DRAFT' && <Link href={`/exams/${id}`} className="btn">Open exam</Link>}<Link href="/exams" className="btn">All exams</Link></>} />
       <Flash sp={sp} />
       <Stepper examId={id} step={step} reached={reachedStep} />

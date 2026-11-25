@@ -427,7 +427,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
     return (
       <div className="card overflow-x-auto"><table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Academic Year</th><th>Marks</th><th>%</th><th>Result</th><th>Published</th><th></th></tr></thead>
         <tbody>{rows.map((r) => (
-          <tr key={r.id}><td>{fmtDate(r.exam_date)}</td><td><Link className="link" href={`/exams/${r.exam_id}?tab=results`}>{r.name}</Link><div className="font-mono text-xs text-slate-500">{r.code}</div></td>
+          <tr key={r.id}><td>{fmtDate(r.exam_date)}</td><td><Link className="link" href={`/exams/${r.exam_id}?tab=results`}>{r.name}</Link></td>
             <td>{L('EXAM_TYPE', r.exam_type_code)}</td><td>{r.ay_name}</td><td>{r.total_marks}</td><td>{r.percentage}</td>
             <td><Badge color={STATUS_COLOR[r.result_code]}>{L('EXAM_RESULT', r.result_code)}</Badge>{r.promoted_flag === 'Y' && <Badge color="purple">Promoted{r.promoted_to ? ` to ${r.promoted_to}` : ''}</Badge>}</td>
             <td>{r.published_flag === 'Y' ? <Badge color="green">Published</Badge> : <Badge color="gray">Not yet</Badge>}</td>

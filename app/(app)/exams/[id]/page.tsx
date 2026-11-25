@@ -56,7 +56,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
   return (
     <div className="max-w-7xl">
       <PageHeader title={exam.name}
-        subtitle={<><span className="font-mono">{exam.code}</span> · {L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
+        subtitle={<>{L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
         actions={<>{can(u, 'CD_EXAM_SETUP_PRV') && <Link href={`/exams/${id}/setup?step=1`} className="btn">{admin && !closed ? '✎ Exam Setup' : 'Exam Setup'}</Link>}<Link href="/exams" className="btn">All exams</Link></>} />
       <Flash sp={sp} />
       {rules.length > 0 && <div className="mb-3 flex flex-wrap gap-2 text-xs">{rules.map((r) => <Badge key={r as string} color="gray">{r}</Badge>)}</div>}

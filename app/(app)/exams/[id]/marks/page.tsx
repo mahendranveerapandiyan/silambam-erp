@@ -27,7 +27,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
   const visible = grades.filter((g) => mine === 'ALL' || mine.has(g.grade_id));
   const header = (
     <PageHeader title={`Marks – ${exam.name}`}
-      subtitle={<><span className="font-mono">{exam.code}</span> · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
+      subtitle={<>{exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
       actions={<Link href={`/exams/${id}?tab=results`} className="btn">Back to exam</Link>} />
   );
   if (exam.status_code === 'DRAFT') return <div className="max-w-6xl">{header}<div className="card muted">The exam is still being set up.</div></div>;

@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import type { SessionUser } from '@/lib/auth';
-import { sql, type Row } from '@/lib/db';
+import type { Row } from '@/lib/db';
 import { examOptions } from '@/lib/examOptions';
-import { EXAM_STOPS, nextExamCode } from '@/lib/examSetup';
+import { EXAM_STOPS } from '@/lib/examSetup';
+import { MirrorInput } from './client';
 import { Field, Select, Back } from './ui';
 import { saveExamDetails } from '@/app/(app)/exams/setupActions';
 
@@ -36,14 +37,13 @@ export async function DetailsForm({ u, exam, defaultAy, asOf, readOnly }: { u: S
   const o = await examOptions(u.enterpriseId, asOf);
   const e = exam ?? {};
   const ay = e.academic_year_id ?? defaultAy ?? o.years[0]?.value;
-  const preview = !exam && ay ? await nextExamCode(sql, u.enterpriseId, ay) : null;
   return (
     <form action={saveExamDetails.bind(null, exam ? String(exam.id) : null)} className="card">
       <Back to={exam ? `/exams/${exam.id}/setup?step=1` : '/exams/new'} />
       <fieldset disabled={readOnly} className="contents">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Exam Name *"><input name="name" defaultValue={e.name} required className="input" placeholder="e.g. Level 2 Grade Exam – Dec 2026" /></Field>
-          <Field label="Exam Code" help={exam ? 'Filled automatically' : 'Filled automatically when saved'}><input value={exam ? e.code ?? '' : `${preview ?? ''} (next number)`} readOnly className="input bg-slate-50 font-mono" aria-label="Exam Code" /></Field>
+          <Field label="Exam Code" help="Same as the exam name – filled automatically"><MirrorInput source="name" initial={e.code ?? e.name ?? ''} label="Exam Code" /></Field>
           <Field label="Exam Type *"><Select name="exam_type_code" options={o.types} value={e.exam_type_code ?? 'GRADE_EXAM'} empty={false} /></Field>
           <Field label="Academic Year *"><Select name="academic_year_id" options={o.years} value={ay} required /></Field>
           <Field label="Exam Date *"><input type="date" name="exam_date" defaultValue={e.exam_date} required className="input" /></Field>

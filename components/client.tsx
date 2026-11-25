@@ -105,3 +105,18 @@ export function ModeDate({ correctDate, updateDate, mode = 'mode', date = 'effec
   }, [correctDate, updateDate, mode, date]);
   return <span ref={ref} hidden />;
 }
+
+/** Read-only box that shows the live value of another field of the page (e.g. Exam Code = Exam Name). */
+export function MirrorInput({ source, initial = '', label }: { source: string; initial?: string; label?: string }) {
+  const [v, setV] = useState(initial);
+  useEffect(() => {
+    const el = document.querySelector<HTMLInputElement>(`[name="${source}"]`);
+    if (!el) return;
+    const f = () => setV(el.value);
+    f();
+    el.addEventListener('input', f);
+    el.form?.addEventListener('reset', () => setTimeout(f));
+    return () => el.removeEventListener('input', f);
+  }, [source]);
+  return <input value={v} readOnly tabIndex={-1} className="input bg-slate-50" aria-label={label} />;
+}
