@@ -15,7 +15,7 @@ import { ConfirmButton, ShowFor } from '@/components/client';
 import { MultiPick } from '@/components/MultiPick';
 import {
   saveExamGrades, saveExamEligibility, saveExamSubject, deleteExamSubject, fillExamSubjects, finishExamSubjects,
-  saveExamTemplate, saveExamOutcome, saveExamExaminers, deleteDraftExam,
+  saveExamTemplates, saveExamOutcome, saveExamExaminers, deleteDraftExam,
 } from '../../setupActions';
 
 export default async function ExamSetup({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
@@ -182,35 +182,51 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
   }
 
   async function TemplateStop() {
-    const temps = await sql`select * from evaluation_template where enterprise_id = ${u.enterpriseId} and (active_flag = 'Y' or id = ${exam.evaluation_template_id ?? 0}) order by name`;
-    const examSubjectIds = new Set((await examSubjects(id)).flatMap((s) => s.parts.map((p) => p.subjectId)));
-    const names = Object.fromEntries((await refOptions('subjects', u.enterpriseId, exam.exam_date)).map((o) => [o.value, o.label]));
-    const sections = new Map<string, Awaited<ReturnType<typeof templateSections>>>();
-    for (const t of temps) sections.set(String(t.id), await templateSections(String(t.id)));
-    const cur = String(exam.evaluation_template_id ?? '');
+    if (!grades.length) return <div className="card muted">Choose the grades first (stop 2).</div>;
+    const subs = await examSubjects(id);
+    if (!subs.length) return <div className="card muted">Add the subjects first (stop 4).</div>;
+    const temps = await sql`select t.*, array(select distinct s.subject_id::text from evaluation_section s where s.template_id = t.id) subject_ids
+      from evaluation_template t where t.enterprise_id = ${u.enterpriseId} and (t.active_flag = 'Y' or t.id in (select evaluation_template_id from exam_subject where exam_id = ${id})) order by t.name`;
+    const secs = new Map<string, Awaited<ReturnType<typeof templateSections>>>();
+    for (const t of temps) secs.set(String(t.id), await templateSections(String(t.id)));
+    const marked = new Set((await sql`select distinct m.exam_subject_id from exam_mark m join exam_candidate c on c.id = m.candidate_id where c.exam_id = ${id} and (m.marks is not null or m.absent_flag = 'Y')`).map((r) => String(r.exam_subject_id)));
+    const groups = [...grades.map((g) => ({ key: String(g.grade_id), name: g.name as string })), { key: 'null', name: 'All grades (older exam)' }]
+      .map((g) => ({ ...g, list: subs.filter((x) => String(x.grade_id) === g.key) })).filter((g) => g.list.length);
     return (
-      <form action={saveExamTemplate.bind(null, id)} className="card space-y-3">
+      <form action={saveExamTemplates.bind(null, id)} className="space-y-3">
         <Back to={back} />
-        <p className="muted">With a template, examiners rate each section and the subject mark is worked out from the weights. Subjects the template does not cover are marked directly. {can(u, 'CD_EVALUATION_TEMPLATE_PRV') && <Link className="link" href="/exams/templates">Manage templates</Link>}</p>
-        {locked && <div className="rounded border border-amber-300 bg-amber-50 p-2 text-sm">Marks have been entered – the template can no longer be changed.</div>}
-        <fieldset disabled={readOnly || locked} className="space-y-2">
-          <label className="flex items-start gap-2 rounded border p-3"><input type="radio" name="evaluation_template_id" value="" defaultChecked={!cur} /> <span><b>No template</b><div className="text-sm text-slate-500">Examiners enter the marks of each subject directly.</div></span></label>
-          {temps.map((t) => {
-            const secs = sections.get(String(t.id))!;
-            const covered = [...secs.keys()].filter((k) => examSubjectIds.has(k));
-            return (
-              <label key={t.id} className={`flex items-start gap-2 rounded border p-3 ${String(t.id) === cur ? 'border-sky-500 bg-sky-50' : ''}`}>
-                <input type="radio" name="evaluation_template_id" value={t.id} defaultChecked={String(t.id) === cur} />
-                <span className="flex-1"><b>{t.name}</b> <span className="font-mono text-xs text-slate-500">{t.code}</span>
-                  <div className="text-xs text-slate-500">Covers {covered.length} of this exam&apos;s {examSubjectIds.size} subject(s)</div>
-                  <div className="mt-1 grid gap-1 text-xs sm:grid-cols-2">{[...secs.entries()].map(([sid, l]) => (
-                    <div key={sid} className={examSubjectIds.has(sid) ? '' : 'opacity-50'}><b>{names[sid] ?? sid}</b>: {l.map((s) => `${s.name} ${s.weight_pct}% (${s.min_rating}–${s.max_rating})`).join(' · ')}</div>))}</div>
-                </span>
-              </label>);
-          })}
-        </fieldset>
-        {!readOnly && !locked && <Buttons />}
-        {!readOnly && locked && <Link className="btn btn-primary" href={`/exams/${id}/setup?step=6`}>Next ›</Link>}
+        <p className="muted">Choose how each subject of each grade is evaluated: an evaluation template (examiners fill in its sections – manual marks or ratings – and the mark is worked out from the weights) or direct marks. Only templates with sections for the subject are offered. {can(u, 'CD_EVALUATION_TEMPLATE_PRV') && <Link className="link" href="/exams/templates">Manage templates</Link>}</p>
+        {groups.map((g) => (
+          <div key={g.key} className="card overflow-x-auto">
+            <h3 className="mb-2 font-semibold">{g.name}</h3>
+            <table className="tbl"><thead><tr><th>Subject</th><th className="w-80">Evaluation *</th><th>Sections</th></tr></thead>
+              <tbody>{g.list.map((x) => {
+                const partIds = x.parts.map((p) => p.subjectId);
+                const opts = temps.filter((t) => (t.subject_ids as string[]).some((sid) => partIds.includes(sid)));
+                const cur = x.evaluation_chosen_flag === 'Y' ? (x.evaluation_template_id ? String(x.evaluation_template_id) : 'NONE') : '';
+                const chosen = x.evaluation_template_id ? secs.get(String(x.evaluation_template_id)) : null;
+                const lockedRow = readOnly || marked.has(String(x.id));
+                return (
+                  <tr key={x.id}>
+                    <td>{x.subject_name}{x.combined_flag === 'Y' && <div className="text-xs text-slate-500">{x.parts.map((p) => p.name).join(' + ')}</div>}{marked.has(String(x.id)) && <div className="text-xs text-amber-700">marks entered – locked</div>}</td>
+                    <td>
+                      {lockedRow && <input type="hidden" name={`t_${x.id}`} value={cur} />}
+                      <select name={`t_${x.id}`} defaultValue={cur} disabled={lockedRow} className="input" aria-label={`${g.name} ${x.subject_name} evaluation`}>
+                        <option value="">— Select —</option>
+                        <option value="NONE">Direct marks – no template</option>
+                        {opts.map((t) => <option key={t.id} value={t.id}>{t.name}{t.active_flag === 'N' ? ' (inactive)' : ''}</option>)}
+                      </select>
+                      {!opts.length && <div className="text-xs text-slate-500">No template has sections for this subject yet.</div>}
+                    </td>
+                    <td className="text-xs">{chosen ? x.parts.map((p) => {
+                      const l = chosen.get(p.subjectId);
+                      return <div key={p.id}>{x.combined_flag === 'Y' && <b>{p.name}: </b>}{l ? l.map((z) => `${z.name} ${z.weight_pct}% (${z.input_type === 'MARK' ? 'marks' : 'rating'} ${z.min_rating}–${z.max_rating})`).join(' · ') : 'direct marks'}</div>;
+                    }) : x.evaluation_chosen_flag === 'Y' ? 'Direct marks' : ''}</td>
+                  </tr>);
+              })}</tbody></table>
+          </div>
+        ))}
+        {!readOnly && <Buttons />}
       </form>
     );
   }

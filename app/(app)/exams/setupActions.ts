@@ -2,7 +2,7 @@
 import { sql, type Row } from '@/lib/db';
 import { requirePriv, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj } from '@/lib/util';
-import { nextExamCode, marksEntered, templateSections, badWeights, examGrades } from '@/lib/examSetup';
+import { nextExamCode, marksEntered, templateSections, badWeights, examGrades, examSubjects } from '@/lib/examSetup';
 
 const num = (v: string | null | undefined) => (v === null || v === undefined || v === '' ? null : Number(v));
 const stepUrl = (id: string, step: number, extra = '') => `/exams/${id}/setup?step=${step}${extra}`;
@@ -181,8 +181,8 @@ export async function fillExamSubjects(id: string, fd: FormData) {
       for (const g of grades.filter((x) => x !== o.grade_id)) {
         await tx`delete from exam_subject where exam_id = ${id} and grade_id = ${g}`;
         for (const s of src) {
-          const [ns] = await tx`insert into exam_subject (exam_id, grade_id, subject_id, subject_type_code, max_marks, pass_marks, display_seq, combined_flag, weight_type)
-            values (${id}, ${g}, ${s.subject_id}, ${s.subject_type_code}, ${s.max_marks}, ${s.pass_marks}, ${s.display_seq}, ${s.combined_flag}, ${s.weight_type}) returning id`;
+          const [ns] = await tx`insert into exam_subject (exam_id, grade_id, subject_id, subject_type_code, max_marks, pass_marks, display_seq, combined_flag, weight_type, evaluation_template_id, evaluation_chosen_flag)
+            values (${id}, ${g}, ${s.subject_id}, ${s.subject_type_code}, ${s.max_marks}, ${s.pass_marks}, ${s.display_seq}, ${s.combined_flag}, ${s.weight_type}, ${s.evaluation_template_id}, ${s.evaluation_chosen_flag}) returning id`;
           await tx`insert into exam_subject_component (exam_subject_id, subject_id, weight, max_marks, pass_marks, display_seq)
             select ${ns.id}, subject_id, weight, max_marks, pass_marks, display_seq from exam_subject_component where exam_subject_id = ${s.id}`;
           n++;
@@ -207,28 +207,47 @@ export async function finishExamSubjects(id: string, fd: FormData) {
   });
 }
 
-/** Stop 5 – Evaluation Template. */
-export async function saveExamTemplate(id: string, fd: FormData) {
+/** Stop 5 – the evaluation template of each subject of each grade (or direct marks). */
+export async function saveExamTemplates(id: string, fd: FormData) {
   const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
-    const t = formObj(fd).evaluation_template_id;
-    if (String(t ?? '') !== String(e.evaluation_template_id ?? '')) await noMarks(e, 'the evaluation template');
-    let name = 'No template – marks are entered directly';
-    if (t) {
-      const [tp] = await sql`select * from evaluation_template where id = ${t} and enterprise_id = ${u.enterpriseId}`;
-      if (!tp) throw new Error('Template not found');
-      const secs = await templateSections(t);
-      const bad = badWeights(secs);
-      if (bad.length) {
-        const names = await sql`select distinct on (id) name from subject_f where id in ${sql(bad)} order by id, effective_start_date desc`;
-        throw new Error(`In ${tp.name} the section weights of ${names.map((x) => x.name).join(', ')} do not add up to 100 % – fix the template first.`);
+    const o = formObj(fd);
+    const subs = await examSubjects(id);
+    const gname = new Map((await examGrades(id, e.exam_date)).map((g) => [String(g.grade_id), g.name as string]));
+    const label = (s: (typeof subs)[number]) => `${s.subject_name} (${s.grade_id === null ? 'all grades' : gname.get(String(s.grade_id)) ?? ''})`;
+    const missing = subs.filter((s) => !o[`t_${s.id}`]);
+    if (missing.length && fd.get('_next')) throw new Error(`Choose the evaluation template (or direct marks) for ${missing.map(label).join(', ')}.`);
+    const checked = new Map<string, string[]>();
+    let n = 0;
+    await sql.begin(async (tx) => {
+      for (const s of subs) {
+        const v = o[`t_${s.id}`];
+        if (!v) continue;
+        const t = v === 'NONE' ? null : v;
+        if (String(t ?? '') !== String(s.evaluation_template_id ?? '')) {
+          const [m] = await tx`select 1 from exam_mark m join exam_candidate c on c.id = m.candidate_id where m.exam_subject_id = ${s.id} and (m.marks is not null or m.absent_flag = 'Y') limit 1`;
+          if (m) throw new Error(`Marks have already been entered for ${label(s)} – its evaluation template can no longer be changed.`);
+        }
+        if (t) {
+          if (!checked.has(t)) {
+            const [tp] = await tx`select * from evaluation_template where id = ${t} and enterprise_id = ${u.enterpriseId}`;
+            if (!tp) throw new Error('Template not found');
+            const bad = badWeights(await templateSections(t));
+            if (bad.length) {
+              const names = await tx`select distinct on (id) name from subject_f where id in ${tx(bad)} order by id, effective_start_date desc`;
+              throw new Error(`In ${tp.name} the section weights of ${names.map((x) => x.name).join(', ')} do not add up to 100 % – fix the template first.`);
+            }
+            checked.set(t, (await tx`select distinct subject_id from evaluation_section where template_id = ${t}`).map((r) => String(r.subject_id)));
+          }
+          if (!s.parts.some((p) => checked.get(t)!.includes(p.subjectId))) throw new Error(`The chosen template has no sections for ${label(s)}.`);
+        }
+        await tx`update exam_subject set evaluation_template_id = ${t}, evaluation_chosen_flag = 'Y' where id = ${s.id}`;
+        n++;
       }
-      name = tp.name;
-    }
-    await sql`update exam set evaluation_template_id = ${t} where id = ${id}`;
+    });
     await reached(id, 5, u.username);
-    return after(fd, id, 5, `${e.name}: ${name}.`);
+    return after(fd, id, 5, `The evaluation of ${n} subject(s) of ${e.name} has been saved.`);
   });
 }
 
@@ -276,6 +295,8 @@ export async function saveExamExaminers(id: string, fd: FormData) {
     const have = new Set((await sql`select distinct coalesce(grade_id::text, 'ALL') g from exam_subject where exam_id = ${id}`).map((r) => r.g));
     const none = grades.filter((g) => !have.has('ALL') && !have.has(String(g.grade_id)));
     if (none.length) throw new Error(`Add subjects for ${none.map((g) => g.name).join(', ')} (stop 4) first.`);
+    const [nc] = await sql`select count(*)::int n from exam_subject where exam_id = ${id} and evaluation_chosen_flag = 'N'`;
+    if (nc.n) throw new Error(`Choose the evaluation template of ${nc.n} subject(s) (stop 5) first.`);
     if (e.status_code === 'DRAFT') await sql`update exam set status_code = 'SCHEDULED' where id = ${id}`;
     return { to: `/exams/${id}`, msg: e.status_code === 'DRAFT' ? `${e.name} has been set up and scheduled. You can now assign students.` : `${e.name} setup has been saved.` };
   });

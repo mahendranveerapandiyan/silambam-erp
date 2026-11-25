@@ -1,11 +1,11 @@
 'use server';
-import { sql } from '@/lib/db';
+import { sql, type Tx } from '@/lib/db';
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, addDays, todayISO } from '@/lib/util';
 import { eligibleStudents, examFeeFor } from '@/lib/exams';
 import { examSubjects, templateSections, partMark, subjectScore, recomputeCandidate, evaluatorGrades } from '@/lib/examSetup';
 import { addDemand, cancelDemandIfUnpaid } from '@/lib/fees';
-import { dtChange } from '@/lib/dt';
+import { dtChange, dtDeleteLatest } from '@/lib/dt';
 import { actionByType } from '@/lib/people';
 import { assertStudentAccess } from '@/lib/scope';
 
@@ -78,15 +78,15 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
     const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
     if (exam.status_code === 'DRAFT') throw new Error('Finish the exam setup first');
     if (exam.status_code === 'CANCELLED') throw new Error('The exam is cancelled');
-    if (exam.status_code === 'PUBLISHED' && !admin) throw new Error('Results are published; only users who can set up exams can change marks');
     const grades = await evaluatorGrades(u, examId);
     if (grades !== 'ALL' && !grades.has(gradeId)) throw new Error('You are not an examiner for this grade');
     const [es] = (await examSubjects(examId, gradeId)).filter((x) => String(x.id) === esId);
     if (!es) throw new Error('Subject not found for this grade');
-    const sections = await templateSections(exam.evaluation_template_id);
+    const sections = await templateSections(es.evaluation_template_id);
     const examiner = admin || (await sql`select 1 from exam_examiner where exam_id = ${examId} and grade_id = ${gradeId} and person_id = ${u.personId ?? 0}`).length > 0;
     const o = formObj(fd);
-    const cands = await sql`select * from exam_candidate where exam_id = ${examId} and current_grade_id = ${gradeId}`;
+    const cands = await sql`select * from exam_candidate where exam_id = ${examId} and current_grade_id = ${gradeId} and published_flag = 'N'`;
+    if (!cands.length) throw new Error('The results of these students are published – roll them back first to change marks.');
     const rng = (v: string | null | undefined, lo: number, hi: number, what: string) => {
       if (v === null || v === undefined) return null;
       const n = Number(v);
@@ -105,7 +105,7 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
           if (secs?.length) {
             const ratings = new Map<string, number | null>();
             for (const sec of secs) {
-              const r = absent ? null : rng(o[`r_${c.id}_${p.id}_${sec.id}`], sec.min_rating, sec.max_rating, `${p.name} – ${sec.name} rating`);
+              const r = absent ? null : rng(o[`r_${c.id}_${p.id}_${sec.id}`], sec.min_rating, sec.max_rating, `${p.name} – ${sec.name} ${sec.input_type === 'MARK' ? 'marks' : 'rating'}`);
               ratings.set(sec.id, r);
               await tx`insert into exam_section_rating (candidate_id, exam_subject_id, component_id, section_id, rating, entered_by) values (${c.id}, ${esId}, ${p.id}, ${sec.id}, ${r}, ${u.username})
                 on conflict (candidate_id, exam_subject_id, component_id, section_id) do update set rating = excluded.rating, entered_by = excluded.entered_by, entered_at = now()`;
@@ -139,14 +139,14 @@ export async function publishResults(examId: string, fd: FormData) {
     if (exam.status_code === 'DRAFT') throw new Error('Finish the exam setup first');
     const o = formObj(fd);
     const date = o.promotion_date ?? todayISO();
-    let promoted = 0;
+    let promoted = 0, published = 0;
     await sql.begin(async (tx) => {
       if (exam.outcome_code === 'PROMOTE' && o.promote === 'Y') {
         const action = await actionByType(u.enterpriseId, 'STUDENT', 'PROMOTION', date);
         if (!action) throw new Error('No Promotion action is configured for students');
         const passed = await tx`select c.*, coalesce(eg.target_grade_id, (select next_grade_id from student_grade_f g where g.id = c.current_grade_id order by effective_start_date desc limit 1)) target
           from exam_candidate c left join exam_grade eg on eg.exam_id = c.exam_id and eg.grade_id = c.current_grade_id
-          where c.exam_id = ${examId} and c.result_code = 'PASS' and c.promoted_flag = 'N'`;
+          where c.exam_id = ${examId} and c.result_code = 'PASS' and c.promoted_flag = 'N' and c.published_flag = 'N'`;
         const none = passed.filter((c) => !c.target);
         if (none.length) throw new Error(`${none.length} passed student(s) have no grade to be promoted to – set it in stop 6 of the exam setup.`);
         for (const c of passed) {
@@ -154,13 +154,83 @@ export async function publishResults(examId: string, fd: FormData) {
             student_grade_id: c.target, action_id: action.id, action_reason_code: 'GRADE_EXAM_PASSED', comments: `Passed ${exam.name}`,
             ...(action.assignment_status_id ? { assignment_status_id: action.assignment_status_id } : {}),
           }, u.username);
-          await tx`update exam_candidate set promoted_flag = 'Y' where id = ${c.id}`;
+          await tx`update exam_candidate set promoted_flag = 'Y', promoted_on = ${date}, promoted_from_grade_id = ${c.current_grade_id}, promoted_to_grade_id = ${c.target} where id = ${c.id}`;
           promoted++;
         }
       }
+      const pub = await tx`update exam_candidate set published_flag = 'Y' where exam_id = ${examId} and published_flag = 'N' returning id`;
+      if (!pub.length) throw new Error('All results of this exam are already published');
+      published = pub.length;
       await tx`update exam set status_code = 'PUBLISHED', last_updated_by = ${u.username}, last_update_date = now() where id = ${examId}`;
     });
-    return { msg: `${exam.name} results have been published${promoted ? ` · ${promoted} student(s) promoted effective ${date}` : ' and recorded on the student profiles'}.` };
+    return { msg: `${exam.name} results of ${published} student(s) have been published${promoted ? ` · ${promoted} student(s) promoted effective ${date}` : ' and recorded on the student profiles'}.` };
+  });
+}
+
+
+/** Undo publishing for some candidates: the result is hidden again, marks can be changed and a promotion is reversed. */
+async function rollBack(tx: Tx, exam: Record<string, any>, cands: Record<string, any>[], by: string) {
+  let undone = 0;
+  for (const c of cands) {
+    if (c.published_flag !== 'Y') continue;
+    if (c.promoted_flag === 'Y') {
+      const who = `${c.full_name ?? 'A student'}${c.assignment_number ? ` (${c.assignment_number})` : ''}`;
+      if (!c.promoted_on) throw new Error(`${who} was promoted before promotion dates were kept – correct the grade on the assignment instead.`);
+      const [later] = await tx`select min(effective_start_date) d from assignment_f where id = ${c.assignment_id} and effective_start_date > ${c.promoted_on}`;
+      if (later.d) throw new Error(`${who} has assignment changes from ${later.d}, after the promotion on ${c.promoted_on} – undo those changes first.`);
+      const [v] = await tx`select * from assignment_f where id = ${c.assignment_id} and effective_start_date = ${c.promoted_on}`;
+      if (!v || String(v.student_grade_id) !== String(c.promoted_to_grade_id)) throw new Error(`${who}'s grade was changed after the promotion – correct it on the assignment instead.`);
+      const [prev] = await tx`select 1 from assignment_f where id = ${c.assignment_id} and effective_end_date = ${addDays(c.promoted_on, -1)}`;
+      if (prev) await dtDeleteLatest(tx, 'assignment', c.assignment_id);
+      else await dtChange(tx, 'assignment', c.assignment_id, c.promoted_on, 'CORRECT', { student_grade_id: c.promoted_from_grade_id, comments: `Promotion by ${exam.name} rolled back` }, by);
+      await tx`update exam_candidate set promoted_flag = 'N', promoted_on = null, promoted_from_grade_id = null, promoted_to_grade_id = null where id = ${c.id}`;
+    }
+    await tx`update exam_candidate set published_flag = 'N' where id = ${c.id}`;
+    undone++;
+  }
+  const [left] = await tx`select count(*)::int n from exam_candidate where exam_id = ${exam.id} and published_flag = 'Y'`;
+  if (!left.n) await tx`update exam set status_code = 'SCHEDULED', last_updated_by = ${by}, last_update_date = now() where id = ${exam.id}`;
+  return undone;
+}
+
+const candSql = (examId: string) => sql`select c.*, a.assignment_number, af.section_id,
+    (select trim(concat_ws(' ', first_name, last_name)) from person_f x where x.id = c.person_id order by effective_start_date desc limit 1) full_name
+  from exam_candidate c join assignment a on a.id = c.assignment_id
+  join exam e on e.id = c.exam_id
+  left join assignment_f af on af.id = a.id and e.exam_date between af.effective_start_date and af.effective_end_date
+  where c.exam_id = ${examId} and c.published_flag = 'Y'`;
+
+/** Roll back published results: all students, the selected students, or one section. */
+export async function rollbackResults(examId: string, fd: FormData) {
+  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  await act(backOf(fd), async () => {
+    const exam = await loadExam(examId, u.enterpriseId);
+    const o = formObj(fd);
+    let list: Record<string, any>[] = await candSql(examId);
+    if (o.scope === 'SELECTED') {
+      const ids = new Set(fd.getAll('cand').map(String));
+      if (!ids.size) throw new Error('Tick the students whose results should be rolled back');
+      list = list.filter((c) => ids.has(String(c.id)));
+    } else if (o.scope === 'SECTION') {
+      if (!o.section_id) throw new Error('Choose a section');
+      list = list.filter((c) => String(c.section_id) === o.section_id);
+    }
+    if (!list.length) throw new Error('No published results match');
+    const promoted = list.filter((c) => c.promoted_flag === 'Y').length;
+    const n = await sql.begin((tx) => rollBack(tx, exam, list, u.username));
+    return { msg: `${exam.name}: results of ${n} student(s) have been rolled back${promoted ? ` and ${promoted} promotion(s) reversed` : ''}. Their marks can be changed again.` };
+  });
+}
+
+/** Roll back one student's published result (from the student profile). */
+export async function rollbackCandidate(examId: string, candidateId: string, fd: FormData) {
+  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  await act(backOf(fd), async () => {
+    const exam = await loadExam(examId, u.enterpriseId);
+    const list = (await candSql(examId)).filter((c) => String(c.id) === candidateId);
+    if (!list.length) throw new Error('This result is not published');
+    await sql.begin((tx) => rollBack(tx, exam, list, u.username));
+    return { msg: `${exam.name} result of ${list[0].full_name} has been rolled back${list[0].promoted_flag === 'Y' ? ' and the promotion reversed' : ''}.` };
   });
 }
 

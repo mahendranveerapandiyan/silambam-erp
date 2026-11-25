@@ -13,6 +13,7 @@ import { ConfirmButton } from '../client';
 import { PhotoInput } from '../PhotoInput';
 import { EditableForm, EditScope } from '../EditMode';
 import { deleteIncharge } from '@/app/(app)/staff/actions';
+import { rollbackCandidate } from '@/app/(app)/exams/actions';
 import { PersonFields } from './PersonFields';
 import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate, deletePerson, saveIdentifier, saveAor } from '@/app/(app)/people/actions';
 import { identifiersOf, personEmployerCountry } from '@/lib/identifiers';
@@ -419,10 +420,21 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   }
 
   async function Exams() {
-    const rows = await sql`select c.*, e.name, e.exam_date, e.exam_type_code, y.name ay_name from exam_candidate c join exam e on e.id = c.exam_id join academic_year y on y.id = c.academic_year_id where c.person_id = ${personId} order by e.exam_date desc`;
+    const rows = await sql`select c.*, e.name, e.code, e.exam_date, e.exam_type_code, e.outcome_code, y.name ay_name,
+        (select name from student_grade_f g where g.id = c.promoted_to_grade_id order by effective_start_date desc limit 1) promoted_to
+      from exam_candidate c join exam e on e.id = c.exam_id join academic_year y on y.id = c.academic_year_id where c.person_id = ${personId} order by e.exam_date desc`;
+    const canRoll = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
     return (
-      <div className="card"><table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Academic Year</th><th>Marks</th><th>%</th><th>Result</th></tr></thead>
-        <tbody>{rows.map((r) => <tr key={r.id}><td>{fmtDate(r.exam_date)}</td><td><Link className="link" href={`/exams/${r.exam_id}`}>{r.name}</Link></td><td>{L('EXAM_TYPE', r.exam_type_code)}</td><td>{r.ay_name}</td><td>{r.total_marks}</td><td>{r.percentage}</td><td><Badge color={STATUS_COLOR[r.result_code]}>{L('EXAM_RESULT', r.result_code)}</Badge>{r.promoted_flag === 'Y' && <Badge color="purple">Promoted</Badge>}</td></tr>)}</tbody></table>
+      <div className="card overflow-x-auto"><table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Academic Year</th><th>Marks</th><th>%</th><th>Result</th><th>Published</th><th></th></tr></thead>
+        <tbody>{rows.map((r) => (
+          <tr key={r.id}><td>{fmtDate(r.exam_date)}</td><td><Link className="link" href={`/exams/${r.exam_id}?tab=results`}>{r.name}</Link><div className="font-mono text-xs text-slate-500">{r.code}</div></td>
+            <td>{L('EXAM_TYPE', r.exam_type_code)}</td><td>{r.ay_name}</td><td>{r.total_marks}</td><td>{r.percentage}</td>
+            <td><Badge color={STATUS_COLOR[r.result_code]}>{L('EXAM_RESULT', r.result_code)}</Badge>{r.promoted_flag === 'Y' && <Badge color="purple">Promoted{r.promoted_to ? ` to ${r.promoted_to}` : ''}</Badge>}</td>
+            <td>{r.published_flag === 'Y' ? <Badge color="green">Published</Badge> : <Badge color="gray">Not yet</Badge>}</td>
+            <td>{canRoll && r.published_flag === 'Y' && (
+              <form action={rollbackCandidate.bind(null, r.exam_id, r.id)}><Back to={back} />
+                <ConfirmButton className="btn btn-sm" message={`Roll back the ${r.name} result of ${p.full_name}? The marks can then be changed${r.promoted_flag === 'Y' ? ' and the promotion is reversed' : ''}.`}>Roll back</ConfirmButton></form>)}</td>
+          </tr>))}</tbody></table>
         {!rows.length && <Empty />}</div>
     );
   }

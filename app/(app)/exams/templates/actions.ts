@@ -33,8 +33,8 @@ export async function saveTemplate(id: string | null, fd: FormData) {
     const [t] = await sql`insert into evaluation_template ${sql({ ...v, enterprise_id: u.enterpriseId, created_by: u.username })} returning id`;
     if (o.copy_from) {
       await load(u.enterpriseId, o.copy_from);
-      await sql`insert into evaluation_section (template_id, subject_id, name, weight_pct, min_rating, max_rating, display_seq)
-        select ${t.id}, subject_id, name, weight_pct, min_rating, max_rating, display_seq from evaluation_section where template_id = ${o.copy_from}`;
+      await sql`insert into evaluation_section (template_id, subject_id, name, input_type, weight_pct, min_rating, max_rating, display_seq)
+        select ${t.id}, subject_id, name, input_type, weight_pct, min_rating, max_rating, display_seq from evaluation_section where template_id = ${o.copy_from}`;
     }
     return { to: `/exams/templates?edit=${t.id}`, msg: `${o.name} evaluation template has been created. Now add the sections for each subject.` };
   });
@@ -60,11 +60,12 @@ export async function saveSection(templateId: string, secId: string | null, fd: 
     if (!o.subject_id || !o.name) throw new Error('Subject and section name are required');
     const w = Number(o.weight_pct), min = Number(o.min_rating ?? 0), max = Number(o.max_rating);
     if (!(w > 0 && w <= 100)) throw new Error('The weight must be above 0 and at most 100 %');
-    if (!(max > 0)) throw new Error('The maximum rating must be above 0');
-    if (Number.isNaN(min) || min < 0 || min > max) throw new Error('The minimum rating must be between 0 and the maximum');
+    const kind = o.input_type === 'MARK' ? 'marks' : 'rating';
+    if (!(max > 0)) throw new Error(`The maximum ${kind} must be above 0`);
+    if (Number.isNaN(min) || min < 0 || min > max) throw new Error(`The minimum ${kind} must be between 0 and the maximum`);
     const [others] = await sql`select coalesce(sum(weight_pct), 0)::float t from evaluation_section where template_id = ${templateId} and subject_id = ${o.subject_id} and id <> ${secId ?? 0}`;
     if (others.t + w > 100.001) throw new Error(`The section weights of a subject cannot exceed 100 % – ${100 - others.t} % is left for this subject.`);
-    const v = { subject_id: o.subject_id, name: o.name, weight_pct: w, min_rating: min, max_rating: max, display_seq: Number(o.display_seq ?? 0) };
+    const v = { subject_id: o.subject_id, name: o.name, input_type: o.input_type === 'MARK' ? 'MARK' : 'RATING', weight_pct: w, min_rating: min, max_rating: max, display_seq: Number(o.display_seq ?? 0) };
     if (secId) await sql`update evaluation_section set ${sql(v)} where id = ${secId} and template_id = ${templateId}`;
     else await sql`insert into evaluation_section ${sql({ ...v, template_id: templateId })}`;
     const left = 100 - others.t - w;

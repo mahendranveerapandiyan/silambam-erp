@@ -36,7 +36,7 @@ export async function examSubjects(examId: string, gradeId?: string | null): Pro
   })) as ExamSubject[];
 }
 
-export type Section = { id: string; subject_id: string; name: string; weight_pct: number; min_rating: number; max_rating: number };
+export type Section = { id: string; subject_id: string; name: string; weight_pct: number; min_rating: number; max_rating: number; input_type: 'RATING' | 'MARK' };
 
 /** An evaluation template's sections, by subject. */
 export async function templateSections(templateId: string | null | undefined) {
@@ -45,7 +45,7 @@ export async function templateSections(templateId: string | null | undefined) {
   for (const s of await sql`select * from evaluation_section where template_id = ${templateId} order by display_seq, id`) {
     const k = String(s.subject_id);
     if (!m.has(k)) m.set(k, []);
-    m.get(k)!.push({ id: String(s.id), subject_id: k, name: s.name, weight_pct: Number(s.weight_pct), min_rating: Number(s.min_rating), max_rating: Number(s.max_rating) });
+    m.get(k)!.push({ id: String(s.id), subject_id: k, name: s.name, weight_pct: Number(s.weight_pct), min_rating: Number(s.min_rating), max_rating: Number(s.max_rating), input_type: s.input_type === 'MARK' ? 'MARK' : 'RATING' });
   }
   return m;
 }
@@ -129,4 +129,10 @@ export async function nextExamCode(tx: typeof sql, enterpriseId: string, ayId: s
   const from = prefix.length + 1;
   const [m] = await tx`select max(substring(code from ${from}::int)::int) n from exam where enterprise_id = ${enterpriseId} and code like ${prefix + '%'} and substring(code from ${from}::int) ~ '^[0-9]+$'`;
   return prefix + String((m?.n ?? 0) + 1).padStart(3, '0');
+}
+
+/** Section value inputs: a rating drop-down for small whole-number scales, else a number box. */
+export function ratingChoices(s: Section) {
+  if (s.input_type !== 'RATING' || !Number.isInteger(s.min_rating) || !Number.isInteger(s.max_rating) || s.max_rating - s.min_rating > 20) return null;
+  return Array.from({ length: s.max_rating - s.min_rating + 1 }, (_, i) => s.min_rating + i);
 }

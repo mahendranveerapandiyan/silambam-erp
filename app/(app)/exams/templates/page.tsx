@@ -25,7 +25,7 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
   return (
     <div className="max-w-6xl">
       <PageHeader title="Evaluation Templates"
-        subtitle="How each subject is evaluated: sections (e.g. Lessons, Perfection, Speed & Stamina, Vanakkam Murai), each with a weight % and a rating range. Chosen in stop 5 of an exam's setup." />
+        subtitle="How a subject is evaluated: sections (e.g. Lessons, Perfection, Speed & Stamina, Vanakkam Murai), each rating based or manual marks, with a weight % and a minimum and maximum. Chosen per subject of each grade in stop 5 of an exam's setup." />
       <Flash sp={sp} />
       <div className="card mb-4 overflow-x-auto">
         <table className="tbl">
@@ -64,13 +64,16 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
     for (const s of secs) { const k = String(s.subject_id); if (!bySubject.has(k)) bySubject.set(k, [] as unknown as typeof secs); bySubject.get(k)!.push(s); }
     const addFor = one(sp.subject);
     const sectionRow = (sid: string, s?: (typeof secs)[number]) => (
-      <form key={s?.id ?? `new-${sid}`} action={saveSection.bind(null, t!.id, s?.id ?? null)} className={`grid items-end gap-2 sm:grid-cols-[2fr_1fr_1fr_1fr_0.6fr_auto] ${s ? '' : 'rounded bg-green-50 p-2'}`}>
+      <form key={s?.id ?? `new-${sid}`} action={saveSection.bind(null, t!.id, s?.id ?? null)} className={`grid items-end gap-2 sm:grid-cols-[2fr_1.3fr_1fr_1fr_1fr_0.6fr_auto] ${s ? '' : 'rounded bg-green-50 p-2'}`}>
         <Back to={back} />
         <input type="hidden" name="subject_id" value={sid} />
         <input name="name" defaultValue={s?.name} placeholder="Section, e.g. Perfection" required className="input" disabled={!write} aria-label="Section" />
+        <select name="input_type" defaultValue={s?.input_type ?? 'RATING'} className="input" disabled={!write} aria-label="Input type">
+          <option value="RATING">Rating based</option><option value="MARK">Manual marks</option>
+        </select>
         <input name="weight_pct" type="number" step="0.01" min="0.01" max="100" defaultValue={s ? Number(s.weight_pct) : ''} placeholder="Weight %" required className="input" disabled={!write} aria-label="Weight %" />
-        <input name="min_rating" type="number" step="0.5" min="0" defaultValue={s ? Number(s.min_rating) : 0} className="input" disabled={!write} aria-label="Min rating" />
-        <input name="max_rating" type="number" step="0.5" min="0.5" defaultValue={s ? Number(s.max_rating) : 10} required className="input" disabled={!write} aria-label="Max rating" />
+        <input name="min_rating" type="number" step="0.5" min="0" defaultValue={s ? Number(s.min_rating) : 0} className="input" disabled={!write} aria-label="Min" />
+        <input name="max_rating" type="number" step="0.5" min="0.5" defaultValue={s ? Number(s.max_rating) : 10} required className="input" disabled={!write} aria-label="Max" />
         <input name="display_seq" type="number" defaultValue={s?.display_seq ?? (bySubject.get(sid)?.length ?? 0) + 1} className="input" disabled={!write} aria-label="Order" />
         {write && <div className="flex gap-1"><button className="btn btn-sm">{s ? 'Save' : 'Add'}</button></div>}
       </form>
@@ -96,7 +99,7 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
                 <h3 className="font-semibold">{rows[0].subject_name}</h3>
                 <Badge color={Math.abs(total - 100) < 0.001 ? 'green' : 'amber'}>Weights total {total} %{Math.abs(total - 100) < 0.001 ? ' ✓' : ' – must be 100 %'}</Badge>
               </div>
-              <div className="grid gap-2 text-xs font-semibold uppercase text-gray-600 sm:grid-cols-[2fr_1fr_1fr_1fr_0.6fr_auto]"><div>Section</div><div>Weight %</div><div>Min rating</div><div>Max rating</div><div>Order</div><div /></div>
+              <div className="grid gap-2 text-xs font-semibold uppercase text-gray-600 sm:grid-cols-[2fr_1.3fr_1fr_1fr_1fr_0.6fr_auto]"><div>Section</div><div>Input</div><div>Weight %</div><div>Min</div><div>Max</div><div>Order</div><div /></div>
               {rows.map((r) => (
                 <div key={r.id} className="flex items-end gap-1">
                   <div className="flex-1">{sectionRow(sid, r)}</div>
@@ -118,7 +121,7 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
               <button className="btn">Choose</button>
             </form>
             {addFor && !bySubject.has(addFor) && (
-              <><p className="muted mb-1">First section of <b>{subjects.find((o) => o.value === addFor)?.label}</b> – rating range e.g. 0 to 10. The section weights of a subject must total 100 %.</p>{sectionRow(addFor)}</>
+              <><p className="muted mb-1">First section of <b>{subjects.find((o) => o.value === addFor)?.label}</b> – entered by the examiner as a rating (chosen from Min to Max, e.g. 1 to 5) or as manual marks (typed, e.g. 0 to 25). The section weights of a subject must total 100 %.</p>{sectionRow(addFor)}</>
             )}
           </div>
         )}

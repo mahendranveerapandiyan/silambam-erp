@@ -72,7 +72,7 @@ export default async function Portal({ searchParams }: { searchParams: SP }) {
       <div className="grid gap-4 md:grid-cols-2">
         <div className="card"><h2 className="h2">Exams</h2>
           <table className="tbl"><tbody>{exams.map((e) => <tr key={e.id}><td>{fmtDate(e.exam_date)}</td><td>{e.name}<div className="text-xs">{L('EXAM_TYPE', e.exam_type_code)}</div></td>
-            <td>{e.exam_status === 'PUBLISHED' ? <><Badge color={STATUS_COLOR[e.result_code]}>{L('EXAM_RESULT', e.result_code)}</Badge> {e.percentage !== null && `${e.percentage}%`}</> : <Badge>Scheduled</Badge>}</td></tr>)}</tbody></table>
+            <td>{e.published_flag === 'Y' ? <><Badge color={STATUS_COLOR[e.result_code]}>{L('EXAM_RESULT', e.result_code)}</Badge> {e.percentage !== null && `${e.percentage}%`}</> : <Badge>Scheduled</Badge>}</td></tr>)}</tbody></table>
           {!exams.length && <Empty />}</div>
         <div className="card"><h2 className="h2">Events</h2>
           <table className="tbl"><tbody>{events.map((e) => <tr key={e.id}><td>{fmtDate(e.start_date)}</td><td>{e.name}<div className="text-xs">{e.venue}</div></td><td>{e.achievement}</td></tr>)}</tbody></table>
