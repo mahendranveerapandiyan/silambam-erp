@@ -15,7 +15,7 @@ import { ConfirmButton, ShowFor } from '@/components/client';
 import { MultiPick } from '@/components/MultiPick';
 import {
   saveExamGrades, saveExamEligibility, saveExamSubject, deleteExamSubject, fillExamSubjects, finishExamSubjects,
-  saveExamTemplates, saveExamOutcome, saveExamExaminers, deleteDraftExam,
+  saveExamTemplates, saveExamOutcome, saveExamExaminers, deleteExam,
 } from '../../setupActions';
 
 export default async function ExamSetup({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
@@ -50,9 +50,9 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
       {step === 5 && <TemplateStop />}
       {step === 6 && <OutcomeStop />}
       {step === 7 && <ExaminerStop />}
-      {exam.status_code === 'DRAFT' && !readOnly && (
-        <form action={deleteDraftExam.bind(null, id)} className="mt-6"><Back to={back} />
-          <ConfirmButton className="btn btn-danger btn-sm" message={`Delete the draft exam ${exam.name}?`}>Delete draft</ConfirmButton></form>
+      {exam.status_code !== 'PUBLISHED' && can(u, 'CD_EXAM_SETUP_PRV', 'WRITE') && (
+        <form action={deleteExam.bind(null, id)} className="mt-6"><Back to={back} />
+          <ConfirmButton className="btn btn-danger btn-sm" message={`Delete the exam ${exam.name}${exam.status_code === 'DRAFT' ? ' (draft)' : ' with its assigned students and marks? Unpaid exam fees are cancelled'}? This cannot be undone.`}>{exam.status_code === 'DRAFT' ? 'Delete draft' : 'Delete exam'}</ConfirmButton></form>
       )}
     </div>
   );

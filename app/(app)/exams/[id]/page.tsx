@@ -11,6 +11,7 @@ import { fmtDate, money, todayISO } from '@/lib/util';
 import { PageHeader, Flash, Back, Badge, Empty, Select, Tabs, STATUS_COLOR, type SP, here } from '@/components/ui';
 import { CheckAll, ConfirmButton, ShowFor } from '@/components/client';
 import { assignCandidates, removeCandidate, publishResults, rollbackResults } from '../actions';
+import { deleteExam } from '../setupActions';
 import { examGrades, examSubjects, evaluatorGrades } from '@/lib/examSetup';
 
 export default async function ExamPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
@@ -64,6 +65,10 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
       {tab === 'eligible' && <Eligible />}
       {tab === 'results' && <Results />}
       {tab === 'subjects' && <Subjects />}
+      {admin && exam.status_code !== 'PUBLISHED' && !cands.some((c) => c.published_flag === 'Y') && (
+        <form action={deleteExam.bind(null, id)} className="mt-6"><Back to={back} />
+          <ConfirmButton className="btn btn-danger btn-sm" message={`Delete the exam ${exam.name}${cands.length ? ` with its ${cands.length} assigned student(s) and their marks? Unpaid exam fees are cancelled` : ''}? This cannot be undone.`}>Delete exam</ConfirmButton>
+          <span className="muted ml-2">Possible until results are published.</span></form>)}
     </div>
   );
 

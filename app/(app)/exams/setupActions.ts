@@ -2,6 +2,7 @@
 import { sql, type Row } from '@/lib/db';
 import { requirePriv, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj } from '@/lib/util';
+import { cancelDemandIfUnpaid } from '@/lib/fees';
 import { nextExamCode, marksEntered, templateSections, badWeights, examGrades, examSubjects } from '@/lib/examSetup';
 
 const num = (v: string | null | undefined) => (v === null || v === undefined || v === '' ? null : Number(v));
@@ -302,15 +303,31 @@ export async function saveExamExaminers(id: string, fd: FormData) {
   });
 }
 
-export async function deleteDraftExam(id: string, fd: FormData) {
+/**
+ * Delete an exam until its results are published: assigned students, their marks
+ * and unpaid exam fees go with it. Refused once a result is published or an exam fee is paid.
+ */
+export async function deleteExam(id: string, fd: FormData) {
   const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
-  await act(backOf(fd), async () => {
+  await act(backOf(fd, '/exams'), async () => {
     const [e] = await sql`select * from exam where id = ${id} and enterprise_id = ${u.enterpriseId}`;
     if (!e) throw new Error('Exam not found');
-    const [c] = await sql`select count(*)::int n from exam_candidate where exam_id = ${id}`;
-    if (c.n) throw new Error(`${c.n} student(s) are assigned to ${e.name} – remove them first, or cancel the exam instead.`);
-    await sql`delete from exam where id = ${id}`;
-    return { to: '/exams', msg: `${e.name} exam has been deleted.` };
+    const [p] = await sql`select count(*)::int n from exam_candidate where exam_id = ${id} and published_flag = 'Y'`;
+    if (e.status_code === 'PUBLISHED' || p.n)
+      throw new Error(`${e.name} has ${p.n || 'its'} published result(s) – roll the results back first (Marks & Results › Roll Back), then delete.`);
+    let cancelled = 0, students = 0;
+    await sql.begin(async (tx) => {
+      const cands = await tx`select c.id, c.fee_demand_id, (select trim(concat_ws(' ', first_name, last_name)) from person_f x where x.id = c.person_id order by effective_start_date desc limit 1) full_name
+        from exam_candidate c where c.exam_id = ${id}`;
+      for (const c of cands) {
+        if (c.fee_demand_id) {
+          if (!(await cancelDemandIfUnpaid(tx, c.fee_demand_id))) throw new Error(`${c.full_name} has paid the ${e.name} exam fee – delete or refund that receipt first, or cancel the exam instead.`);
+          cancelled++;
+        }
+      }
+      students = cands.length;
+      await tx`delete from exam where id = ${id}`;
+    });
+    return { to: '/exams', msg: `${e.name} exam has been deleted${students ? ` with ${students} assigned student(s) and their marks${cancelled ? `; ${cancelled} unpaid exam fee line(s) cancelled` : ''}` : ''}.` };
   });
 }
-
