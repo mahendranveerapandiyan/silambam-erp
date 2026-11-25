@@ -120,3 +120,29 @@ export function MirrorInput({ source, initial = '', label }: { source: string; i
   }, [source]);
   return <input value={v} readOnly tabIndex={-1} className="input bg-slate-50" aria-label={label} />;
 }
+
+/**
+ * Exam subjects: choosing a subject fills its mapped Subject Type (and, for a new
+ * line, its default maximum and pass marks) in the same form.
+ */
+export function SubjectDefaults({ subjects, fillMarks }: { subjects: Record<string, { type: string | null; max: number | null; pass: number | null }>; fillMarks: boolean }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const form = ref.current?.closest('form');
+    const sel = form?.querySelector<HTMLSelectElement>('select[name="subject_id"]');
+    if (!form || !sel) return;
+    const set = (name: string, v: string | number | null) => {
+      const el = form.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${name}"]`);
+      if (el && v !== null && v !== undefined) { el.value = String(v); el.dispatchEvent(new Event('change', { bubbles: true })); }
+    };
+    const apply = () => {
+      const d = subjects[sel.value];
+      if (!d) return;
+      set('subject_type_code', d.type);
+      if (fillMarks) { set('max_marks', d.max); set('pass_marks', d.pass); }
+    };
+    sel.addEventListener('change', apply);
+    return () => sel.removeEventListener('change', apply);
+  }, [subjects, fillMarks]);
+  return <span ref={ref} hidden />;
+}

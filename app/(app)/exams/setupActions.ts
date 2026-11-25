@@ -109,6 +109,10 @@ export async function saveExamSubject(id: string, esId: string | null, fd: FormD
     const e = await editable(u, id);
     await noMarks(e, 'its subjects');
     const o = formObj(fd);
+    if (o.subject_id && !o.subject_type_code) {
+      const [sf] = await sql`select subject_type_code from subject_f where id = ${o.subject_id} order by (${e.exam_date}::date between effective_start_date and effective_end_date) desc, effective_start_date desc limit 1`;
+      o.subject_type_code = sf?.subject_type_code ?? null;
+    }
     if (!o.grade_id || !o.subject_id || !o.subject_type_code) throw new Error('Grade, subject and subject type are required');
     const combined = o.combined_flag === 'Y';
     const weightType = o.weight_type === 'MARK' ? 'MARK' : 'PERCENT';

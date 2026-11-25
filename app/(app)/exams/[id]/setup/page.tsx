@@ -11,7 +11,7 @@ import { EXAM_STOPS, examGrades, examSubjects, templateSections, marksEntered } 
 import { Stepper, DetailsForm, Buttons } from '@/components/ExamSetup';
 import { fmtDate } from '@/lib/util';
 import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s as one, here } from '@/components/ui';
-import { ConfirmButton, ShowFor } from '@/components/client';
+import { ConfirmButton, ShowFor, SubjectDefaults } from '@/components/client';
 import { MultiPick } from '@/components/MultiPick';
 import {
   saveExamGrades, saveExamEligibility, saveExamSubject, deleteExamSubject, fillExamSubjects, finishExamSubjects,
@@ -98,6 +98,9 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
     const list = await examSubjects(id, String(g.grade_id));
     const counts = new Map((await sql`select grade_id, count(*)::int n from exam_subject where exam_id = ${id} group by grade_id`).map((r) => [String(r.grade_id), r.n]));
     const o = await examOptions(u.enterpriseId, exam.exam_date);
+    const subjectInfo = Object.fromEntries((await sql`select distinct on (f.id) f.id, f.subject_type_code, f.default_max_marks, f.default_pass_marks from subject_f f join subject x on x.id = f.id
+      where x.enterprise_id = ${u.enterpriseId} order by f.id, (${exam.exam_date}::date between f.effective_start_date and f.effective_end_date) desc, f.effective_start_date desc`)
+      .map((r) => [String(r.id), { type: r.subject_type_code as string | null, max: r.default_max_marks === null ? null : Number(r.default_max_marks), pass: r.default_pass_marks === null ? null : Number(r.default_pass_marks) }]));
     const edit = list.find((s) => String(s.id) === one(sp.edit));
     const ro = readOnly || locked;
     const e = edit ?? ({} as Row);
@@ -147,8 +150,8 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
             <input type="hidden" name="grade_id" value={g.grade_id} />
             <h3 className="mb-2 font-semibold">{edit ? `Edit ${edit.subject_name}` : `Add a subject to ${g.name}`}</h3>
             <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <Field label="Subject *" className="lg:col-span-2"><Select name="subject_id" options={o.subjects} value={e.subject_id} required /></Field>
-              <Field label="Type *"><Select name="subject_type_code" options={o.subjectTypes} value={e.subject_type_code ?? o.subjectTypes[0]?.value} required /></Field>
+              <Field label="Subject *" className="lg:col-span-2"><Select name="subject_id" options={o.subjects} value={e.subject_id} required /><SubjectDefaults subjects={subjectInfo} fillMarks={!edit} /></Field>
+              <Field label="Type *" help="Filled from the subject's mapped type"><Select name="subject_type_code" options={o.subjectTypes} value={e.subject_type_code} required /></Field>
               <Field label="Maximum Marks *" help="For weights in marks: the total of the weights"><input name="max_marks" type="number" step="0.5" min="0.5" defaultValue={e.max_marks ? Number(e.max_marks) : 100} required className="input" /></Field>
               <Field label="Minimum (Pass) Marks *"><input name="pass_marks" type="number" step="0.5" min="0" defaultValue={e.pass_marks ? Number(e.pass_marks) : 35} required className="input" /></Field>
               <Field label="Order"><input name="display_seq" type="number" defaultValue={e.display_seq ?? list.length + 1} className="input" /></Field>
