@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { requirePriv, can } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
-import { examGrades, examSubjects, templateSections, evaluatorGrades, ratingChoices } from '@/lib/examSetup';
+import { examGrades, examSubjects, partSections, evaluatorGrades, ratingChoices, type Section } from '@/lib/examSetup';
 import { studentScopeSql } from '@/lib/scope';
 import { fmtDate, todayISO } from '@/lib/util';
 import { PageHeader, Flash, Back, Badge, Empty, STATUS_COLOR, type SP, s as one, here } from '@/components/ui';
@@ -35,7 +35,9 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
   const grade = visible.find((g) => g.grade_id === one(sp.grade)) ?? visible[0];
   const subjects = await examSubjects(id, grade.grade_id);
   const es = subjects.find((s) => String(s.id) === one(sp.subject)) ?? subjects[0];
-  const sections = await templateSections(es?.evaluation_template_id);
+  const sections = es ? await partSections(es.parts) : new Map<string, Section[]>();
+  const secOf = (pid: string) => sections.get(pid) ?? [];
+  const combined = es?.combined_flag === 'Y';
   const examiner = admin || (await sql`select 1 from exam_examiner where exam_id = ${id} and grade_id = ${grade.grade_id} and person_id = ${u.personId ?? 0}`).length > 0;
   const today = todayISO();
   const cands = await sql`
@@ -74,7 +76,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
           <p className="muted mb-2">
             <b>{es.subject_name}</b> · out of {Number(es.max_marks)}, pass {Number(es.pass_marks)}
             {es.combined_flag === 'Y' && <> · combines {es.parts.map((p) => `${p.name} (${es.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight} %`}, pass ${p.pass}/${p.max})`).join(' + ')}</>}
-            {sections.length > 0 && <> · evaluated by sections – the mark is worked out from the weights</>}
+            {es.parts.some((p) => secOf(p.id).length) && <> · evaluated by sections – each part's mark is worked out from its template's weights</>}
           </p>
           {cands.length > 0 && open.length < cands.length && (
             <div className="mb-2 rounded border border-amber-300 bg-amber-50 p-2 text-sm">
@@ -83,9 +85,13 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
           <table className="tbl">
             <thead>
               <tr><th rowSpan={2}>Student</th>
-                {es.parts.map((p) => { const secs = sections; return <th key={p.id} colSpan={Math.max(secs.length, 1)} className="text-center">{p.name}<div className="font-normal normal-case">{secs.length ? `rate → mark out of ${p.max}` : `mark out of ${p.max}`} · pass {p.pass}</div></th>; })}
+                {es.parts.map((p) => { const secs = secOf(p.id); return <th key={p.id} colSpan={Math.max(secs.length, 1) + (combined ? 1 : 0)} className="text-center">{p.name}<div className="font-normal normal-case">{secs.length ? `sections → mark out of ${p.max}` : `mark out of ${p.max}`} · pass {p.pass}{combined && ` · weight ${es.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight} %`}`}</div></th>; })}
                 <th rowSpan={2}>Absent</th><th rowSpan={2}>{es.subject_name} mark</th><th rowSpan={2}>Subject</th><th rowSpan={2}>Exam result</th></tr>
-              <tr>{es.parts.flatMap((p) => { const secs = sections; return secs.length ? secs.map((s) => <th key={`${p.id}_${s.id}`} className="font-normal normal-case">{s.name}<div className="text-[10px]">{s.weight_pct}% · {s.input_type === 'MARK' ? 'marks' : 'rating'} {s.min_rating}–{s.max_rating}</div></th>) : [<th key={p.id} className="font-normal normal-case">Marks</th>]; })}</tr>
+              <tr>{es.parts.flatMap((p) => {
+                const secs = secOf(p.id);
+                const cells = secs.length ? secs.map((s) => <th key={`${p.id}_${s.id}`} className="font-normal normal-case">{s.name}<div className="text-[10px]">{s.weight_pct}% · {s.input_type === 'MARK' ? 'marks' : 'rating'} {s.min_rating}–{s.max_rating}</div></th>) : [<th key={p.id} className="font-normal normal-case">Marks</th>];
+                return combined ? [...cells, <th key={`${p.id}_pm`} className="font-normal normal-case">{p.name} mark<div className="text-[10px]">/ {p.max} → weighted</div></th>] : cells;
+              })}</tr>
             </thead>
             <tbody>{cands.map((c) => {
               const m = M.get(String(c.id));
@@ -96,8 +102,12 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
                 <tr key={c.id} className={pub ? 'bg-slate-100 text-slate-500' : ''}>
                   <td>{!pub && <input type="hidden" name={`seen_${c.id}`} value="1" />}{c.full_name}<div className="text-xs text-gray-500">{c.assignment_number}{pub && <> · <Badge color="green">Published</Badge></>}</div></td>
                   {es.parts.flatMap((p) => {
-                    const secs = sections;
-                    if (secs.length) return secs.map((s) => {
+                    const secs = secOf(p.id);
+                    const um = U.get(`${c.id}_${p.id}`);
+                    const pm = um?.marks === null || um?.marks === undefined ? null : Number(um.marks);
+                    const weighted = pm === null ? null : Math.round((pm / p.max) * p.weight * (es.weight_type === 'MARK' ? 1 : Number(es.max_marks) / 100) * 100) / 100;
+                    const markCell = combined ? [<td key={`${p.id}_pm`} className="whitespace-nowrap text-sm">{pm === null ? '—' : <>{pm}<span className="text-xs text-slate-500"> → {weighted}</span>{pm < p.pass && <span className="text-xs text-red-700"> below {p.pass}</span>}</>}</td>] : [];
+                    if (secs.length) return [...secs.map((s) => {
                       const ch = ratingChoices(s);
                       const nm = `r_${c.id}_${p.id}_${s.id}`;
                       const v = R.get(`${c.id}_${p.id}_${s.id}`);
@@ -105,14 +115,13 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
                       return <td key={`${p.id}_${s.id}`}>{ch
                         ? <select name={nm} defaultValue={v === null || v === undefined ? '' : String(Number(v))} disabled={off} className="input w-20" aria-label={lbl}><option value="">–</option>{ch.map((x) => <option key={x} value={x}>{x}</option>)}</select>
                         : <input name={nm} type="number" step="0.5" min={s.min_rating} max={s.max_rating} defaultValue={v ?? ''} disabled={off} className="input w-20" aria-label={lbl} />}</td>;
-                    });
-                    const um = U.get(`${c.id}_${p.id}`);
-                    return [<td key={p.id}><input name={`u_${c.id}_${p.id}`} type="number" step="0.5" min="0" max={p.max} defaultValue={um ? um.marks ?? '' : es.combined_flag === 'Y' ? '' : legacy(c.id)} disabled={off} className="input w-20" aria-label={`${c.full_name} ${p.name} marks`} /></td>];
+                    }), ...markCell];
+                    return [<td key={p.id}><input name={`u_${c.id}_${p.id}`} type="number" step="0.5" min="0" max={p.max} defaultValue={um ? um.marks ?? '' : combined ? '' : legacy(c.id)} disabled={off} className="input w-20" aria-label={`${c.full_name} ${p.name} marks`} /></td>, ...markCell];
                   })}
                   <td><input type="checkbox" name={`ab_${c.id}`} value="Y" defaultChecked={absent} disabled={off} aria-label={`${c.full_name} absent`} /></td>
-                  <td className="font-semibold">{m?.marks ?? (absent ? 'AB' : '—')}</td>
+                  <td className="font-semibold">{m?.marks ?? (absent ? 'AB' : '—')}{m?.grade_rating && <> <Badge color="blue">{m.grade_rating}</Badge></>}</td>
                   <td>{m?.pass_flag === 'Y' ? <Badge color="green">Pass</Badge> : m?.pass_flag === 'N' || absent ? <Badge color="red">{absent ? 'Absent' : 'Fail'}</Badge> : ''}</td>
-                  <td><Badge color={STATUS_COLOR[c.result_code]}>{L('EXAM_RESULT', c.result_code)}</Badge> {c.percentage !== null && <span className="text-xs">{c.percentage}%</span>}</td>
+                  <td><Badge color={STATUS_COLOR[c.result_code]}>{L('EXAM_RESULT', c.result_code)}</Badge> {c.percentage !== null && <span className="text-xs">{c.percentage}%</span>}{c.grade_rating && <> <Badge color="purple">{c.grade_rating}</Badge></>}</td>
                 </tr>);
             })}</tbody>
           </table>

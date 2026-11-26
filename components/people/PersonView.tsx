@@ -429,7 +429,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
         <tbody>{rows.map((r) => (
           <tr key={r.id}><td>{fmtDate(r.exam_date)}</td><td><Link className="link" href={`/exams/${r.exam_id}?tab=results`}>{r.name}</Link></td>
             <td>{L('EXAM_TYPE', r.exam_type_code)}</td><td>{r.ay_name}</td><td>{r.total_marks}</td><td>{r.percentage}</td>
-            <td><Badge color={STATUS_COLOR[r.result_code]}>{L('EXAM_RESULT', r.result_code)}</Badge>{r.promoted_flag === 'Y' && <Badge color="purple">Promoted{r.promoted_to ? ` to ${r.promoted_to}` : ''}</Badge>}</td>
+            <td><Badge color={STATUS_COLOR[r.result_code]}>{L('EXAM_RESULT', r.result_code)}</Badge>{r.grade_rating && <Badge color="blue">{r.grade_rating}</Badge>}{r.promoted_flag === 'Y' && <Badge color="purple">Promoted{r.promoted_to ? ` to ${r.promoted_to}` : ''}</Badge>}</td>
             <td>{r.published_flag === 'Y' ? <Badge color="green">Published</Badge> : <Badge color="gray">Not yet</Badge>}</td>
             <td>{canRoll && r.published_flag === 'Y' && (
               <form action={rollbackCandidate.bind(null, r.exam_id, r.id)}><Back to={back} />

@@ -3,7 +3,8 @@ import { sql, type Row } from './db';
 import { can, type SessionUser } from './auth';
 
 /** The 7 stops of the exam setup. */
-export const EXAM_STOPS = ['Exam Details', 'Grade Eligibility', 'Student Eligibility', 'Subjects', 'Evaluation Template', 'Targeted Outcome', 'Examiners'] as const;
+export const EXAM_STOPS = ['Exam Details', 'Grade Eligibility', 'Student Eligibility', 'Subjects', 'Evaluation Template', 'Grading Range', 'Targeted Outcome', 'Examiners'] as const;
+export const LAST_STOP = EXAM_STOPS.length;
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -18,7 +19,7 @@ export async function examGrades(examId: string, asOf: string) {
     order by g.sequence_no nulls last, g.name`;
 }
 
-export type Part = { id: string; subjectId: string; name: string; weight: number; max: number; pass: number };
+export type Part = { id: string; subjectId: string; name: string; weight: number; max: number; pass: number; templateId: string | null };
 export type ExamSubject = Row & { parts: Part[]; subject_name: string };
 
 /** Subjects of an exam (optionally for one grade; subjects without a grade apply to all grades), with their parts. */
@@ -31,8 +32,8 @@ export async function examSubjects(examId: string, gradeId?: string | null): Pro
     ...r,
     subject_name: r.subject_name as string,
     parts: r.combined_flag === 'Y'
-      ? comps.filter((c) => String(c.exam_subject_id) === String(r.id)).map((c) => ({ id: String(c.id), subjectId: String(c.subject_id), name: c.subject_name, weight: Number(c.weight), max: Number(c.max_marks), pass: Number(c.pass_marks) }))
-      : [{ id: '0', subjectId: String(r.subject_id), name: r.subject_name as string, weight: 100, max: Number(r.max_marks), pass: Number(r.pass_marks) }],
+      ? comps.filter((c) => String(c.exam_subject_id) === String(r.id)).map((c) => ({ id: String(c.id), subjectId: String(c.subject_id), name: c.subject_name, weight: Number(c.weight), max: Number(c.max_marks), pass: Number(c.pass_marks), templateId: c.evaluation_template_id ? String(c.evaluation_template_id) : null }))
+      : [{ id: '0', subjectId: String(r.subject_id), name: r.subject_name as string, weight: 100, max: Number(r.max_marks), pass: Number(r.pass_marks), templateId: r.evaluation_template_id ? String(r.evaluation_template_id) : null }],
   })) as ExamSubject[];
 }
 
@@ -45,6 +46,18 @@ export async function templateSections(templateId: string | null | undefined): P
     id: String(s.id), name: s.name, weight_pct: Number(s.weight_pct), min_rating: Number(s.min_rating), max_rating: Number(s.max_rating),
     input_type: s.input_type === 'MARK' ? 'MARK' : 'RATING',
   }));
+}
+
+/** Sections of each part's template (part id → sections; empty = marks entered directly). */
+export async function partSections(parts: Part[]) {
+  const cache = new Map<string, Section[]>();
+  const m = new Map<string, Section[]>();
+  for (const p of parts) {
+    if (!p.templateId) { m.set(p.id, []); continue; }
+    if (!cache.has(p.templateId)) cache.set(p.templateId, await templateSections(p.templateId));
+    m.set(p.id, cache.get(p.templateId)!);
+  }
+  return m;
 }
 
 /** Total of the section weights (must be 100 % before the template can be used). */
@@ -75,6 +88,30 @@ export function subjectScore(es: ExamSubject, partMarks: (number | null)[]) {
   return { marks, pass };
 }
 
+export type Band = { mark_from: number; mark_to: number; rating: string };
+export async function gradingBands(scaleId: string | null | undefined): Promise<Band[]> {
+  if (!scaleId) return [];
+  return (await sql`select * from grading_band where scale_id = ${scaleId} order by mark_from desc`).map((b) => ({ mark_from: Number(b.mark_from), mark_to: Number(b.mark_to), rating: b.rating }));
+}
+/** The rating of a mark out of 100 (null when no range covers it). */
+export function ratingFor(bands: Band[], pct: number | null | undefined) {
+  if (pct === null || pct === undefined || Number.isNaN(Number(pct))) return null;
+  const v = Math.round(Number(pct) * 100) / 100;
+  return bands.find((b) => v >= b.mark_from && v <= b.mark_to)?.rating ?? null;
+}
+
+/** Re-rate the unpublished candidates (and their subject marks) of an exam with its grading range. */
+export async function applyGrades(tx: typeof sql, examId: string) {
+  const [e] = await tx`select grading_scale_id from exam where id = ${examId}`;
+  const bands = await gradingBands(e?.grading_scale_id);
+  for (const c of await tx`select id, percentage from exam_candidate where exam_id = ${examId} and published_flag = 'N'`)
+    await tx`update exam_candidate set grade_rating = ${ratingFor(bands, c.percentage)} where id = ${c.id}`;
+  for (const m of await tx`select m.candidate_id, m.exam_subject_id, m.marks, s.max_marks from exam_mark m join exam_candidate c on c.id = m.candidate_id
+      join exam_subject s on s.id = m.exam_subject_id where c.exam_id = ${examId} and c.published_flag = 'N'`)
+    await tx`update exam_mark set grade_rating = ${m.marks === null ? null : ratingFor(bands, (Number(m.marks) / Number(m.max_marks)) * 100)}
+      where candidate_id = ${m.candidate_id} and exam_subject_id = ${m.exam_subject_id}`;
+}
+
 /** Recompute a candidate's total, % and result from the subject marks of their grade. */
 export async function recomputeCandidate(tx: typeof sql, exam: Row, candidateId: string) {
   const [c] = await tx`select * from exam_candidate where id = ${candidateId}`;
@@ -93,7 +130,8 @@ export async function recomputeCandidate(tx: typeof sql, exam: Row, candidateId:
   const pct = max ? r2((total / max) * 100) : 0;
   const result = allAbsent ? 'ABSENT' : !anyMark || pending ? (anyMark && !allPass ? 'FAIL' : 'PENDING')
     : allPass && (exam.pass_percentage === null || pct >= Number(exam.pass_percentage)) ? 'PASS' : 'FAIL';
-  await tx`update exam_candidate set total_marks = ${anyMark ? r2(total) : null}, percentage = ${anyMark ? pct : null}, result_code = ${result} where id = ${candidateId}`;
+  const rating = anyMark ? ratingFor(await gradingBands(exam.grading_scale_id), pct) : null;
+  await tx`update exam_candidate set total_marks = ${anyMark ? r2(total) : null}, percentage = ${anyMark ? pct : null}, result_code = ${result}, grade_rating = ${rating} where id = ${candidateId}`;
 }
 
 /** Grades the user evaluates in this exam (examiner), or 'ALL' for exam administrators / when no examiners are set for a grade. */

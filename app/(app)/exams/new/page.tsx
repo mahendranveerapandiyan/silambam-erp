@@ -13,11 +13,11 @@ export default async function NewExam({ searchParams }: { searchParams: SP }) {
   const ay = one(sp.ay) ?? String((await academicYearOn(u.enterpriseId, asOf))?.id ?? '');
   return (
     <div className="max-w-6xl">
-      <PageHeader title="Create Exam" subtitle="Seven stops: details, grades, student eligibility, subjects, evaluation template, outcome and examiners. The exam stays a draft until the last stop is finished."
+      <PageHeader title="Create Exam" subtitle="Eight stops: details, grades, student eligibility, subjects, evaluation template, grading range, outcome and examiners. The exam stays a draft until the last stop is finished."
         actions={<Link href="/exams" className="btn">All exams</Link>} />
       <Flash sp={sp} />
       <Stepper examId={null} step={1} reached={0} />
-      <h2 className="h2">Stop 1 of 7 · Exam Details</h2>
+      <h2 className="h2">Stop 1 of 8 · Exam Details</h2>
       <DetailsForm u={u} defaultAy={ay || undefined} asOf={asOf} readOnly={false} />
     </div>
   );

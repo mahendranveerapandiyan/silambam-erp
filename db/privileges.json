@@ -610,5 +610,12 @@
   "module": "Exams",
   "defaults": {},
   "seq": 465
+ },
+ {
+  "code": "CD_GRADING_RANGE_PRV",
+  "name": "Grading Ranges",
+  "module": "Exams",
+  "defaults": {},
+  "seq": 466
  }
 ]

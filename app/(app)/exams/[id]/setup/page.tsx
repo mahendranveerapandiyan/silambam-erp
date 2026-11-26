@@ -7,7 +7,7 @@ import { lk } from '@/lib/lookups';
 import { refOptions } from '@/lib/dt';
 import { examOptions } from '@/lib/examOptions';
 import { activeStaffPeriods } from '@/lib/people';
-import { EXAM_STOPS, examGrades, examSubjects, templateSections, marksEntered } from '@/lib/examSetup';
+import { EXAM_STOPS, LAST_STOP, examGrades, examSubjects, templateSections, marksEntered, gradingBands } from '@/lib/examSetup';
 import { Stepper, DetailsForm, Buttons } from '@/components/ExamSetup';
 import { fmtDate } from '@/lib/util';
 import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s as one, here } from '@/components/ui';
@@ -15,7 +15,7 @@ import { ConfirmButton, ShowFor, SubjectDefaults } from '@/components/client';
 import { MultiPick } from '@/components/MultiPick';
 import {
   saveExamGrades, saveExamEligibility, saveExamSubject, deleteExamSubject, fillExamSubjects, finishExamSubjects,
-  saveExamTemplates, saveExamOutcome, saveExamExaminers, deleteExam,
+  saveExamTemplates, saveExamGrading, saveExamOutcome, saveExamExaminers, deleteExam,
 } from '../../setupActions';
 
 export default async function ExamSetup({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
@@ -26,8 +26,8 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
   if (!exam) notFound();
   const asOf = await getAsOf();
   const L = await lk();
-  const reachedStep = Number(exam.setup_step ?? 7);
-  const step = Math.min(Math.max(Number(one(sp.step) ?? 1) || 1, 1), Math.min(7, reachedStep + 1));
+  const reachedStep = Number(exam.setup_step ?? LAST_STOP);
+  const step = Math.min(Math.max(Number(one(sp.step) ?? 1) || 1, 1), Math.min(LAST_STOP, reachedStep + 1));
   const closed = ['PUBLISHED', 'CANCELLED'].includes(exam.status_code);
   const readOnly = closed || !can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
   const back = here(`/exams/${id}/setup`, { ...sp, step: String(step) });
@@ -42,14 +42,15 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
       <Flash sp={sp} />
       <Stepper examId={id} step={step} reached={reachedStep} />
       {closed && <div className="card mb-3 border-amber-300 bg-amber-50 text-sm">This exam is {L('EXAM_STATUS', exam.status_code).toLowerCase()} – its setup is shown read-only.</div>}
-      <h2 className="h2">Stop {step} of 7 · {EXAM_STOPS[step - 1]}</h2>
+      <h2 className="h2">Stop {step} of {LAST_STOP} · {EXAM_STOPS[step - 1]}</h2>
       {step === 1 && <DetailsForm u={u} exam={exam} asOf={asOf} readOnly={readOnly} />}
       {step === 2 && <GradeStop />}
       {step === 3 && <EligibilityStop />}
       {step === 4 && <SubjectStop />}
       {step === 5 && <TemplateStop />}
-      {step === 6 && <OutcomeStop />}
-      {step === 7 && <ExaminerStop />}
+      {step === 6 && <GradingStop />}
+      {step === 7 && <OutcomeStop />}
+      {step === 8 && <ExaminerStop />}
       {exam.status_code !== 'PUBLISHED' && can(u, 'CD_EXAM_SETUP_PRV', 'WRITE') && (
         <form action={deleteExam.bind(null, id)} className="mt-6"><Back to={back} />
           <ConfirmButton className="btn btn-danger btn-sm" message={`Delete the exam ${exam.name}${exam.status_code === 'DRAFT' ? ' (draft)' : ' with its assigned students and marks? Unpaid exam fees are cancelled'}? This cannot be undone.`}>{exam.status_code === 'DRAFT' ? 'Delete draft' : 'Delete exam'}</ConfirmButton></form>
@@ -188,42 +189,71 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
     if (!grades.length) return <div className="card muted">Choose the grades first (stop 2).</div>;
     const subs = await examSubjects(id);
     if (!subs.length) return <div className="card muted">Add the subjects first (stop 4).</div>;
-    const temps = await sql`select t.* from evaluation_template t where t.enterprise_id = ${u.enterpriseId} and (t.active_flag = 'Y' or t.id in (select evaluation_template_id from exam_subject where exam_id = ${id})) order by t.name`;
+    const temps = await sql`select t.* from evaluation_template t where t.enterprise_id = ${u.enterpriseId} and (t.active_flag = 'Y'
+      or t.id in (select evaluation_template_id from exam_subject where exam_id = ${id})
+      or t.id in (select c.evaluation_template_id from exam_subject_component c join exam_subject es on es.id = c.exam_subject_id where es.exam_id = ${id})) order by t.name`;
     const secs = new Map<string, Awaited<ReturnType<typeof templateSections>>>();
     for (const t of temps) secs.set(String(t.id), await templateSections(String(t.id)));
+    const opts = temps.filter((t) => secs.get(String(t.id))!.length > 0);
     const marked = new Set((await sql`select distinct m.exam_subject_id from exam_mark m join exam_candidate c on c.id = m.candidate_id where c.exam_id = ${id} and (m.marks is not null or m.absent_flag = 'Y')`).map((r) => String(r.exam_subject_id)));
     const groups = [...grades.map((g) => ({ key: String(g.grade_id), name: g.name as string })), { key: 'null', name: 'All grades (older exam)' }]
       .map((g) => ({ ...g, list: subs.filter((x) => String(x.grade_id) === g.key) })).filter((g) => g.list.length);
+    const summary = (t: string | null) => { const l = t ? secs.get(t) : null; return l ? l.map((z) => `${z.name} ${z.weight_pct}% (${z.input_type === 'MARK' ? 'marks' : 'rating'} ${z.min_rating}–${z.max_rating})`).join(' · ') : 'Direct marks'; };
     return (
       <form action={saveExamTemplates.bind(null, id)} className="space-y-3">
         <Back to={back} />
-        <p className="muted">Choose how each subject of each grade is evaluated: an evaluation template (examiners fill in its sections – manual marks or ratings – and the mark is worked out from the weights) or direct marks. Any template can be used for any subject; for a combined subject it is used for each part. {can(u, 'CD_EVALUATION_TEMPLATE_PRV') && <Link className="link" href="/exams/templates">Manage templates</Link>}</p>
+        <p className="muted">Choose how each subject of each grade is evaluated: an evaluation template (examiners fill in its sections – manual marks or ratings – and the mark is worked out from the weights) or direct marks. A combined subject gets a template for <b>each</b> of its subjects; their marks are then combined by the weights set in stop 4. {can(u, 'CD_EVALUATION_TEMPLATE_PRV') && <Link className="link" href="/exams/templates">Manage templates</Link>}</p>
         {groups.map((g) => (
           <div key={g.key} className="card overflow-x-auto">
             <h3 className="mb-2 font-semibold">{g.name}</h3>
-            <table className="tbl"><thead><tr><th>Subject</th><th className="w-80">Evaluation *</th><th>Sections</th></tr></thead>
-              <tbody>{g.list.map((x) => {
-                const opts = temps.filter((t) => secs.get(String(t.id))!.length > 0);
-                const cur = x.evaluation_chosen_flag === 'Y' ? (x.evaluation_template_id ? String(x.evaluation_template_id) : 'NONE') : '';
-                const chosen = x.evaluation_template_id ? secs.get(String(x.evaluation_template_id)) : null;
+            <table className="tbl"><thead><tr><th>Subject</th><th>Part (combined)</th><th className="w-80">Evaluation *</th><th>Sections</th></tr></thead>
+              <tbody>{g.list.flatMap((x) => x.parts.map((p, i) => {
+                const name = x.combined_flag === 'Y' ? `t_${x.id}_${p.id}` : `t_${x.id}`;
+                const cur = x.evaluation_chosen_flag === 'Y' || p.templateId ? (p.templateId ?? 'NONE') : '';
                 const lockedRow = readOnly || marked.has(String(x.id));
                 return (
-                  <tr key={x.id}>
-                    <td>{x.subject_name}{x.combined_flag === 'Y' && <div className="text-xs text-slate-500">{x.parts.map((p) => p.name).join(' + ')}</div>}{marked.has(String(x.id)) && <div className="text-xs text-amber-700">marks entered – locked</div>}</td>
+                  <tr key={`${x.id}_${p.id}`}>
+                    {i === 0 && <td rowSpan={x.parts.length}>{x.subject_name}{x.combined_flag === 'Y' && <div className="text-xs text-slate-500">combined · {x.weight_type === 'MARK' ? 'weights in marks' : 'weights in %'}</div>}{marked.has(String(x.id)) && <div className="text-xs text-amber-700">marks entered – locked</div>}</td>}
+                    <td className="text-sm">{x.combined_flag === 'Y' ? <>{p.name}<div className="text-xs text-slate-500">weight {x.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight} %`} · out of {p.max}, pass {p.pass}</div></> : '—'}</td>
                     <td>
-                      {lockedRow && <input type="hidden" name={`t_${x.id}`} value={cur} />}
-                      <select name={`t_${x.id}`} defaultValue={cur} disabled={lockedRow} className="input" aria-label={`${g.name} ${x.subject_name} evaluation`}>
+                      {lockedRow && <input type="hidden" name={name} value={cur} />}
+                      <select name={name} defaultValue={cur} disabled={lockedRow} className="input" aria-label={`${g.name} ${x.subject_name}${x.combined_flag === 'Y' ? ` ${p.name}` : ''} evaluation`}>
                         <option value="">— Select —</option>
                         <option value="NONE">Direct marks – no template</option>
                         {opts.map((t) => <option key={t.id} value={t.id}>{t.name}{t.active_flag === 'N' ? ' (inactive)' : ''}</option>)}
                       </select>
                       {!opts.length && <div className="text-xs text-slate-500">No evaluation template has sections yet.</div>}
                     </td>
-                    <td className="text-xs">{chosen ? <>{chosen.map((z) => `${z.name} ${z.weight_pct}% (${z.input_type === 'MARK' ? 'marks' : 'rating'} ${z.min_rating}–${z.max_rating})`).join(' · ')}{x.combined_flag === 'Y' && <div className="text-slate-500">used for each part: {x.parts.map((p) => p.name).join(', ')}</div>}</> : x.evaluation_chosen_flag === 'Y' ? 'Direct marks' : ''}</td>
+                    <td className="text-xs">{cur ? summary(p.templateId) : ''}</td>
                   </tr>);
-              })}</tbody></table>
+              }))}</tbody></table>
           </div>
         ))}
+        {!readOnly && <Buttons />}
+      </form>
+    );
+  }
+
+  async function GradingStop() {
+    const scales = await sql`select s.*, (select count(*) from grading_band b where b.scale_id = s.id)::int bands from grading_scale s
+      where s.enterprise_id = ${u.enterpriseId} and (s.active_flag = 'Y' or s.id = ${exam.grading_scale_id ?? 0}) order by s.name`;
+    const bands = new Map<string, Awaited<ReturnType<typeof gradingBands>>>();
+    for (const sc of scales) bands.set(String(sc.id), await gradingBands(String(sc.id)));
+    const cur = String(exam.grading_scale_id ?? '');
+    return (
+      <form action={saveExamGrading.bind(null, id)} className="card space-y-3">
+        <Back to={back} />
+        <p className="muted">The rating given for each range of marks (out of 100 – a subject&apos;s mark and the overall % are converted to 100). Shown with the results, on the student profile and the portal. {can(u, 'CD_GRADING_RANGE_PRV') && <Link className="link" href="/exams/grading">Manage grading ranges</Link>}</p>
+        <fieldset disabled={readOnly} className="space-y-2">
+          <label className="flex items-start gap-2 rounded border p-3"><input type="radio" name="grading_scale_id" value="" defaultChecked={!cur} /> <span><b>No grading range</b><div className="text-sm text-slate-500">Only marks, % and pass / fail.</div></span></label>
+          {scales.map((sc) => (
+            <label key={sc.id} className={`flex items-start gap-2 rounded border p-3 ${String(sc.id) === cur ? 'border-sky-500 bg-sky-50' : ''}`}>
+              <input type="radio" name="grading_scale_id" value={sc.id} defaultChecked={String(sc.id) === cur} disabled={!sc.bands} />
+              <span className="flex-1"><b>{sc.name}</b> <span className="font-mono text-xs text-slate-500">{sc.code}</span>
+                <div className="mt-1 flex flex-wrap gap-1 text-xs">{bands.get(String(sc.id))!.map((b) => <Badge key={`${b.mark_from}`} color="gray">{b.mark_from}–{b.mark_to}: <b>{b.rating}</b></Badge>)}{!sc.bands && <span className="text-slate-500">no ranges yet</span>}</div>
+              </span>
+            </label>))}
+        </fieldset>
         {!readOnly && <Buttons />}
       </form>
     );

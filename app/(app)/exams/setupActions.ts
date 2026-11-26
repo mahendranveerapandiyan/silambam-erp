@@ -3,7 +3,7 @@ import { sql, type Row } from '@/lib/db';
 import { requirePriv, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj } from '@/lib/util';
 import { cancelDemandIfUnpaid } from '@/lib/fees';
-import { marksEntered, templateSections, weightTotal, examGrades, examSubjects } from '@/lib/examSetup';
+import { marksEntered, templateSections, weightTotal, examGrades, examSubjects, applyGrades } from '@/lib/examSetup';
 
 const num = (v: string | null | undefined) => (v === null || v === undefined || v === '' ? null : Number(v));
 const stepUrl = (id: string, step: number, extra = '') => `/exams/${id}/setup?step=${step}${extra}`;
@@ -142,8 +142,12 @@ export async function saveExamSubject(id: string, esId: string | null, fd: FormD
       let sid = esId;
       if (esId) await tx`update exam_subject set ${tx(v)} where id = ${esId} and exam_id = ${id}`;
       else sid = String((await tx`insert into exam_subject ${tx({ ...v, exam_id: id })} returning id`)[0].id);
+      const keep = new Map((await tx`select subject_id, evaluation_template_id from exam_subject_component where exam_subject_id = ${sid}`).map((r) => [String(r.subject_id), r.evaluation_template_id]));
       await tx`delete from exam_subject_component where exam_subject_id = ${sid}`;
-      for (const [i, p] of parts.entries()) await tx`insert into exam_subject_component ${tx({ ...p, exam_subject_id: sid, display_seq: i })}`;
+      for (const [i, p] of parts.entries()) await tx`insert into exam_subject_component ${tx({ ...p, exam_subject_id: sid, display_seq: i, evaluation_template_id: keep.get(String(p.subject_id)) ?? null })}`;
+      // a part added or changed needs its evaluation chosen again
+      if (combined && parts.some((p) => !keep.has(String(p.subject_id)))) await tx`update exam_subject set evaluation_chosen_flag = 'N' where id = ${sid}`;
+      if (combined) await tx`update exam_subject set evaluation_template_id = null where id = ${sid}`;
     });
     const [s] = await sql`select name from subject_f where id = ${o.subject_id} order by effective_start_date desc limit 1`;
     return { to: stepUrl(id, 4, `&grade=${o.grade_id}`), msg: `${s?.name ?? 'The subject'} has been ${esId ? 'updated' : 'added'}${combined ? ` as a combination of ${parts.length} subjects` : ''}.` };
@@ -190,8 +194,8 @@ export async function fillExamSubjects(id: string, fd: FormData) {
         for (const s of src) {
           const [ns] = await tx`insert into exam_subject (exam_id, grade_id, subject_id, subject_type_code, max_marks, pass_marks, display_seq, combined_flag, weight_type, evaluation_template_id, evaluation_chosen_flag)
             values (${id}, ${g}, ${s.subject_id}, ${s.subject_type_code}, ${s.max_marks}, ${s.pass_marks}, ${s.display_seq}, ${s.combined_flag}, ${s.weight_type}, ${s.evaluation_template_id}, ${s.evaluation_chosen_flag}) returning id`;
-          await tx`insert into exam_subject_component (exam_subject_id, subject_id, weight, max_marks, pass_marks, display_seq)
-            select ${ns.id}, subject_id, weight, max_marks, pass_marks, display_seq from exam_subject_component where exam_subject_id = ${s.id}`;
+          await tx`insert into exam_subject_component (exam_subject_id, subject_id, weight, max_marks, pass_marks, display_seq, evaluation_template_id)
+            select ${ns.id}, subject_id, weight, max_marks, pass_marks, display_seq, evaluation_template_id from exam_subject_component where exam_subject_id = ${s.id}`;
           n++;
         }
       }
@@ -214,7 +218,7 @@ export async function finishExamSubjects(id: string, fd: FormData) {
   });
 }
 
-/** Stop 5 – the evaluation template of each subject of each grade (or direct marks). */
+/** Stop 5 – the evaluation template of each subject of each grade (each part of a combined subject has its own), or direct marks. */
 export async function saveExamTemplates(id: string, fd: FormData) {
   const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
   await act(backOf(fd), async () => {
@@ -222,32 +226,40 @@ export async function saveExamTemplates(id: string, fd: FormData) {
     const o = formObj(fd);
     const subs = await examSubjects(id);
     const gname = new Map((await examGrades(id, e.exam_date)).map((g) => [String(g.grade_id), g.name as string]));
-    const label = (s: (typeof subs)[number]) => `${s.subject_name} (${s.grade_id === null ? 'all grades' : gname.get(String(s.grade_id)) ?? ''})`;
-    const missing = subs.filter((s) => !o[`t_${s.id}`]);
-    if (missing.length && fd.get('_next')) throw new Error(`Choose the evaluation template (or direct marks) for ${missing.map(label).join(', ')}.`);
-    const checked = new Map<string, string[]>();
+    const label = (s: (typeof subs)[number], part?: string) => `${s.subject_name}${part && part !== s.subject_name ? ` › ${part}` : part ? ' (part)' : ''} (${s.grade_id === null ? 'all grades' : gname.get(String(s.grade_id)) ?? ''})`;
+    const field = (s: (typeof subs)[number], pid: string) => (s.combined_flag === 'Y' ? `t_${s.id}_${pid}` : `t_${s.id}`);
+    const missing = subs.flatMap((s) => s.parts.filter((p) => !o[field(s, p.id)]).map((p) => label(s, s.combined_flag === 'Y' ? p.name : undefined)));
+    if (missing.length && fd.get('_next')) throw new Error(`Choose the evaluation template (or direct marks) for ${missing.join(', ')}.`);
+    const ok = new Set<string>();
+    const check = async (tx: typeof sql, t: string) => {
+      if (ok.has(t)) return;
+      const [tp] = await tx`select * from evaluation_template where id = ${t} and enterprise_id = ${u.enterpriseId}`;
+      if (!tp) throw new Error('Template not found');
+      const secs = await templateSections(t);
+      if (!secs.length) throw new Error(`${tp.name} has no sections yet – add them under Exams › Evaluation Templates first.`);
+      const tot = weightTotal(secs);
+      if (Math.abs(tot - 100) > 0.001) throw new Error(`The section weights of ${tp.name} add up to ${tot} % instead of 100 % – fix the template first.`);
+      ok.add(t);
+    };
     let n = 0;
     await sql.begin(async (tx) => {
       for (const s of subs) {
-        const v = o[`t_${s.id}`];
-        if (!v) continue;
-        const t = v === 'NONE' ? null : v;
-        if (String(t ?? '') !== String(s.evaluation_template_id ?? '')) {
-          const [m] = await tx`select 1 from exam_mark m join exam_candidate c on c.id = m.candidate_id where m.exam_subject_id = ${s.id} and (m.marks is not null or m.absent_flag = 'Y') limit 1`;
-          if (m) throw new Error(`Marks have already been entered for ${label(s)} – its evaluation template can no longer be changed.`);
+        const vals = s.parts.map((p) => o[field(s, p.id)]);
+        if (vals.every((v) => !v)) continue;
+        const changed = s.parts.some((p, i) => String(vals[i] === 'NONE' ? '' : vals[i] ?? p.templateId ?? '') !== String(p.templateId ?? ''));
+        if (changed) {
+          const [m] = await tx`select 1 from exam_mark m where m.exam_subject_id = ${s.id} and (m.marks is not null or m.absent_flag = 'Y') limit 1`;
+          if (m) throw new Error(`Marks have already been entered for ${label(s)} – its evaluation can no longer be changed.`);
         }
-        if (t) {
-          if (!checked.has(t)) {
-            const [tp] = await tx`select * from evaluation_template where id = ${t} and enterprise_id = ${u.enterpriseId}`;
-            if (!tp) throw new Error('Template not found');
-            const secs = await templateSections(t);
-            if (!secs.length) throw new Error(`${tp.name} has no sections yet – add them under Exams › Evaluation Templates first.`);
-            const tot = weightTotal(secs);
-            if (Math.abs(tot - 100) > 0.001) throw new Error(`The section weights of ${tp.name} add up to ${tot} % instead of 100 % – fix the template first.`);
-            checked.set(t, []);
-          }
+        for (const [i, p] of s.parts.entries()) {
+          const v = vals[i];
+          if (!v) continue;
+          const t = v === 'NONE' ? null : v;
+          if (t) await check(tx as unknown as typeof sql, t);
+          if (s.combined_flag === 'Y') await tx`update exam_subject_component set evaluation_template_id = ${t} where id = ${p.id}`;
+          else await tx`update exam_subject set evaluation_template_id = ${t} where id = ${s.id}`;
         }
-        await tx`update exam_subject set evaluation_template_id = ${t}, evaluation_chosen_flag = 'Y' where id = ${s.id}`;
+        await tx`update exam_subject set evaluation_chosen_flag = ${vals.every(Boolean) ? 'Y' : 'N'} where id = ${s.id}`;
         n++;
       }
     });
@@ -256,7 +268,30 @@ export async function saveExamTemplates(id: string, fd: FormData) {
   });
 }
 
-/** Stop 6 – Targeted Outcome. */
+/** Stop 6 – Grading Range: the rating for each range of marks (optional). */
+export async function saveExamGrading(id: string, fd: FormData) {
+  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  await act(backOf(fd), async () => {
+    const e = await editable(u, id);
+    const g = formObj(fd).grading_scale_id;
+    let name = 'No grading range';
+    if (g) {
+      const [sc] = await sql`select * from grading_scale where id = ${g} and enterprise_id = ${u.enterpriseId}`;
+      if (!sc) throw new Error('Grading range not found');
+      const [b] = await sql`select count(*)::int n from grading_band where scale_id = ${g}`;
+      if (!b.n) throw new Error(`${sc.name} has no ranges yet – add them under Exams › Grading Ranges first.`);
+      name = sc.name;
+    }
+    await sql.begin(async (tx) => {
+      await tx`update exam set grading_scale_id = ${g} where id = ${id}`;
+      await applyGrades(tx as unknown as typeof sql, id);
+    });
+    await reached(id, 6, u.username);
+    return after(fd, id, 6, `${e.name}: ${name}${g ? ' – each student and subject gets the rating of its mark range' : ''}.`);
+  });
+}
+
+/** Stop 7 – Targeted Outcome. */
 export async function saveExamOutcome(id: string, fd: FormData) {
   const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
   await act(backOf(fd), async () => {
@@ -276,12 +311,12 @@ export async function saveExamOutcome(id: string, fd: FormData) {
       await tx`update exam set outcome_code = ${outcome}, pass_percentage = ${pp} where id = ${id}`;
       for (const g of grades) await tx`update exam_grade set target_grade_id = ${outcome === 'PROMOTE' ? o[`target_${g.grade_id}`] : null} where exam_id = ${id} and grade_id = ${g.grade_id}`;
     });
-    await reached(id, 6, u.username);
-    return after(fd, id, 6, outcome === 'PROMOTE' ? `Students who pass ${e.name} will be promoted to the next grade.` : `${e.name} results will be recorded on the student profile only.`);
+    await reached(id, 7, u.username);
+    return after(fd, id, 7, outcome === 'PROMOTE' ? `Students who pass ${e.name} will be promoted to the next grade.` : `${e.name} results will be recorded on the student profile only.`);
   });
 }
 
-/** Stop 7 – Examiners per grade; finishing the setup schedules a draft exam. */
+/** Stop 8 – Examiners per grade; finishing the setup schedules a draft exam. */
 export async function saveExamExaminers(id: string, fd: FormData) {
   const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
   await act(backOf(fd), async () => {
@@ -293,8 +328,8 @@ export async function saveExamExaminers(id: string, fd: FormData) {
       for (const g of grades)
         for (const p of new Set(fd.getAll(`ex_${g.grade_id}`).map(String).filter(Boolean))) { await tx`insert into exam_examiner (exam_id, grade_id, person_id) values (${id}, ${g.grade_id}, ${p})`; n++; }
     });
-    await reached(id, 7, u.username);
-    if (!fd.get('_next')) return { to: stepUrl(id, 7), msg: `${n} examiner assignment(s) have been saved.` };
+    await reached(id, 8, u.username);
+    if (!fd.get('_next')) return { to: stepUrl(id, 8), msg: `${n} examiner assignment(s) have been saved.` };
     // finish: check the stops that are required
     if (!grades.length) throw new Error('Choose the grades that may sit the exam (stop 2) first.');
     const have = new Set((await sql`select distinct coalesce(grade_id::text, 'ALL') g from exam_subject where exam_id = ${id}`).map((r) => r.g));

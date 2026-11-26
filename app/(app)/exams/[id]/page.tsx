@@ -18,7 +18,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
   const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_EXAM_CANDIDATE_PRV'], 'READ');
   const { id } = await params;
   const sp = await searchParams;
-  const [exam] = await sql`select e.*, y.name ay_name
+  const [exam] = await sql`select e.*, y.name ay_name, (select name from grading_scale g where g.id = e.grading_scale_id) grading_name
     from exam e join academic_year y on y.id = e.academic_year_id where e.id = ${id} and e.enterprise_id = ${u.enterpriseId}`;
   if (!exam) notFound();
   const asOf = await getAsOf();
@@ -27,7 +27,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
   const back = here(`/exams/${id}`, sp);
   const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
   const canMarks = can(u, 'CD_EXAM_CANDIDATE_PRV', 'WRITE') || admin;
-  if (exam.status_code === 'DRAFT') redirect(`/exams/${id}/setup?step=${Math.min(7, Number(exam.setup_step) + 1)}`);
+  if (exam.status_code === 'DRAFT') redirect(`/exams/${id}/setup?step=${Math.min(8, Number(exam.setup_step) + 1)}`);
   const grades = await examGrades(id, exam.exam_date);
   const subjects = await examSubjects(id);
   const mine = await evaluatorGrades(u, id);
@@ -49,6 +49,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
     grades.length ? `Grades: ${grades.map((g) => g.name).join(', ')}` : 'Any grade', exam.min_attendance_pct !== null && `Attendance ≥ ${exam.min_attendance_pct}%`,
     exam.fees_cleared_flag === 'Y' && 'Fees cleared', exam.min_months_in_grade !== null && `≥ ${exam.min_months_in_grade} months in grade`,
     exam.min_age !== null && `Age ≥ ${exam.min_age}`, exam.exam_type_code === 'GRADE_EXAM' && 'One grade exam per year',
+    exam.grading_name && `Grading: ${exam.grading_name}`,
     exam.outcome_code === 'PROMOTE' ? `Promotes: ${grades.map((g) => `${g.name} → ${g.target_name ?? '?'}`).join(', ') || 'to the next grade'}` : 'Result recorded on the profile only',
   ].filter(Boolean);
   const tabs: [string, string][] = [['candidates', `Candidates (${cands.length})`], ['eligible', 'Assign Students'], ['results', 'Marks & Results'], ['subjects', `Subjects (${subjects.length})`]];
@@ -143,13 +144,13 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
             return (
               <div key={g} className="card overflow-x-auto">
                 <h3 className="mb-2 font-semibold">{list[0].grade_name ?? 'Grade not set'} <span className="text-sm font-normal text-slate-500">({list.length})</span></h3>
-                <table className="tbl"><thead><tr>{rollback && <th><CheckAll name="cand" /></th>}<th>Student</th><th>Section</th>{subs.map((s) => <th key={s.id}>{s.subject_name}<div className="font-normal normal-case">max {Number(s.max_marks)} / pass {Number(s.pass_marks)}</div></th>)}<th>Total</th><th>%</th><th>Result</th><th>Published</th></tr></thead>
+                <table className="tbl"><thead><tr>{rollback && <th><CheckAll name="cand" /></th>}<th>Student</th><th>Section</th>{subs.map((s) => <th key={s.id}>{s.subject_name}<div className="font-normal normal-case">max {Number(s.max_marks)} / pass {Number(s.pass_marks)}</div></th>)}<th>Total</th><th>%</th>{exam.grading_scale_id && <th>Rating</th>}<th>Result</th><th>Published</th></tr></thead>
                   <tbody>{list.map((c) => (
                     <tr key={c.id}>
                       {rollback && <td><input type="checkbox" name="cand" value={c.id} disabled={c.published_flag !== 'Y'} aria-label={`Select ${c.full_name}`} /></td>}
                       <td>{c.full_name}<div className="text-xs text-gray-500">{c.assignment_number}</div></td><td className="text-xs">{c.section_name ?? '—'}</td>
-                      {subs.map((s) => { const m = mk.get(`${c.id}_${s.id}`); return <td key={s.id} className={m?.pass_flag === 'N' ? 'font-semibold text-red-700' : ''}>{m?.absent_flag === 'Y' ? 'AB' : m?.marks ?? '—'}</td>; })}
-                      <td>{c.total_marks ?? '—'}</td><td>{c.percentage ?? '—'}</td>
+                      {subs.map((s) => { const m = mk.get(`${c.id}_${s.id}`); return <td key={s.id} className={m?.pass_flag === 'N' ? 'font-semibold text-red-700' : ''}>{m?.absent_flag === 'Y' ? 'AB' : m?.marks ?? '—'}{m?.grade_rating && <span className="ml-1 text-xs text-sky-700">{m.grade_rating}</span>}</td>; })}
+                      <td>{c.total_marks ?? '—'}</td><td>{c.percentage ?? '—'}</td>{exam.grading_scale_id && <td>{c.grade_rating ? <Badge color="purple">{c.grade_rating}</Badge> : '—'}</td>}
                       <td><Badge color={STATUS_COLOR[c.result_code]}>{L('EXAM_RESULT', c.result_code)}</Badge>{c.promoted_flag === 'Y' && <Badge color="purple">Promoted</Badge>}</td>
                       <td>{c.published_flag === 'Y' ? <Badge color="green">Published</Badge> : <Badge color="gray">Not yet</Badge>}</td></tr>))}</tbody></table>
               </div>);

@@ -41,10 +41,10 @@ export default async function Exams({ searchParams }: { searchParams: SP }) {
         <table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Grades</th><th>Outcome</th><th>Candidates</th><th>Passed</th><th>Status</th>{write && <th></th>}</tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.id}><td>{fmtDate(r.exam_date)}</td>
-              <td><Link className="link" href={r.status_code === 'DRAFT' ? `/exams/${r.id}/setup?step=${Math.min(7, Number(r.setup_step) + 1)}` : `/exams/${r.id}`}>{r.name}</Link>{r.examiner && <> <Badge color="purple">You examine</Badge></>}</td>
+              <td><Link className="link" href={r.status_code === 'DRAFT' ? `/exams/${r.id}/setup?step=${Math.min(8, Number(r.setup_step) + 1)}` : `/exams/${r.id}`}>{r.name}</Link>{r.examiner && <> <Badge color="purple">You examine</Badge></>}</td>
               <td>{L('EXAM_TYPE', r.exam_type_code)}</td><td>{r.grades ?? 'Any'}</td><td className="text-xs">{r.outcome_code === 'PROMOTE' ? 'Promote' : 'Record only'}</td><td>{r.candidates}</td><td>{r.passed}</td>
               <td><Badge color={r.status_code === 'PUBLISHED' ? 'green' : r.status_code === 'CANCELLED' ? 'red' : r.status_code === 'DRAFT' ? 'amber' : 'blue'}>{L('EXAM_STATUS', r.status_code)}</Badge>
-                {r.status_code === 'DRAFT' && <div className="text-[10px] text-slate-500">setup stop {Math.min(7, Number(r.setup_step) + 1)} of 7</div>}</td>
+                {r.status_code === 'DRAFT' && <div className="text-[10px] text-slate-500">setup stop {Math.min(8, Number(r.setup_step) + 1)} of 8</div>}</td>
               {write && <td>{r.status_code !== 'PUBLISHED' && !r.published && (
                 <form action={deleteExam.bind(null, r.id)}><input type="hidden" name="_back" value={here('/exams', sp)} />
                   <ConfirmButton className="btn btn-sm" message={`Delete the exam ${r.name}${r.candidates ? ` with its ${r.candidates} assigned student(s) and their marks? Unpaid exam fees are cancelled` : ''}? This cannot be undone.`}>Delete</ConfirmButton></form>)}</td>}</tr>))}</tbody></table>

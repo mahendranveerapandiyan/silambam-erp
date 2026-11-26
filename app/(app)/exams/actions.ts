@@ -3,7 +3,7 @@ import { sql, type Tx } from '@/lib/db';
 import { requireUser, requirePriv, can, canAny, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj, addDays, todayISO } from '@/lib/util';
 import { eligibleStudents, examFeeFor } from '@/lib/exams';
-import { examSubjects, templateSections, partMark, subjectScore, recomputeCandidate, evaluatorGrades } from '@/lib/examSetup';
+import { examSubjects, partSections, partMark, subjectScore, recomputeCandidate, evaluatorGrades, gradingBands, ratingFor, applyGrades } from '@/lib/examSetup';
 import { addDemand, cancelDemandIfUnpaid } from '@/lib/fees';
 import { dtChange, dtDeleteLatest } from '@/lib/dt';
 import { actionByType } from '@/lib/people';
@@ -82,7 +82,8 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
     if (grades !== 'ALL' && !grades.has(gradeId)) throw new Error('You are not an examiner for this grade');
     const [es] = (await examSubjects(examId, gradeId)).filter((x) => String(x.id) === esId);
     if (!es) throw new Error('Subject not found for this grade');
-    const sections = await templateSections(es.evaluation_template_id);
+    const sections = await partSections(es.parts);
+    const bands = await gradingBands(exam.grading_scale_id);
     const examiner = admin || (await sql`select 1 from exam_examiner where exam_id = ${examId} and grade_id = ${gradeId} and person_id = ${u.personId ?? 0}`).length > 0;
     const o = formObj(fd);
     const cands = await sql`select * from exam_candidate where exam_id = ${examId} and current_grade_id = ${gradeId} and published_flag = 'N'`;
@@ -101,7 +102,7 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
         const absent = o[`ab_${c.id}`] === 'Y';
         const partMarks: (number | null)[] = [];
         for (const p of es.parts) {
-          const secs = sections;
+          const secs = sections.get(p.id);
           if (secs?.length) {
             const ratings = new Map<string, number | null>();
             for (const sec of secs) {
@@ -120,9 +121,10 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
             on conflict (candidate_id, exam_subject_id, component_id) do update set marks = excluded.marks, absent_flag = excluded.absent_flag, entered_by = excluded.entered_by, entered_at = now()`;
         }
         const sc = absent ? { marks: null, pass: false } : subjectScore(es, partMarks);
-        await tx`insert into exam_mark (candidate_id, exam_subject_id, marks, absent_flag, pass_flag, entered_by)
-          values (${c.id}, ${esId}, ${sc.marks}, ${absent ? 'Y' : 'N'}, ${sc.marks === null ? null : sc.pass ? 'Y' : 'N'}, ${u.username})
-          on conflict (candidate_id, exam_subject_id) do update set marks = excluded.marks, absent_flag = excluded.absent_flag, pass_flag = excluded.pass_flag, entered_by = excluded.entered_by, entered_at = now()`;
+        const grade = sc.marks === null ? null : ratingFor(bands, (sc.marks / Number(es.max_marks)) * 100);
+        await tx`insert into exam_mark (candidate_id, exam_subject_id, marks, absent_flag, pass_flag, grade_rating, entered_by)
+          values (${c.id}, ${esId}, ${sc.marks}, ${absent ? 'Y' : 'N'}, ${sc.marks === null ? null : sc.pass ? 'Y' : 'N'}, ${grade}, ${u.username})
+          on conflict (candidate_id, exam_subject_id) do update set marks = excluded.marks, absent_flag = excluded.absent_flag, pass_flag = excluded.pass_flag, grade_rating = excluded.grade_rating, entered_by = excluded.entered_by, entered_at = now()`;
         await recomputeCandidate(tx as unknown as typeof sql, exam, c.id);
         n++;
       }
@@ -148,7 +150,7 @@ export async function publishResults(examId: string, fd: FormData) {
           from exam_candidate c left join exam_grade eg on eg.exam_id = c.exam_id and eg.grade_id = c.current_grade_id
           where c.exam_id = ${examId} and c.result_code = 'PASS' and c.promoted_flag = 'N' and c.published_flag = 'N'`;
         const none = passed.filter((c) => !c.target);
-        if (none.length) throw new Error(`${none.length} passed student(s) have no grade to be promoted to – set it in stop 6 of the exam setup.`);
+        if (none.length) throw new Error(`${none.length} passed student(s) have no grade to be promoted to – set it in stop 7 (Targeted Outcome) of the exam setup.`);
         for (const c of passed) {
           await dtChange(tx, 'assignment', c.assignment_id, date, 'UPDATE', {
             student_grade_id: c.target, action_id: action.id, action_reason_code: 'GRADE_EXAM_PASSED', comments: `Passed ${exam.name}`,
@@ -158,6 +160,7 @@ export async function publishResults(examId: string, fd: FormData) {
           promoted++;
         }
       }
+      await applyGrades(tx as unknown as typeof sql, examId);
       const pub = await tx`update exam_candidate set published_flag = 'Y' where exam_id = ${examId} and published_flag = 'N' returning id`;
       if (!pub.length) throw new Error('All results of this exam are already published');
       published = pub.length;
