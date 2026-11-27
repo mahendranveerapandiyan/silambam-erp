@@ -63,7 +63,20 @@ export async function partSections(parts: Part[]) {
 /** Total of the section weights (must be 100 % before the template can be used). */
 export const weightTotal = (sections: Section[]) => Math.round(sections.reduce((t, s) => t + s.weight_pct, 0) * 100) / 100;
 
-/** A part's mark: from the section ratings (template) or the mark entered directly. */
+/** A template's total Min and Max (sum of its sections) – must equal the pass and maximum marks of the subject it is used for. */
+export const templateRange = (sections: Section[]) => ({
+  min: r2(sections.reduce((t, s) => t + s.min_rating, 0)),
+  max: r2(sections.reduce((t, s) => t + s.max_rating, 0)),
+});
+/** Null when the template fits the part (subject) – otherwise why not. */
+export function templateMismatch(sections: Section[], part: { max: number; pass: number }) {
+  const r = templateRange(sections);
+  if (Math.abs(r.max - part.max) > 0.001 || Math.abs(r.min - part.pass) > 0.001)
+    return `the template's Min ${r.min} / Max ${r.max} do not match the subject's Minimum ${part.pass} / Maximum ${part.max} marks`;
+  return null;
+}
+
+/** A part's mark: from the section values (template, weighted by each section's share of the total weight) or the mark entered directly. */
 export function partMark(part: Part, sections: Section[] | undefined, ratings: Map<string, number | null>, unit: number | null) {
   if (!sections?.length) return unit;
   let sum = 0;
@@ -72,7 +85,9 @@ export function partMark(part: Part, sections: Section[] | undefined, ratings: M
     if (r === null || r === undefined) return null;
     sum += (s.weight_pct * r) / s.max_rating;
   }
-  return r2((part.max * sum) / 100);
+  // weights need not total 100: each section counts by its share of the total weight
+  const tw = sections.reduce((t, s) => t + s.weight_pct, 0);
+  return tw > 0 ? r2((part.max * sum) / tw) : null;
 }
 
 /** Subject mark from its part marks; pass needs every part ≥ its pass mark and the subject ≥ its pass mark. */

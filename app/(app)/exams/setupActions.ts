@@ -3,7 +3,7 @@ import { sql, type Row } from '@/lib/db';
 import { requirePriv, type SessionUser } from '@/lib/auth';
 import { act, backOf, formObj } from '@/lib/util';
 import { cancelDemandIfUnpaid } from '@/lib/fees';
-import { marksEntered, templateSections, weightTotal, examGrades, examSubjects, applyGrades } from '@/lib/examSetup';
+import { marksEntered, templateSections, templateMismatch, examSubjects as subjectsOf, examGrades, examSubjects, applyGrades } from '@/lib/examSetup';
 
 const num = (v: string | null | undefined) => (v === null || v === undefined || v === '' ? null : Number(v));
 const stepUrl = (id: string, step: number, extra = '') => `/exams/${id}/setup?step=${step}${extra}`;
@@ -137,6 +137,17 @@ export async function saveExamSubject(id: string, esId: string | null, fd: FormD
     const v = { grade_id: o.grade_id, subject_id: o.subject_id, subject_type_code: o.subject_type_code, max_marks: max, pass_marks: pass,
       combined_flag: combined ? 'Y' : 'N', weight_type: weightType, display_seq: Number(o.display_seq ?? 0) };
     const [dup] = await sql`select 1 from exam_subject where exam_id = ${id} and grade_id = ${o.grade_id} and subject_id = ${o.subject_id} and subject_type_code = ${o.subject_type_code} and id <> ${esId ?? 0}`;
+    if (esId) {
+      // templates already chosen must still fit the new Min / Max marks
+      const [cur] = (await subjectsOf(id)).filter((x) => String(x.id) === esId);
+      const checks: { t: string; max: number; pass: number; what: string }[] = [];
+      if (cur && !combined && cur.combined_flag !== 'Y' && cur.parts[0].templateId) checks.push({ t: cur.parts[0].templateId, max, pass, what: 'the subject' });
+      if (cur && combined) for (const p of parts) { const old = cur.parts.find((x) => x.subjectId === String(p.subject_id)); if (old?.templateId) checks.push({ t: old.templateId, max: p.max_marks, pass: p.pass_marks, what: 'this part' }); }
+      for (const c of checks) {
+        const why = templateMismatch(await templateSections(c.t), c);
+        if (why) throw new Error(`The evaluation template chosen for ${c.what} would no longer fit: ${why}. Change the template in stop 5 first, or keep the marks.`);
+      }
+    }
     if (dup) throw new Error('This subject is already in the exam for this grade');
     await sql.begin(async (tx) => {
       let sid = esId;
@@ -230,16 +241,16 @@ export async function saveExamTemplates(id: string, fd: FormData) {
     const field = (s: (typeof subs)[number], pid: string) => (s.combined_flag === 'Y' ? `t_${s.id}_${pid}` : `t_${s.id}`);
     const missing = subs.flatMap((s) => s.parts.filter((p) => !o[field(s, p.id)]).map((p) => label(s, s.combined_flag === 'Y' ? p.name : undefined)));
     if (missing.length && fd.get('_next')) throw new Error(`Choose the evaluation template (or direct marks) for ${missing.join(', ')}.`);
-    const ok = new Set<string>();
-    const check = async (tx: typeof sql, t: string) => {
-      if (ok.has(t)) return;
-      const [tp] = await tx`select * from evaluation_template where id = ${t} and enterprise_id = ${u.enterpriseId}`;
-      if (!tp) throw new Error('Template not found');
-      const secs = await templateSections(t);
-      if (!secs.length) throw new Error(`${tp.name} has no sections yet – add them under Exams › Evaluation Templates first.`);
-      const tot = weightTotal(secs);
-      if (Math.abs(tot - 100) > 0.001) throw new Error(`The section weights of ${tp.name} add up to ${tot} % instead of 100 % – fix the template first.`);
-      ok.add(t);
+    const tplCache = new Map<string, { name: string; secs: Awaited<ReturnType<typeof templateSections>> }>();
+    const loadTpl = async (tx: typeof sql, t: string) => {
+      if (!tplCache.has(t)) {
+        const [tp] = await tx`select * from evaluation_template where id = ${t} and enterprise_id = ${u.enterpriseId}`;
+        if (!tp) throw new Error('Template not found');
+        const secs = await templateSections(t);
+        if (!secs.length) throw new Error(`${tp.name} has no sections yet – add them under Exams › Evaluation Templates first.`);
+        tplCache.set(t, { name: tp.name, secs });
+      }
+      return tplCache.get(t)!;
     };
     let n = 0;
     await sql.begin(async (tx) => {
@@ -255,7 +266,11 @@ export async function saveExamTemplates(id: string, fd: FormData) {
           const v = vals[i];
           if (!v) continue;
           const t = v === 'NONE' ? null : v;
-          if (t) await check(tx as unknown as typeof sql, t);
+          if (t) {
+            const tp = await loadTpl(tx as unknown as typeof sql, t);
+            const why = templateMismatch(tp.secs, p);
+            if (why) throw new Error(`${tp.name} cannot be used for ${label(s, s.combined_flag === 'Y' ? p.name : undefined)}: ${why}.`);
+          }
           if (s.combined_flag === 'Y') await tx`update exam_subject_component set evaluation_template_id = ${t} where id = ${p.id}`;
           else await tx`update exam_subject set evaluation_template_id = ${t} where id = ${s.id}`;
         }
@@ -337,6 +352,12 @@ export async function saveExamExaminers(id: string, fd: FormData) {
     if (none.length) throw new Error(`Add subjects for ${none.map((g) => g.name).join(', ')} (stop 4) first.`);
     const [nc] = await sql`select count(*)::int n from exam_subject where exam_id = ${id} and evaluation_chosen_flag = 'N'`;
     if (nc.n) throw new Error(`Choose the evaluation template of ${nc.n} subject(s) (stop 5) first.`);
+    for (const x of await examSubjects(id))
+      for (const p of x.parts)
+        if (p.templateId) {
+          const why = templateMismatch(await templateSections(p.templateId), p);
+          if (why) throw new Error(`${x.subject_name}${x.combined_flag === 'Y' ? ` › ${p.name}` : ''}: ${why} – fix it in stop 5.`);
+        }
     if (e.status_code === 'DRAFT') await sql`update exam set status_code = 'SCHEDULED' where id = ${id}`;
     return { to: `/exams/${id}`, msg: e.status_code === 'DRAFT' ? `${e.name} has been set up and scheduled. You can now assign students.` : `${e.name} setup has been saved.` };
   });

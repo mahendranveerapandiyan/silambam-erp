@@ -67,13 +67,11 @@ export async function saveSection(templateId: string, secId: string | null, fd: 
     const kind = o.input_type === 'MARK' ? 'marks' : 'rating';
     if (!(max > 0)) throw new Error(`The maximum ${kind} must be above 0`);
     if (Number.isNaN(min) || min < 0 || min > max) throw new Error(`The minimum ${kind} must be between 0 and the maximum`);
-    const [others] = await sql`select coalesce(sum(weight_pct), 0)::float t from evaluation_section where template_id = ${templateId} and id <> ${secId ?? 0}`;
-    if (others.t + w > 100.001) throw new Error(`The section weights of a template cannot exceed 100 % – ${Math.round((100 - others.t) * 100) / 100} % is left.`);
     const v = { name: o.name, input_type: o.input_type === 'MARK' ? 'MARK' : 'RATING', weight_pct: w, min_rating: min, max_rating: max, display_seq: Number(o.display_seq ?? 0) };
     if (secId) await sql`update evaluation_section set ${sql(v)} where id = ${secId} and template_id = ${templateId}`;
     else await sql`insert into evaluation_section ${sql({ ...v, template_id: templateId })}`;
-    const left = 100 - others.t - w;
-    return { msg: `${o.name} section has been ${secId ? 'updated' : 'added'}.${left > 0.001 ? ` ${Math.round(left * 100) / 100} % of the weight is still to be given to sections.` : ' The weights now total 100 %.'}` };
+    const [tot] = await sql`select coalesce(sum(min_rating), 0)::float mn, coalesce(sum(max_rating), 0)::float mx from evaluation_section where template_id = ${templateId}`;
+    return { msg: `${o.name} section has been ${secId ? 'updated' : 'added'}. ${t.name} now totals Min ${tot.mn} / Max ${tot.mx}.` };
   });
 }
 

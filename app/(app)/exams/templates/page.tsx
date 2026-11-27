@@ -14,7 +14,8 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
   const asOf = await getAsOf();
   const back = here('/exams/templates', sp);
   const list = await sql`select t.*, (select count(*) from evaluation_section s where s.template_id = t.id)::int sections,
-      (select coalesce(sum(s.weight_pct), 0)::float from evaluation_section s where s.template_id = t.id) weight_total,
+      (select coalesce(sum(s.min_rating), 0)::float from evaluation_section s where s.template_id = t.id) min_total,
+      (select coalesce(sum(s.max_rating), 0)::float from evaluation_section s where s.template_id = t.id) max_total,
       (select count(*) from exam e where e.evaluation_template_id = t.id)::int exams
     from evaluation_template t where t.enterprise_id = ${u.enterpriseId} order by t.active_flag desc, t.name`;
   const editId = one(sp.edit);
@@ -23,15 +24,15 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
   return (
     <div className="max-w-6xl">
       <PageHeader title="Evaluation Templates"
-        subtitle="How a subject is evaluated: sections (e.g. Lessons, Perfection, Speed & Stamina, Vanakkam Murai), each rating based or manual marks, with a weight % and a minimum and maximum. Any template can be used for any subject – chosen per subject of each grade in stop 5 of an exam's setup." />
+        subtitle="How a subject is evaluated: sections (e.g. Lessons, Perfection, Speed & Stamina, Vanakkam Murai), each rating based or manual marks, with a weight % and a minimum and maximum. A template can be used for any subject whose Minimum and Maximum marks equal the template's total Min and Max – chosen in stop 5 of an exam's setup." />
       <Flash sp={sp} />
       <div className="card mb-4 overflow-x-auto">
         <table className="tbl">
-          <thead><tr><th>Code</th><th>Name</th><th>Sections</th><th>Weights</th><th>Used by exams</th><th>Active</th><th></th></tr></thead>
+          <thead><tr><th>Code</th><th>Name</th><th>Sections</th><th>Min / Max</th><th>Used by exams</th><th>Active</th><th></th></tr></thead>
           <tbody>{list.map((x) => (
             <tr key={x.id} className={t && t.id === x.id ? 'bg-sky-50' : ''}>
               <td className="font-mono text-xs">{x.code}</td><td>{x.name}{x.description && <div className="text-xs text-slate-500">{x.description}</div>}</td>
-              <td>{x.sections}</td><td><Badge color={Math.abs(x.weight_total - 100) < 0.001 ? 'green' : 'amber'}>{Math.round(x.weight_total * 100) / 100} %</Badge></td><td>{x.exams}</td>
+              <td>{x.sections}</td><td>{x.sections ? <>{x.min_total} / {x.max_total}</> : '—'}</td><td>{x.exams}</td>
               <td><Badge color={x.active_flag === 'Y' ? 'green' : 'gray'}>{x.active_flag === 'Y' ? 'Active' : 'Inactive'}</Badge></td>
               <td className="whitespace-nowrap"><Link className="btn btn-sm" href={`/exams/templates?edit=${x.id}`}>{write ? 'Open / Edit' : 'View'}</Link></td>
             </tr>))}</tbody>
@@ -58,7 +59,8 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
   async function Template() {
     const secs = await sql`select s.* from evaluation_section s where s.template_id = ${t!.id} order by s.display_seq, s.id`;
     const total = Math.round(secs.reduce((a, r) => a + Number(r.weight_pct), 0) * 100) / 100;
-    const done = Math.abs(total - 100) < 0.001;
+    const minT = Math.round(secs.reduce((a, r) => a + Number(r.min_rating), 0) * 100) / 100;
+    const maxT = Math.round(secs.reduce((a, r) => a + Number(r.max_rating), 0) * 100) / 100;
     const cols = 'sm:grid-cols-[2fr_1.3fr_1fr_1fr_1fr_0.6fr_auto_auto]';
     const sectionRow = (s?: (typeof secs)[number]) => (
       <form key={s?.id ?? `new-${secs.length}`} action={saveSection.bind(null, t!.id, s?.id ?? null)} className={`grid items-center gap-2 ${cols} ${s ? '' : 'rounded bg-green-50 p-2'}`}>
@@ -67,7 +69,7 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
         <select name="input_type" defaultValue={s?.input_type ?? 'RATING'} className="input" disabled={!write} aria-label="Input type">
           <option value="RATING">Rating based</option><option value="MARK">Manual marks</option>
         </select>
-        <input name="weight_pct" type="number" step="0.01" min="0.01" max="100" defaultValue={s ? Number(s.weight_pct) : done ? '' : Math.round((100 - total) * 100) / 100} placeholder="Weight %" required className="input" disabled={!write} aria-label="Weight %" />
+        <input name="weight_pct" type="number" step="0.01" min="0.01" max="100" defaultValue={s ? Number(s.weight_pct) : ''} placeholder="Weight %" required className="input" disabled={!write} aria-label="Weight %" />
         <input name="min_rating" type="number" step="0.5" min="0" defaultValue={s ? Number(s.min_rating) : 0} className="input" disabled={!write} aria-label="Min" />
         <input name="max_rating" type="number" step="0.5" min="0.5" defaultValue={s ? Number(s.max_rating) : 10} required className="input" disabled={!write} aria-label="Max" />
         <input name="display_seq" type="number" defaultValue={s?.display_seq ?? secs.length + 1} className="input" disabled={!write} aria-label="Order" />
@@ -91,12 +93,13 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
         <div className="card space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-semibold">Sections</h3>
-            <Badge color={done ? 'green' : 'amber'}>Weights total {total} %{done ? ' ✓' : ' – must be 100 %'}</Badge>
+            {secs.length > 0 && <Badge color="blue">Template Min {minT} / Max {maxT}</Badge>}
+            {secs.length > 0 && <span className="text-xs text-slate-500">weights total {total} %</span>}
           </div>
-          <p className="muted">Rating based: the examiner picks a rating between Min and Max (e.g. 1 to 5). Manual marks: the examiner types marks between Min and Max (e.g. 0 to 25). Each section counts towards the subject mark by its weight.</p>
+          <p className="muted">Rating based: the examiner picks a rating between Min and Max (e.g. 1 to 5). Manual marks: the examiner types marks between Min and Max (e.g. 0 to 25). Min is the lowest value the examiner may enter. The template&apos;s Min and Max (the totals of the sections) must equal the Minimum (pass) and Maximum marks of the exam subject it is used for. Weights need not total 100 % – each section counts by its share of the total weight.</p>
           <div className={`hidden gap-2 text-xs font-semibold uppercase text-gray-600 sm:grid ${cols}`}><div>Section</div><div>Input</div><div>Weight %</div><div>Min</div><div>Max</div><div>Order</div><div /><div /></div>
           {secs.map((r) => sectionRow(r))}
-          {write && !done && sectionRow()}
+          {write && sectionRow()}
           {!secs.length && !write && <Empty>No sections yet.</Empty>}
         </div>
         {write && (

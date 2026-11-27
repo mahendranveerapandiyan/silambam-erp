@@ -7,7 +7,7 @@ import { lk } from '@/lib/lookups';
 import { refOptions } from '@/lib/dt';
 import { examOptions } from '@/lib/examOptions';
 import { activeStaffPeriods } from '@/lib/people';
-import { EXAM_STOPS, LAST_STOP, examGrades, examSubjects, templateSections, marksEntered, gradingBands } from '@/lib/examSetup';
+import { EXAM_STOPS, LAST_STOP, examGrades, examSubjects, templateSections, marksEntered, gradingBands, templateRange, templateMismatch } from '@/lib/examSetup';
 import { Stepper, DetailsForm, Buttons } from '@/components/ExamSetup';
 import { fmtDate } from '@/lib/util';
 import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s as one, here } from '@/components/ui';
@@ -202,7 +202,7 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
     return (
       <form action={saveExamTemplates.bind(null, id)} className="space-y-3">
         <Back to={back} />
-        <p className="muted">Choose how each subject of each grade is evaluated: an evaluation template (examiners fill in its sections – manual marks or ratings – and the mark is worked out from the weights) or direct marks. A combined subject gets a template for <b>each</b> of its subjects; their marks are then combined by the weights set in stop 4. {can(u, 'CD_EVALUATION_TEMPLATE_PRV') && <Link className="link" href="/exams/templates">Manage templates</Link>}</p>
+        <p className="muted">Choose how each subject of each grade is evaluated: an evaluation template (examiners fill in its sections – manual marks or ratings – and the mark is worked out from the weights) or direct marks. A template fits a subject when its total Min and Max equal the subject&apos;s Minimum (pass) and Maximum marks. A combined subject gets a template for <b>each</b> of its subjects, matching that subject&apos;s own Min / Max; their marks are then combined by the weights set in stop 4. {can(u, 'CD_EVALUATION_TEMPLATE_PRV') && <Link className="link" href="/exams/templates">Manage templates</Link>}</p>
         {groups.map((g) => (
           <div key={g.key} className="card overflow-x-auto">
             <h3 className="mb-2 font-semibold">{g.name}</h3>
@@ -210,19 +210,23 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
               <tbody>{g.list.flatMap((x) => x.parts.map((p, i) => {
                 const name = x.combined_flag === 'Y' ? `t_${x.id}_${p.id}` : `t_${x.id}`;
                 const cur = x.evaluation_chosen_flag === 'Y' || p.templateId ? (p.templateId ?? 'NONE') : '';
+                const fits = opts.filter((t) => !templateMismatch(secs.get(String(t.id))!, p) || String(t.id) === p.templateId);
+                const curBad = p.templateId ? templateMismatch(secs.get(p.templateId) ?? [], p) : null;
                 const lockedRow = readOnly || marked.has(String(x.id));
                 return (
                   <tr key={`${x.id}_${p.id}`}>
                     {i === 0 && <td rowSpan={x.parts.length}>{x.subject_name}{x.combined_flag === 'Y' && <div className="text-xs text-slate-500">combined · {x.weight_type === 'MARK' ? 'weights in marks' : 'weights in %'}</div>}{marked.has(String(x.id)) && <div className="text-xs text-amber-700">marks entered – locked</div>}</td>}
-                    <td className="text-sm">{x.combined_flag === 'Y' ? <>{p.name}<div className="text-xs text-slate-500">weight {x.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight} %`} · out of {p.max}, pass {p.pass}</div></> : '—'}</td>
+                    <td className="text-sm">{x.combined_flag === 'Y' ? <>{p.name}<div className="text-xs text-slate-500">weight {x.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight} %`} · Min {p.pass} / Max {p.max}</div></> : <span className="text-xs text-slate-500">Min {p.pass} / Max {p.max}</span>}</td>
                     <td>
                       {lockedRow && <input type="hidden" name={name} value={cur} />}
                       <select name={name} defaultValue={cur} disabled={lockedRow} className="input" aria-label={`${g.name} ${x.subject_name}${x.combined_flag === 'Y' ? ` ${p.name}` : ''} evaluation`}>
                         <option value="">— Select —</option>
                         <option value="NONE">Direct marks – no template</option>
-                        {opts.map((t) => <option key={t.id} value={t.id}>{t.name}{t.active_flag === 'N' ? ' (inactive)' : ''}</option>)}
+                        {fits.map((t) => { const r = templateRange(secs.get(String(t.id))!); return <option key={t.id} value={t.id}>{t.name} (Min {r.min} / Max {r.max}){t.active_flag === 'N' ? ' (inactive)' : ''}</option>; })}
                       </select>
+                      {fits.length < opts.length && <div className="text-xs text-slate-500">{opts.length - fits.length} template(s) hidden – their Min / Max differ from {p.pass} / {p.max}.</div>}
                       {!opts.length && <div className="text-xs text-slate-500">No evaluation template has sections yet.</div>}
+                      {curBad && <div className="text-xs font-semibold text-red-700">Does not fit: {curBad}.</div>}
                     </td>
                     <td className="text-xs">{cur ? summary(p.templateId) : ''}</td>
                   </tr>);
