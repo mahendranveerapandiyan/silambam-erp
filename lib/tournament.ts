@@ -1,0 +1,121 @@
+import 'server-only';
+import { sql, type Row } from './db';
+import { ageOn } from './util';
+
+export const FLOW_KINDS: [string, string, string][] = [
+  ['INDIVIDUAL', 'Individual Based', 'Each participant is evaluated on a template (sections and criteria). The highest mark wins.'],
+  ['FIGHT', 'Fight Based (knockout)', 'Two participants per bout. Regular rounds are added up; tied bouts get extra rounds, then a final round or a toss. The loser is eliminated.'],
+  ['INDIVIDUAL_FIGHT', 'Individual and Fight Based', 'Individual evaluation first (no winner announced). The individual marks are carried into each fight bout as the Individual Mark.'],
+];
+export const flowKindLabel = (k: string) => FLOW_KINDS.find((x) => x[0] === k)?.[1] ?? k;
+export const hasIndividual = (k: string) => k === 'INDIVIDUAL' || k === 'INDIVIDUAL_FIGHT';
+export const hasFight = (k: string) => k === 'FIGHT' || k === 'INDIVIDUAL_FIGHT';
+
+/* ---------------- competition categories ---------------- */
+
+/** Student fields a category rule can test. kind: number = compared as numbers; code = lookup / reference compared as codes or ids. */
+export const CATEGORY_FIELDS: { code: string; label: string; kind: 'number' | 'code'; lookup?: string; ref?: string }[] = [
+  { code: 'AGE', label: 'Age (years, on the tournament date)', kind: 'number' },
+  { code: 'GENDER', label: 'Gender', kind: 'code', lookup: 'GENDER' },
+  { code: 'WEIGHT', label: 'Weight (kg)', kind: 'number' },
+  { code: 'HEIGHT', label: 'Height (cm)', kind: 'number' },
+  { code: 'COMPETITION_CATEGORY', label: 'Competition Category (Open / School)', kind: 'code', lookup: 'COMPETITION_CATEGORY' },
+  { code: 'GRADE', label: 'Grade / Level', kind: 'code', ref: 'student-grades' },
+  { code: 'CLASS', label: 'Class', kind: 'code', ref: 'classes' },
+  { code: 'BRANCH', label: 'Branch', kind: 'code', ref: 'branches' },
+  { code: 'BUSINESS_UNIT', label: 'Business Unit', kind: 'code', ref: 'business-units' },
+  { code: 'HOUSE', label: 'House', kind: 'code', ref: 'houses' },
+  { code: 'CLUB', label: 'Club', kind: 'code', ref: 'clubs' },
+  { code: 'BLOOD_GROUP', label: 'Blood Group', kind: 'code', lookup: 'BLOOD_GROUP' },
+  { code: 'STATE', label: 'State', kind: 'code', lookup: 'STATE' },
+];
+export const OPERATORS: [string, string][] = [['EQ', 'is'], ['NE', 'is not'], ['LT', 'below'], ['LE', 'up to'], ['GT', 'above'], ['GE', 'at least'], ['IN', 'is one of']];
+
+export type Facts = Record<string, string | number | null>;
+
+/** The facts category rules test, for students on a date. */
+export async function studentFacts(enterpriseId: string, date: string, personIds?: string[]) {
+  const rows = await sql`
+    select a.person_id, a.id assignment_id, a.assignment_number, p.date_of_birth, pf.gender_code, pf.weight_kg, pf.height_cm, pf.blood_group_code, pf.state_code,
+      af.competition_category_code, af.student_grade_id, af.class_id, af.section_id, af.branch_id, af.business_unit_id, af.house_id, af.club_id,
+      trim(concat_ws(' ', pf.first_name, pf.last_name)) full_name
+    from assignment a
+    join assignment_f af on af.id = a.id and ${date}::date between af.effective_start_date and af.effective_end_date
+    join assignment_status_f st on st.id = af.assignment_status_id and ${date}::date between st.effective_start_date and st.effective_end_date
+    join person p on p.id = a.person_id
+    left join lateral (select * from person_f x where x.id = a.person_id order by (${date}::date between x.effective_start_date and x.effective_end_date) desc, x.effective_start_date desc limit 1) pf on true
+    where a.enterprise_id = ${enterpriseId} and a.assignment_type = 'STUDENT' and st.system_status_code = 'ACTIVE'
+      ${personIds ? sql`and a.person_id in ${sql(personIds.length ? personIds : ['0'])}` : sql``}`;
+  return rows.map((r) => ({
+    row: r,
+    facts: {
+      AGE: r.date_of_birth ? ageOn(r.date_of_birth, date) : null, GENDER: r.gender_code, WEIGHT: r.weight_kg === null ? null : Number(r.weight_kg),
+      HEIGHT: r.height_cm === null ? null : Number(r.height_cm), COMPETITION_CATEGORY: r.competition_category_code, GRADE: r.student_grade_id && String(r.student_grade_id),
+      CLASS: r.class_id && String(r.class_id), BRANCH: r.branch_id && String(r.branch_id), BUSINESS_UNIT: r.business_unit_id && String(r.business_unit_id),
+      HOUSE: r.house_id && String(r.house_id), CLUB: r.club_id && String(r.club_id), BLOOD_GROUP: r.blood_group_code, STATE: r.state_code,
+    } as Facts,
+  }));
+}
+
+export type Rule = { field_code: string; operator: string; value: string };
+
+/** Null when the student matches the rule, else why not. */
+export function ruleFails(rule: Rule, facts: Facts, describe: (r: Rule) => string): string | null {
+  const f = CATEGORY_FIELDS.find((x) => x.code === rule.field_code);
+  const v = facts[rule.field_code];
+  if (v === null || v === undefined || v === '') return `${f?.label.replace(/ \(.*/, '') ?? rule.field_code} not recorded`;
+  const vals = rule.value.split(',').map((x) => x.trim()).filter(Boolean);
+  let ok: boolean;
+  if (f?.kind === 'number') {
+    const a = Number(v), b = Number(rule.value);
+    ok = rule.operator === 'EQ' ? a === b : rule.operator === 'NE' ? a !== b : rule.operator === 'LT' ? a < b : rule.operator === 'LE' ? a <= b
+      : rule.operator === 'GT' ? a > b : rule.operator === 'GE' ? a >= b : rule.operator === 'IN' ? vals.map(Number).includes(a) : false;
+  } else {
+    ok = rule.operator === 'NE' ? !vals.includes(String(v)) : vals.includes(String(v));
+  }
+  return ok ? null : `${describe(rule)} (is ${v})`;
+}
+
+/** The rules of a category. */
+export async function categoryRules(categoryId: string | null | undefined): Promise<Rule[]> {
+  if (!categoryId) return [];
+  return (await sql`select field_code, operator, value from competition_category_rule where category_id = ${categoryId} order by id`) as unknown as Rule[];
+}
+
+/* ---------------- knockout fixtures ---------------- */
+
+/**
+ * The entrant who gets the bye in a round with an odd number of entrants: in turn the last
+ * entrant, then the first, then the middle one – skipping anyone who already had a bye.
+ */
+export function proposeBye<T extends { id: string }>(entrants: T[], byesSoFar: number, hadBye: Set<string>) {
+  if (entrants.length % 2 === 0) return null;
+  const n = entrants.length;
+  const order = [n - 1, 0, Math.floor((n - 1) / 2)];
+  const start = byesSoFar % 3;
+  for (let k = 0; k < 3; k++) { const e = entrants[order[(start + k) % 3]]; if (!hadBye.has(e.id)) return e.id; }
+  return entrants.find((e) => !hadBye.has(e.id))?.id ?? entrants[order[start]].id;
+}
+
+/** Pairs a round in list order (neighbours fight); the bye entrant keeps their place and goes straight through. */
+export function pairRound<T extends { id: string }>(entrants: T[], byeId: string | null) {
+  const bouts: { red: T; blue: T | null }[] = [];
+  let pending: { red: T; blue: T | null } | null = null;
+  for (const e of entrants) {
+    if (e.id === byeId) { bouts.push({ red: e, blue: null }); continue; }
+    if (!pending) { pending = { red: e, blue: null }; bouts.push(pending); } else { pending.blue = e; pending = null; }
+  }
+  return bouts;
+}
+
+export const STAGES: Record<string, string> = { ROUND: 'Round', SEMI_FINAL: 'Semi Final', THIRD_PLACE: 'Third Place', FINAL: 'Final' };
+
+/** Bout totals: points of all rounds, less fouls, plus the individual mark (combined flow). */
+export function boutTotals(rounds: Row[], foulPoints: number, redIndividual = 0, blueIndividual = 0) {
+  let red = redIndividual, blue = blueIndividual;
+  for (const r of rounds) {
+    red += Number(r.red_points ?? 0) - Number(r.red_fouls ?? 0) * foulPoints;
+    blue += Number(r.blue_points ?? 0) - Number(r.blue_fouls ?? 0) * foulPoints;
+  }
+  return { red: Math.round(red * 100) / 100, blue: Math.round(blue * 100) / 100 };
+}

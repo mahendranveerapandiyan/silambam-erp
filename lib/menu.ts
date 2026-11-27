@@ -83,7 +83,14 @@ export const MENU: MenuGroup[] = [
       { label: 'Exam Fees', href: '/exams/fees', priv: 'CD_EXAM_FEE_PRV' },
     ],
   },
-  { label: 'Events', items: [{ label: 'Events', href: '/events', priv: 'CD_EVENT_SETUP_PRV|CD_EVENT_PARTICIPANT_PRV' }] },
+  {
+    label: 'Events',
+    items: [
+      { label: 'Events & Tournaments', href: '/events', priv: 'CD_EVENT_SETUP_PRV|CD_EVENT_PARTICIPANT_PRV' },
+      { label: 'Game Types & Flows', href: '/events/games', priv: 'CD_GAME_SETUP_PRV' },
+      { label: 'Competition Categories', href: '/events/categories', priv: 'CD_GAME_SETUP_PRV' },
+    ],
+  },
   {
     label: 'Inventory',
     items: [

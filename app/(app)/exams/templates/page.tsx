@@ -57,14 +57,15 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
   );
 
   async function Template() {
-    const secs = await sql`select s.* from evaluation_section s where s.template_id = ${t!.id} order by s.display_seq, s.id`;
+    const secs = await sql`select s.* from evaluation_section s where s.template_id = ${t!.id} order by s.group_name nulls first, s.display_seq, s.id`;
     const vals = secs.length ? await sql`select * from evaluation_section_value where section_id in ${sql(secs.map((x) => x.id))} order by display_seq, value` : [];
     const total = Math.round(secs.reduce((a, r) => a + Number(r.weight_pct), 0) * 100) / 100;
-    const cols = 'sm:grid-cols-[2fr_1.4fr_1fr_1fr_1fr_0.6fr_auto_auto]';
+    const cols = 'sm:grid-cols-[1.4fr_1.6fr_1.4fr_0.9fr_0.8fr_0.8fr_0.6fr_auto_auto]';
     const sectionRow = (s?: (typeof secs)[number]) => (
       <form key={s?.id ?? `new-${secs.length}`} action={saveSection.bind(null, t!.id, s?.id ?? null)} className={`grid items-center gap-2 ${cols} ${s ? '' : 'rounded bg-green-50 p-2'}`}>
         <Back to={back} />
-        <input name="name" defaultValue={s?.name} placeholder="e.g. Perfection" required className="input" disabled={!write} aria-label="Section" />
+        <input name="group_name" defaultValue={s?.group_name ?? ''} placeholder="Section (optional)" list="tpl-groups" className="input" disabled={!write} aria-label="Section" />
+        <input name="name" defaultValue={s?.name} placeholder="e.g. Perfection" required className="input" disabled={!write} aria-label="Criterion" />
         <select name="input_type" defaultValue={s?.input_type ?? 'ENTRY'} className="input" disabled={!write} aria-label="Input type">
           <option value="ENTRY">User entered</option><option value="LOV">List of values (LOV)</option>
         </select>
@@ -80,7 +81,7 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
       const mine = vals.filter((v) => String(v.section_id) === String(s.id));
       return (
         <div key={`lov-${s.id}`} className="mb-2 ml-4 rounded border-l-4 border-sky-200 bg-sky-50/50 p-2" data-lov-for={s.name}>
-          <div className="mb-1 text-xs font-semibold uppercase text-slate-600">{s.name} – list values <span className="font-normal normal-case">(label shown to the examiner = value counted, between {Number(s.min_rating)} and {Number(s.max_rating)})</span></div>
+          <div className="mb-1 text-xs font-semibold uppercase text-slate-600">{s.group_name ? `${s.group_name} › ` : ''}{s.name} – list values <span className="font-normal normal-case">(label shown to the examiner / judge = value counted, between {Number(s.min_rating)} and {Number(s.max_rating)})</span></div>
           <div className="flex flex-wrap items-center gap-1">
             {mine.map((v) => (
               <form key={v.id} action={saveSectionValue.bind(null, t!.id, s.id, v.id)} className="inline-flex items-center gap-1 rounded-full border bg-white px-2 py-0.5 text-sm">
@@ -115,11 +116,12 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
 
         <div className="card space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold">Sections</h3>
+            <h3 className="font-semibold">Sections &amp; Criteria</h3>
             {secs.length > 0 && <Badge color="blue">Total weight {total} – fits subjects with Maximum marks {total}</Badge>}
           </div>
-          <p className="muted">User entered: the examiner types a value between Min and Max. List of values: the examiner picks from the values you add (e.g. Excellent = 10, Good = 7). Min and Max are the only values that can be entered. The weight is in marks: a section scores weight × value ÷ Max, and the template fits a subject (or a part of a combined subject) whose Maximum marks equal the total weight.</p>
-          <div className={`hidden gap-2 text-xs font-semibold uppercase text-gray-600 sm:grid ${cols}`}><div>Section</div><div>Input</div><div>Weight (marks)</div><div>Min</div><div>Max</div><div>Order</div><div /><div /></div>
+          <p className="muted">Group criteria under a Section (e.g. Kai Vilaiyattu › Lessons, Perfection) – a section can have one or many criteria. User entered: the examiner types a value between Min and Max. List of values: the examiner picks from the values you add (e.g. Excellent = 10, Good = 7). Min and Max are the only values that can be entered. The weight is in marks: a section scores weight × value ÷ Max, and the template fits a subject (or a part of a combined subject) whose Maximum marks equal the total weight.</p>
+          <div className={`hidden gap-2 text-xs font-semibold uppercase text-gray-600 sm:grid ${cols}`}><div>Section</div><div>Criterion</div><div>Input</div><div>Weight</div><div>Min</div><div>Max</div><div>Order</div><div /><div /></div>
+          <datalist id="tpl-groups">{[...new Set(secs.map((x) => x.group_name).filter(Boolean))].map((g) => <option key={g} value={g} />)}</datalist>
           {secs.map((r) => [sectionRow(r), r.input_type === 'LOV' ? lovEditor(r) : null])}
           {write && sectionRow()}
           {!secs.length && !write && <Empty>No sections yet.</Empty>}

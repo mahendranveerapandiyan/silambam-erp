@@ -38,15 +38,15 @@ export async function examSubjects(examId: string, gradeId?: string | null): Pro
   })) as ExamSubject[];
 }
 
-export type Section = { id: string; name: string; weight_pct: number; min_rating: number; max_rating: number; input_type: 'LOV' | 'ENTRY'; values: { label: string; value: number }[] };
+export type Section = { id: string; name: string; group_name?: string | null; weight_pct: number; min_rating: number; max_rating: number; input_type: 'LOV' | 'ENTRY'; values: { label: string; value: number }[] };
 
 /** An evaluation template's sections (a template can be used for any subject). */
 export async function templateSections(templateId: string | null | undefined): Promise<Section[]> {
   if (!templateId) return [];
-  const rows = await sql`select * from evaluation_section where template_id = ${templateId} order by display_seq, id`;
+  const rows = await sql`select * from evaluation_section where template_id = ${templateId} order by group_name nulls first, display_seq, id`;
   const vals = rows.length ? await sql`select * from evaluation_section_value where section_id in ${sql(rows.map((r) => r.id))} order by display_seq, value` : [];
   return rows.map((s) => ({
-    id: String(s.id), name: s.name, weight_pct: Number(s.weight_pct), min_rating: Number(s.min_rating), max_rating: Number(s.max_rating),
+    id: String(s.id), name: s.name, group_name: s.group_name, weight_pct: Number(s.weight_pct), min_rating: Number(s.min_rating), max_rating: Number(s.max_rating),
     input_type: s.input_type === 'LOV' ? 'LOV' : 'ENTRY',
     values: vals.filter((v) => String(v.section_id) === String(s.id)).map((v) => ({ label: v.label as string, value: Number(v.value) })),
   }));

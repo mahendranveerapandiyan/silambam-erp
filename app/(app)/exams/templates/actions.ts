@@ -35,8 +35,8 @@ export async function saveTemplate(id: string | null, fd: FormData) {
       await load(u.enterpriseId, o.copy_from);
       await sql.begin(async (tx) => {
         for (const sec of await tx`select * from evaluation_section where template_id = ${o.copy_from} order by display_seq, id`) {
-          const [ns] = await tx`insert into evaluation_section (template_id, name, input_type, weight_pct, min_rating, max_rating, display_seq)
-            values (${t.id}, ${sec.name}, ${sec.input_type}, ${sec.weight_pct}, ${sec.min_rating}, ${sec.max_rating}, ${sec.display_seq}) returning id`;
+          const [ns] = await tx`insert into evaluation_section (template_id, name, group_name, input_type, weight_pct, min_rating, max_rating, display_seq)
+            values (${t.id}, ${sec.name}, ${sec.group_name}, ${sec.input_type}, ${sec.weight_pct}, ${sec.min_rating}, ${sec.max_rating}, ${sec.display_seq}) returning id`;
           await tx`insert into evaluation_section_value (section_id, label, value, display_seq) select ${ns.id}, label, value, display_seq from evaluation_section_value where section_id = ${sec.id}`;
         }
       });
@@ -76,7 +76,7 @@ export async function saveSection(templateId: string, secId: string | null, fd: 
       const [out] = await sql`select string_agg(label, ', ') l from evaluation_section_value where section_id = ${secId} and (value < ${min} or value > ${max})`;
       if (out.l) throw new Error(`The list values ${out.l} are outside ${min}–${max} – change or remove them first.`);
     }
-    const v = { name: o.name, input_type: lov ? 'LOV' : 'ENTRY', weight_pct: w, min_rating: min, max_rating: max, display_seq: Number(o.display_seq ?? 0) };
+    const v = { name: o.name, group_name: o.group_name, input_type: lov ? 'LOV' : 'ENTRY', weight_pct: w, min_rating: min, max_rating: max, display_seq: Number(o.display_seq ?? 0) };
     let sid = secId;
     if (secId) await sql`update evaluation_section set ${sql(v)} where id = ${secId} and template_id = ${templateId}`;
     else sid = String((await sql`insert into evaluation_section ${sql({ ...v, template_id: templateId })} returning id`)[0].id);

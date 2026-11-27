@@ -626,5 +626,19 @@
    "INCHARGE": "W"
   },
   "seq": 475
+ },
+ {
+  "code": "CD_GAME_SETUP_PRV",
+  "name": "Events – game types, game flows and competition categories",
+  "module": "Events",
+  "defaults": {},
+  "seq": 505
+ },
+ {
+  "code": "CD_TOURNAMENT_SCORING_PRV",
+  "name": "Events – tournament scoring, fixtures and results",
+  "module": "Events",
+  "defaults": {},
+  "seq": 506
  }
 ]
