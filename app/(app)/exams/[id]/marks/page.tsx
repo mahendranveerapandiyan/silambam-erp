@@ -71,7 +71,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
         {!subjects.length && <span className="muted">No subjects for this grade – add them in stop 4 of the exam setup.</span>}
       </div>
       {es && (
-        <form action={saveSubjectMarks.bind(null, id, String(es.id), grade.grade_id)} className="card overflow-x-auto">
+        <form key={`${grade.grade_id}-${es.id}`} action={saveSubjectMarks.bind(null, id, String(es.id), grade.grade_id)} className="card overflow-x-auto">
           <Back to={here(`/exams/${id}/marks`, { ...sp, grade: grade.grade_id, subject: String(es.id) })} />
           <p className="muted mb-2">
             <b>{es.subject_name}</b> · out of {Number(es.max_marks)}, pass {Number(es.pass_marks)}
@@ -86,7 +86,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
             <thead>
               <tr><th rowSpan={2}>Student</th>
                 {es.parts.map((p) => { const secs = secOf(p.id); return <th key={p.id} colSpan={Math.max(secs.length, 1) + (combined ? 1 : 0)} className="text-center">{p.name}<div className="font-normal normal-case">{secs.length ? `sections → mark out of ${p.max}` : `mark out of ${p.max}`} · pass {p.pass}{combined && ` · weight ${es.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight} %`}`}</div></th>; })}
-                <th rowSpan={2}>Absent</th><th rowSpan={2}>{es.subject_name} mark</th><th rowSpan={2}>Subject</th><th rowSpan={2}>Exam result</th></tr>
+                <th rowSpan={2}>Absent</th><th rowSpan={2}>{es.subject_name} mark</th><th rowSpan={2}>Subject grade</th><th rowSpan={2}>Exam result</th></tr>
               <tr>{es.parts.flatMap((p) => {
                 const secs = secOf(p.id);
                 const cells = secs.length ? secs.map((s) => <th key={`${p.id}_${s.id}`} className="font-normal normal-case">{s.name}<div className="text-[10px]">weight {s.weight_pct} · {s.input_type === 'LOV' ? 'list' : 'enter'} {s.min_rating}–{s.max_rating}</div></th>) : [<th key={p.id} className="font-normal normal-case">Marks</th>];
@@ -106,22 +106,24 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
                     const um = U.get(`${c.id}_${p.id}`);
                     const pm = um?.marks === null || um?.marks === undefined ? null : Number(um.marks);
                     const weighted = pm === null ? null : Math.round((pm / p.max) * p.weight * (es.weight_type === 'MARK' ? 1 : Number(es.max_marks) / 100) * 100) / 100;
-                    const markCell = combined ? [<td key={`${p.id}_pm`} className="whitespace-nowrap text-sm">{pm === null ? '—' : <>{pm}<span className="text-xs text-slate-500"> → {weighted}</span>{pm < p.pass && <span className="text-xs text-red-700"> below {p.pass}</span>}</>}</td>] : [];
+                    const markCell = combined ? [<td key={`${p.id}_pm`} className="whitespace-nowrap text-sm">{pm === null ? '0' : <>{pm}<span className="text-xs text-slate-500"> → {weighted}</span>{pm < p.pass && <span className="text-xs text-red-700"> below {p.pass}</span>}</>}</td>] : [];
                     if (secs.length) return [...secs.map((s) => {
                       const ch = ratingChoices(s);
                       const nm = `r_${c.id}_${p.id}_${s.id}`;
                       const v = R.get(`${c.id}_${p.id}_${s.id}`);
                       const lbl = `${c.full_name} ${p.name} ${s.name}`;
                       return <td key={`${p.id}_${s.id}`}>{ch
-                        ? <select name={nm} defaultValue={v === null || v === undefined ? '' : String(Number(v))} disabled={off} className="input min-w-32" aria-label={lbl}><option value="">–</option>{ch.map((x) => <option key={x.value} value={x.value}>{x.label}{x.label !== String(x.value) ? ` (${x.value})` : ''}</option>)}</select>
-                        : <input name={nm} type="number" step="0.01" min={s.min_rating} max={s.max_rating} defaultValue={v ?? ''} disabled={off} className="input w-20" aria-label={lbl} />}</td>;
+                        ? <select name={nm} defaultValue={v === null || v === undefined ? '' : String(Number(v))} disabled={off} className="input min-w-32" aria-label={lbl}><option value="">{ch.some((x) => x.value === 0) ? "–" : "0"}</option>{ch.map((x) => <option key={x.value} value={x.value}>{x.label}{x.label !== String(x.value) ? ` (${x.value})` : ''}</option>)}</select>
+                        : <input name={nm} type="number" step="0.01" min={s.min_rating} max={s.max_rating} defaultValue={v ?? ''} disabled={off} className="input w-20" placeholder="0" aria-label={lbl} />}</td>;
                     }), ...markCell];
-                    return [<td key={p.id}><input name={`u_${c.id}_${p.id}`} type="number" step="0.01" min="0" max={p.max} defaultValue={um ? um.marks ?? '' : combined ? '' : legacy(c.id)} disabled={off} className="input w-20" aria-label={`${c.full_name} ${p.name} marks`} /></td>, ...markCell];
+                    return [<td key={p.id}><input name={`u_${c.id}_${p.id}`} type="number" step="0.01" min="0" max={p.max} defaultValue={um ? um.marks ?? '' : combined ? '' : legacy(c.id)} disabled={off} className="input w-20" placeholder="0" aria-label={`${c.full_name} ${p.name} marks`} /></td>, ...markCell];
                   })}
                   <td><input type="checkbox" name={`ab_${c.id}`} value="Y" defaultChecked={absent} disabled={off} aria-label={`${c.full_name} absent`} /></td>
-                  <td className="font-semibold">{m?.marks ?? (absent ? 'AB' : '—')}{m?.grade_rating && <> <Badge color="blue">{m.grade_rating}</Badge></>}</td>
-                  <td>{m?.pass_flag === 'Y' ? <Badge color="green">Pass</Badge> : m?.pass_flag === 'N' || absent ? <Badge color="red">{absent ? 'Absent' : 'Fail'}</Badge> : ''}</td>
-                  <td><Badge color={STATUS_COLOR[c.result_code]}>{L('EXAM_RESULT', c.result_code)}</Badge> {c.percentage !== null && <span className="text-xs">{c.percentage}%</span>}{c.grade_rating && <> <Badge color="purple">{c.grade_rating}</Badge></>}</td>
+                  <td className="font-semibold">{absent ? 'AB' : m?.marks ?? 0}</td>
+                  <td>{absent ? <Badge color="red">Absent</Badge>
+                    : m?.grade_rating ? <span title={m.pass_flag === 'N' ? 'Below the pass mark' : undefined}><Badge color={m.pass_flag === 'N' ? 'red' : 'blue'}>{m.grade_rating}</Badge></span>
+                    : m?.pass_flag === 'Y' ? <Badge color="green">Pass</Badge> : m?.pass_flag === 'N' ? <Badge color="red">Fail</Badge> : ''}</td>
+                  <td><Badge color={STATUS_COLOR[c.result_code]}>{L('EXAM_RESULT', c.result_code)}</Badge></td>
                 </tr>);
             })}</tbody>
           </table>
