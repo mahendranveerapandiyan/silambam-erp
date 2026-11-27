@@ -420,16 +420,20 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   }
 
   async function Exams() {
-    const rows = await sql`select c.*, e.name, e.code, e.exam_date, e.exam_type_code, e.outcome_code, y.name ay_name,
+    const rows = await sql`select c.*, e.name, e.exam_date, e.exam_type_code, e.outcome_code, y.name ay_name,
+        (select coalesce(sum(es.max_marks), 0) from exam_subject es where es.exam_id = c.exam_id and (es.grade_id = c.current_grade_id or es.grade_id is null)) max_total,
         (select name from student_grade_f g where g.id = c.promoted_to_grade_id order by effective_start_date desc limit 1) promoted_to
       from exam_candidate c join exam e on e.id = c.exam_id join academic_year y on y.id = c.academic_year_id where c.person_id = ${personId} order by e.exam_date desc`;
     const canRoll = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+    const result = (r: (typeof rows)[number]) => r.result_code === 'PASS' ? <Badge color="green">Pass</Badge> : r.result_code === 'FAIL' ? <Badge color="red">Failed</Badge> : <Badge color={STATUS_COLOR[r.result_code]}>{L('EXAM_RESULT', r.result_code)}</Badge>;
     return (
-      <div className="card overflow-x-auto"><table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Academic Year</th><th>Marks</th><th>%</th><th>Result</th><th>Published</th><th></th></tr></thead>
+      <div className="card overflow-x-auto"><table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Academic Year</th><th>Total Marks</th><th>Obtained Marks</th><th>Grade Rating</th><th>Result</th><th>Published</th><th></th></tr></thead>
         <tbody>{rows.map((r) => (
-          <tr key={r.id}><td>{fmtDate(r.exam_date)}</td><td><Link className="link" href={`/exams/${r.exam_id}?tab=results`}>{r.name}</Link></td>
-            <td>{L('EXAM_TYPE', r.exam_type_code)}</td><td>{r.ay_name}</td><td>{r.total_marks}</td><td>{r.percentage}</td>
-            <td><Badge color={STATUS_COLOR[r.result_code]}>{L('EXAM_RESULT', r.result_code)}</Badge>{r.grade_rating && <Badge color="blue">{r.grade_rating}</Badge>}{r.promoted_flag === 'Y' && <Badge color="purple">Promoted{r.promoted_to ? ` to ${r.promoted_to}` : ''}</Badge>}</td>
+          <tr key={r.id}><td>{fmtDate(r.exam_date)}</td><td><Link className="link" href={`/exams/${r.exam_id}/result/${r.id}`}>{r.name}</Link></td>
+            <td>{L('EXAM_TYPE', r.exam_type_code)}</td><td>{r.ay_name}</td>
+            <td>{Number(r.max_total) || '—'}</td><td className="font-semibold">{r.total_marks ?? '—'}</td>
+            <td>{r.grade_rating ? <Badge color="blue">{r.grade_rating}</Badge> : '—'}</td>
+            <td>{result(r)}{r.promoted_flag === 'Y' && <div><Badge color="purple">Promoted{r.promoted_to ? ` to ${r.promoted_to}` : ''}</Badge></div>}</td>
             <td>{r.published_flag === 'Y' ? <Badge color="green">Published</Badge> : <Badge color="gray">Not yet</Badge>}</td>
             <td>{canRoll && r.published_flag === 'Y' && (
               <form action={rollbackCandidate.bind(null, r.exam_id, r.id)}><Back to={back} />
