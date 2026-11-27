@@ -37,14 +37,17 @@ export async function examSubjects(examId: string, gradeId?: string | null): Pro
   })) as ExamSubject[];
 }
 
-export type Section = { id: string; name: string; weight_pct: number; min_rating: number; max_rating: number; input_type: 'RATING' | 'MARK' };
+export type Section = { id: string; name: string; weight_pct: number; min_rating: number; max_rating: number; input_type: 'LOV' | 'ENTRY'; values: { label: string; value: number }[] };
 
 /** An evaluation template's sections (a template can be used for any subject). */
 export async function templateSections(templateId: string | null | undefined): Promise<Section[]> {
   if (!templateId) return [];
-  return (await sql`select * from evaluation_section where template_id = ${templateId} order by display_seq, id`).map((s) => ({
+  const rows = await sql`select * from evaluation_section where template_id = ${templateId} order by display_seq, id`;
+  const vals = rows.length ? await sql`select * from evaluation_section_value where section_id in ${sql(rows.map((r) => r.id))} order by display_seq, value` : [];
+  return rows.map((s) => ({
     id: String(s.id), name: s.name, weight_pct: Number(s.weight_pct), min_rating: Number(s.min_rating), max_rating: Number(s.max_rating),
-    input_type: s.input_type === 'MARK' ? 'MARK' : 'RATING',
+    input_type: s.input_type === 'LOV' ? 'LOV' : 'ENTRY',
+    values: vals.filter((v) => String(v.section_id) === String(s.id)).map((v) => ({ label: v.label as string, value: Number(v.value) })),
   }));
 }
 
@@ -63,16 +66,12 @@ export async function partSections(parts: Part[]) {
 /** Total of the section weights (must be 100 % before the template can be used). */
 export const weightTotal = (sections: Section[]) => Math.round(sections.reduce((t, s) => t + s.weight_pct, 0) * 100) / 100;
 
-/** A template's total Min and Max (sum of its sections) – must equal the pass and maximum marks of the subject it is used for. */
-export const templateRange = (sections: Section[]) => ({
-  min: r2(sections.reduce((t, s) => t + s.min_rating, 0)),
-  max: r2(sections.reduce((t, s) => t + s.max_rating, 0)),
-});
-/** Null when the template fits the part (subject) – otherwise why not. */
-export function templateMismatch(sections: Section[], part: { max: number; pass: number }) {
-  const r = templateRange(sections);
-  if (Math.abs(r.max - part.max) > 0.001 || Math.abs(r.min - part.pass) > 0.001)
-    return `the template's Min ${r.min} / Max ${r.max} do not match the subject's Minimum ${part.pass} / Maximum ${part.max} marks`;
+/** A template's total weight (sum of its sections' weights, in marks). */
+export const templateWeight = (sections: Section[]) => r2(sections.reduce((t, s) => t + s.weight_pct, 0));
+/** Null when the template fits the subject (or part) – its total weight must equal the maximum marks; otherwise why not. */
+export function templateMismatch(sections: Section[], part: { max: number }) {
+  const w = templateWeight(sections);
+  if (Math.abs(w - part.max) > 0.001) return `the template's total weight ${w} does not match the Maximum marks ${part.max}`;
   return null;
 }
 
@@ -179,8 +178,7 @@ export async function nextExamCode(tx: typeof sql, enterpriseId: string, ayId: s
   return prefix + String((m?.n ?? 0) + 1).padStart(3, '0');
 }
 
-/** Section value inputs: a rating drop-down for small whole-number scales, else a number box. */
+/** LOV sections: the values the examiner picks from (null = entered by the examiner between Min and Max). */
 export function ratingChoices(s: Section) {
-  if (s.input_type !== 'RATING' || !Number.isInteger(s.min_rating) || !Number.isInteger(s.max_rating) || s.max_rating - s.min_rating > 20) return null;
-  return Array.from({ length: s.max_rating - s.min_rating + 1 }, (_, i) => s.min_rating + i);
+  return s.input_type === 'LOV' && s.values.length ? s.values : null;
 }

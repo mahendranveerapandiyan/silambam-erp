@@ -106,7 +106,9 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
           if (secs?.length) {
             const ratings = new Map<string, number | null>();
             for (const sec of secs) {
-              const r = absent ? null : rng(o[`r_${c.id}_${p.id}_${sec.id}`], sec.min_rating, sec.max_rating, `${p.name} – ${sec.name} ${sec.input_type === 'MARK' ? 'marks' : 'rating'}`);
+              const r = absent ? null : rng(o[`r_${c.id}_${p.id}_${sec.id}`], sec.min_rating, sec.max_rating, `${p.name} – ${sec.name}`);
+              if (r !== null && sec.input_type === 'LOV' && sec.values.length && !sec.values.some((x) => Math.abs(x.value - r) < 0.001))
+                throw new Error(`${p.name} – ${sec.name}: choose one of ${sec.values.map((x) => x.label).join(', ')}`);
               ratings.set(sec.id, r);
               await tx`insert into exam_section_rating (candidate_id, exam_subject_id, component_id, section_id, rating, entered_by) values (${c.id}, ${esId}, ${p.id}, ${sec.id}, ${r}, ${u.username})
                 on conflict (candidate_id, exam_subject_id, component_id, section_id) do update set rating = excluded.rating, entered_by = excluded.entered_by, entered_at = now()`;

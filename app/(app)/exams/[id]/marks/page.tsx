@@ -89,7 +89,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
                 <th rowSpan={2}>Absent</th><th rowSpan={2}>{es.subject_name} mark</th><th rowSpan={2}>Subject</th><th rowSpan={2}>Exam result</th></tr>
               <tr>{es.parts.flatMap((p) => {
                 const secs = secOf(p.id);
-                const cells = secs.length ? secs.map((s) => <th key={`${p.id}_${s.id}`} className="font-normal normal-case">{s.name}<div className="text-[10px]">{s.weight_pct}% · {s.input_type === 'MARK' ? 'marks' : 'rating'} {s.min_rating}–{s.max_rating}</div></th>) : [<th key={p.id} className="font-normal normal-case">Marks</th>];
+                const cells = secs.length ? secs.map((s) => <th key={`${p.id}_${s.id}`} className="font-normal normal-case">{s.name}<div className="text-[10px]">weight {s.weight_pct} · {s.input_type === 'LOV' ? 'list' : 'enter'} {s.min_rating}–{s.max_rating}</div></th>) : [<th key={p.id} className="font-normal normal-case">Marks</th>];
                 return combined ? [...cells, <th key={`${p.id}_pm`} className="font-normal normal-case">{p.name} mark<div className="text-[10px]">/ {p.max} → weighted</div></th>] : cells;
               })}</tr>
             </thead>
@@ -113,7 +113,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
                       const v = R.get(`${c.id}_${p.id}_${s.id}`);
                       const lbl = `${c.full_name} ${p.name} ${s.name}`;
                       return <td key={`${p.id}_${s.id}`}>{ch
-                        ? <select name={nm} defaultValue={v === null || v === undefined ? '' : String(Number(v))} disabled={off} className="input w-20" aria-label={lbl}><option value="">–</option>{ch.map((x) => <option key={x} value={x}>{x}</option>)}</select>
+                        ? <select name={nm} defaultValue={v === null || v === undefined ? '' : String(Number(v))} disabled={off} className="input min-w-32" aria-label={lbl}><option value="">–</option>{ch.map((x) => <option key={x.value} value={x.value}>{x.label}{x.label !== String(x.value) ? ` (${x.value})` : ''}</option>)}</select>
                         : <input name={nm} type="number" step="0.5" min={s.min_rating} max={s.max_rating} defaultValue={v ?? ''} disabled={off} className="input w-20" aria-label={lbl} />}</td>;
                     }), ...markCell];
                     return [<td key={p.id}><input name={`u_${c.id}_${p.id}`} type="number" step="0.5" min="0" max={p.max} defaultValue={um ? um.marks ?? '' : combined ? '' : legacy(c.id)} disabled={off} className="input w-20" aria-label={`${c.full_name} ${p.name} marks`} /></td>, ...markCell];
