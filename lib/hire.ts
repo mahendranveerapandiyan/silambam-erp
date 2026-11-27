@@ -35,11 +35,15 @@ export async function assertAssignmentRefs(v: Record<string, any>, date: string)
 export const PERSON_FIELDS = [
   'title_code', 'first_name', 'middle_name', 'last_name', 'known_as', 'gender_code', 'blood_group_code', 'marital_status_code', 'nationality_code',
   'religion_code', 'mother_tongue_code', 'phone', 'alt_phone', 'email', 'address_line1', 'address_line2', 'city', 'state_code', 'country_code',
-  'postal_code', 'emergency_contact_name', 'emergency_contact_phone', 'medical_notes',
+  'postal_code', 'emergency_contact_name', 'emergency_contact_phone', 'medical_notes', 'weight_kg', 'height_cm',
 ] as const;
 
 export function personVals(o: Record<string, string | null>) {
   if (!o.first_name) throw new Error('First name is required');
+  for (const [f, label, max] of [['weight_kg', 'Weight (kg)', 300], ['height_cm', 'Height (cm)', 300]] as const) {
+    const v = o[f];
+    if (v !== null && v !== undefined && (Number.isNaN(Number(v)) || Number(v) <= 0 || Number(v) > max)) throw new Error(`${label} must be a number above 0 and up to ${max}`);
+  }
   return Object.fromEntries(PERSON_FIELDS.map((f) => [f, o[f] ?? null]));
 }
 
@@ -90,7 +94,7 @@ export async function assignmentVals(u: SessionUser, kind: PersonKind, o: Record
       class_id: classId, section_id: sectionId || null, branch_id: h.branch_id, business_unit_id: h.business_unit_id, legal_employer_id: h.legal_employer_id,
       academic_year_id: ay, student_grade_id: o.student_grade_id, house_id: o.house_id, club_id: o.club_id, community_id: o.community_id,
       fee_frequency_code: o.fee_frequency_code, fee_type_code: feeAmount === null ? null : (o.fee_type_code ?? 'TUITION'), fee_amount: feeAmount,
-      person_type_id: o.person_type_id, comments: o.comments,
+      person_type_id: o.person_type_id, comments: o.comments, competition_category_code: o.competition_category_code,
     };
     await assertAssignmentRefs({ ...sv, assignment_status_id: o.assignment_status_id }, date);
     return sv;

@@ -34,6 +34,10 @@ export async function PersonFields({ p = {}, asOf, enterpriseId, kind, dateField
       <Field label="Postal Code"><input name="postal_code" defaultValue={p.postal_code ?? ''} className="input" /></Field>
       <Field label="Emergency Contact Name"><input name="emergency_contact_name" defaultValue={p.emergency_contact_name ?? ''} className="input" /></Field>
       <Field label="Emergency Contact Phone"><input name="emergency_contact_phone" defaultValue={p.emergency_contact_phone ?? ''} className="input" /></Field>
+      {kind === 'STUDENT' && <>
+        <Field label="Weight (kg)"><input name="weight_kg" type="number" step="0.1" min="0.1" max="300" defaultValue={p.weight_kg ?? ''} className="input" /></Field>
+        <Field label="Height (cm)"><input name="height_cm" type="number" step="0.1" min="0.1" max="300" defaultValue={p.height_cm ?? ''} className="input" /></Field>
+      </>}
       <Field label="Medical Notes / Allergies"><input name="medical_notes" defaultValue={p.medical_notes ?? ''} className="input" /></Field>
       <AdditionalFields enterpriseId={enterpriseId} context={kind} attributes={p.attributes} dateField={dateField} />
     </>

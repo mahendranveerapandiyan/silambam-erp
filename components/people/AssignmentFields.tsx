@@ -65,6 +65,7 @@ export async function AssignmentFields({ u, kind, a = {}, showStatus = false, da
         <Field label="Club">{D('club_id', await datedRefOptions('clubs', E), a.club_id)}</Field>
         <Field label="Community">{D('community_id', await datedRefOptions('communities', E), a.community_id)}</Field>
         <Field label="Person Type">{D('person_type_id', personTypes, a.person_type_id)}</Field>
+        <Field label="Competition Category">{D('competition_category_code', await datedLookupOptions('COMPETITION_CATEGORY'), a.competition_category_code)}</Field>
         {status}
         {part === 'all' && feeFields}
       </>

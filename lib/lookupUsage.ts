@@ -14,7 +14,7 @@ const STATIC: Use[] = [
   ...['title_code:TITLE', 'gender_code:GENDER', 'blood_group_code:BLOOD_GROUP', 'marital_status_code:MARITAL_STATUS', 'nationality_code:NATIONALITY',
     'religion_code:RELIGION', 'mother_tongue_code:MOTHER_TONGUE', 'state_code:STATE', 'country_code:COUNTRY']
     .map((x) => ({ type: x.split(':')[1], table: 'person_f', col: x.split(':')[0], label: 'Student / staff personal details', ...DT })),
-  ...['action_reason_code:ACTION_REASON', 'fee_frequency_code:FEE_FREQUENCY', 'employment_type_code:EMPLOYMENT_TYPE', 'employment_category_code:EMPLOYMENT_CATEGORY', 'payroll_status_code:PAYROLL_STATUS']
+  ...['action_reason_code:ACTION_REASON', 'fee_frequency_code:FEE_FREQUENCY', 'employment_type_code:EMPLOYMENT_TYPE', 'employment_category_code:EMPLOYMENT_CATEGORY', 'payroll_status_code:PAYROLL_STATUS', 'competition_category_code:COMPETITION_CATEGORY']
     .map((x) => ({ type: x.split(':')[1], table: 'assignment_f', col: x.split(':')[0], label: 'Student / staff assignments', ...DT })),
   { type: 'RELATIONSHIP', table: 'person_contact', col: 'relationship_code', label: 'Parents / contacts' },
   { type: 'COUNTRY', table: 'enterprise', col: 'country_code', label: 'Enterprise' },

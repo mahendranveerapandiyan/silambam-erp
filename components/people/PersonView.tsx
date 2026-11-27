@@ -127,6 +127,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
             <Info label="Date of Birth">{fmtDate(p.date_of_birth)}{p.date_of_birth && ` (${ageOn(p.date_of_birth, asOf)} yrs)`}</Info>
             <Info label="Gender">{L('GENDER', p.gender_code)}</Info>
             <Info label="Blood Group">{L('BLOOD_GROUP', p.blood_group_code)}</Info>
+            {stu && <Info label="Weight / Height">{p.weight_kg != null ? `${Number(p.weight_kg)} kg` : '—'} · {p.height_cm != null ? `${Number(p.height_cm)} cm` : '—'}</Info>}
             <Info label="Identification">{ids.length ? `${L('IDENTIFICATION_TYPE', ids[0].id_type_code)} ${ids[0].id_number}` : <Link className="text-red-700 underline" href={`${base}/${personId}?tab=identification`}>Missing – add now</Link>}</Info>
             <Info label="Mobile">{p.phone}</Info>
             <Info label="Email">{p.email}</Info>
@@ -147,6 +148,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
               {stu ? <>
                 <Info label="Class › Section">{a.class_name}{a.section_name && ` › ${a.section_name}`}</Info>
                 <Info label="Grade">{a.grade_name}</Info>
+                <Info label="Competition Category">{L('COMPETITION_CATEGORY', a.competition_category_code)}</Info>
                 <Info label="Academic Year">{a.academic_year_name}</Info>
                 <Info label="House">{a.house_name}</Info>
                 <Info label="Club">{a.club_name}</Info>
