@@ -110,12 +110,12 @@ export function pairRound<T extends { id: string }>(entrants: T[], byeId: string
 
 export const STAGES: Record<string, string> = { ROUND: 'Round', SEMI_FINAL: 'Semi Final', THIRD_PLACE: 'Third Place', FINAL: 'Final' };
 
-/** Bout totals: points of all rounds, less fouls, plus the individual mark (combined flow). */
-export function boutTotals(rounds: Row[], foulPoints: number, redIndividual = 0, blueIndividual = 0) {
+/** Bout totals: points of all rounds, less the negative marks, plus the individual mark (combined flow). */
+export function boutTotals(rounds: Row[], _unused: number, redIndividual = 0, blueIndividual = 0) {
   let red = redIndividual, blue = blueIndividual;
   for (const r of rounds) {
-    red += Number(r.red_points ?? 0) - Number(r.red_fouls ?? 0) * foulPoints;
-    blue += Number(r.blue_points ?? 0) - Number(r.blue_fouls ?? 0) * foulPoints;
+    red += Number(r.red_points ?? 0) - Number(r.red_fouls ?? 0);
+    blue += Number(r.blue_points ?? 0) - Number(r.blue_fouls ?? 0);
   }
   return { red: Math.round(red * 100) / 100, blue: Math.round(blue * 100) / 100 };
 }

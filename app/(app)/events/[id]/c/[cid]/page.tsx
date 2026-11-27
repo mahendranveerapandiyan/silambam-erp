@@ -202,7 +202,7 @@ export default async function Competition({ params, searchParams }: { params: Pr
                     <td className="text-xs text-slate-400">{b.blue_entry_id ? 'vs' : ''}</td>
                     <td className={String(b.winner_entry_id) === String(b.blue_entry_id) ? 'font-semibold' : ''}>{b.blue_entry_id ? name.get(String(b.blue_entry_id)) : <Badge color="gray">Bye – goes through</Badge>}</td>
                     <td className="text-sm">{t ? `${t.red} – ${t.blue}` : ''}</td>
-                    <td>{b.winner_entry_id ? <><Badge color="green">{name.get(String(b.winner_entry_id))}</Badge>{b.decided_by && b.decided_by !== 'SCORE' && <span className="ml-1 text-xs text-slate-500">{b.decided_by === 'BYE' ? 'bye' : b.decided_by === 'TOSS' ? 'by toss' : 'referee'}</span>}</> : <span className="text-xs text-slate-500">to play</span>}</td>
+                    <td>{b.winner_entry_id ? <><Badge color="green">{name.get(String(b.winner_entry_id))}</Badge>{b.decided_by && b.decided_by !== 'SCORE' && <span className="ml-1 text-xs text-slate-500">{b.decided_by === 'BYE' ? 'bye' : b.decided_by === 'TOSS' ? 'by toss' : b.decided_by === 'DISQUALIFIED' ? 'opponent disqualified' : 'referee'}</span>}</> : <span className="text-xs text-slate-500">to play</span>}</td>
                     <td>{b.blue_entry_id && <Link className="btn btn-sm" href={`/events/${id}/c/${cid}/b/${b.id}`}>{score && !b.winner_entry_id ? 'Score' : 'Open'}</Link>}</td>
                   </tr>);
               })}</tbody></table>

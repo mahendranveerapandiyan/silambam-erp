@@ -318,7 +318,7 @@ export async function saveBoutScores(boutId: string, fd: FormData) {
       for (let r = 1; r <= 9; r++) {
         if (!(`seen_${r}` in o)) continue;
         const rp = num(`red_${r}`), bp = num(`blue_${r}`), rf = num(`redf_${r}`) ?? 0, bf = num(`bluef_${r}`) ?? 0, mins = num(`min_${r}`);
-        for (const v of [rp, bp, rf, bf]) if (v !== null && (Number.isNaN(v) || v < 0)) throw new Error('Points and fouls cannot be negative – fouls are deducted automatically');
+        for (const v of [rp, bp, rf, bf]) if (v !== null && (Number.isNaN(v) || v < 0)) throw new Error('Enter points and negative marks as positive numbers – negative marks are deducted automatically');
         if (rp === null && bp === null && !rf && !bf) { await tx`delete from event_bout_round where bout_id = ${boutId} and round_no = ${r}`; continue; }
         await tx`insert into event_bout_round (bout_id, round_no, minutes, red_points, blue_points, red_fouls, blue_fouls, entered_by)
           values (${boutId}, ${r}, ${mins}, ${rp}, ${bp}, ${rf}, ${bf}, ${u.username})
@@ -348,10 +348,14 @@ export async function decideBout(boutId: string, fd: FormData) {
     const [ents] = await sql`select (select individual_score from event_entry where id = ${b.red_entry_id}) red, (select individual_score from event_entry where id = ${b.blue_entry_id}) blue`;
     const indiv = c.flow_kind === 'INDIVIDUAL_FIGHT';
     const st = boutState(rounds, c as unknown as FlowRules, indiv ? Number(ents.red ?? 0) : 0, indiv ? Number(ents.blue ?? 0) : 0);
-    if (!st.tossOpen && !st.refereeOpen) throw new Error('The bout is not tied after the required rounds');
     let winner: string;
     let by: string;
-    if (o.mode === 'TOSS') {
+    if (o.mode === 'DISQUALIFY') {
+      // a disqualified player loses the bout at any time
+      if (!o.disqualified || ![String(b.red_entry_id), String(b.blue_entry_id)].includes(o.disqualified)) throw new Error('Choose the disqualified player');
+      winner = String(o.disqualified) === String(b.red_entry_id) ? b.blue_entry_id : b.red_entry_id; by = 'DISQUALIFIED';
+    } else if (!st.tossOpen && !st.refereeOpen) throw new Error('The bout is not tied after the required rounds');
+    else if (o.mode === 'TOSS') {
       if (!st.tossOpen) throw new Error('A toss is not allowed for this flow');
       if (!o.call || !o.result) throw new Error('Record the call and the toss result');
       winner = o.call === o.result ? b.red_entry_id : b.blue_entry_id; by = 'TOSS';
@@ -363,7 +367,7 @@ export async function decideBout(boutId: string, fd: FormData) {
       await tx`update event_bout set winner_entry_id = ${winner}, decided_by = ${by}, toss_call = ${o.mode === 'TOSS' ? `${o.call}/${o.result}` : null} where id = ${boutId}`;
       if (b.stage_code === 'FINAL' || b.stage_code === 'THIRD_PLACE') await settlePlaces(tx as unknown as Tx, c);
     });
-    return { msg: by === 'TOSS' ? `Toss: ${o.call} called, ${o.result} came – the winner is decided.` : 'The referee has decided the winner.' };
+    return { msg: by === 'TOSS' ? `Toss: ${o.call} called, ${o.result} came – the winner is decided.` : by === 'DISQUALIFIED' ? 'The player has been disqualified – the opponent wins the bout.' : 'The referee has decided the winner.' };
   });
 }
 

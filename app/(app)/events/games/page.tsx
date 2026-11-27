@@ -53,7 +53,7 @@ export default async function Games({ searchParams }: { searchParams: SP }) {
             </div>
             <div className="card overflow-x-auto">
               <h3 className="mb-2 font-semibold">Game Flows</h3>
-              <table className="tbl"><thead><tr><th>Flow</th><th>Type</th><th>Evaluation Template</th><th>Rounds</th><th>Round time</th><th>Foul</th><th>Tie-break</th><th></th></tr></thead>
+              <table className="tbl"><thead><tr><th>Flow</th><th>Type</th><th>Evaluation Template</th><th>Rounds</th><th>Round time</th><th>Tie-break</th><th></th></tr></thead>
                 <tbody>{flows.map((f) => (
                   <tr key={f.id} className={edit && edit.id === f.id ? 'bg-sky-50' : ''}>
                     <td>{f.name}{f.active_flag === 'N' && <span className="ml-1 text-xs text-slate-400">(inactive)</span>}<div className="text-xs text-slate-500">{f.description}</div></td>
@@ -61,7 +61,6 @@ export default async function Games({ searchParams }: { searchParams: SP }) {
                     <td className="text-sm">{f.flow_kind === 'FIGHT' ? '—' : f.template_name ?? <span className="text-amber-700">choose per competition</span>}</td>
                     <td className="text-sm">{f.flow_kind === 'INDIVIDUAL' ? '—' : `${f.regular_rounds} + ${f.extra_rounds} if tied`}</td>
                     <td className="text-sm">{f.flow_kind === 'INDIVIDUAL' ? '—' : `${Number(f.round_minutes)} min`}</td>
-                    <td className="text-sm">{f.flow_kind === 'INDIVIDUAL' ? '—' : `−${Number(f.foul_points)} each`}</td>
                     <td className="text-xs">{f.flow_kind === 'INDIVIDUAL' ? 'highest mark wins' : [f.allow_final_round === 'Y' && 'final round', f.allow_toss === 'Y' && 'toss'].filter(Boolean).join(' or ') || 'none'}</td>
                     <td className="whitespace-nowrap">{write && <div className="flex gap-1"><Link className="btn btn-sm" href={`/events/games?game=${game.id}&flow=${f.id}`}>Edit</Link>
                       <form action={deleteGameFlow.bind(null, game.id, f.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message={`Delete the ${f.name} flow?`}>✕</ConfirmButton></form></div>}</td>
@@ -86,7 +85,6 @@ export default async function Games({ searchParams }: { searchParams: SP }) {
                     <Field label="Rounds per bout"><input name="regular_rounds" type="number" min="1" defaultValue={e.regular_rounds ?? 2} className="input" /></Field>
                     <Field label="Extra rounds when tied" help="e.g. rounds 3 and 4"><input name="extra_rounds" type="number" min="0" defaultValue={e.extra_rounds ?? 2} className="input" /></Field>
                     <Field label="Minutes per round"><input name="round_minutes" type="number" step="0.25" min="0.25" defaultValue={e.round_minutes ? Number(e.round_minutes) : 2} className="input" /></Field>
-                    <Field label="Marks deducted per foul"><input name="foul_points" type="number" step="0.25" min="0" defaultValue={e.foul_points ? Number(e.foul_points) : 1} className="input" /></Field>
                     <Field label="Still tied: a final round"><select name="allow_final_round" defaultValue={e.allow_final_round ?? 'Y'} className="input"><option value="Y">Allowed (e.g. round 5)</option><option value="N">No</option></select></Field>
                     <Field label="Still tied: a toss"><select name="allow_toss" defaultValue={e.allow_toss ?? 'Y'} className="input"><option value="Y">Allowed (head / tail)</option><option value="N">No</option></select></Field>
                   </div>
