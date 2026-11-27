@@ -322,12 +322,22 @@ export async function saveExamOutcome(id: string, fd: FormData) {
       const same = grades.filter((g) => o[`target_${g.grade_id}`] && String(o[`target_${g.grade_id}`]) === String(g.grade_id));
       if (same.length) throw new Error(`${same.map((g) => g.name).join(', ')} cannot be promoted to the same grade.`);
     }
+    let pd: string | null = null, pay: string | null = null, payName = '';
+    if (outcome === 'PROMOTE') {
+      pd = o.promotion_date; pay = o.promotion_ay_id;
+      if (!pd || !pay) throw new Error('Choose the effective date of the promotion and the academic year students move to');
+      const [y] = await sql`select * from academic_year where id = ${pay} and enterprise_id = ${u.enterpriseId}`;
+      if (!y) throw new Error('Academic year not found');
+      if (pd < y.start_date || pd > y.end_date) throw new Error(`The promotion date must fall within ${y.name} (${y.start_date} to ${y.end_date})`);
+      if (pd < e.exam_date) throw new Error(`The promotion cannot take effect before the exam date (${e.exam_date})`);
+      payName = y.name;
+    }
     await sql.begin(async (tx) => {
-      await tx`update exam set outcome_code = ${outcome}, pass_percentage = ${pp} where id = ${id}`;
+      await tx`update exam set outcome_code = ${outcome}, pass_percentage = ${pp}, promotion_date = ${pd}, promotion_ay_id = ${pay} where id = ${id}`;
       for (const g of grades) await tx`update exam_grade set target_grade_id = ${outcome === 'PROMOTE' ? o[`target_${g.grade_id}`] : null} where exam_id = ${id} and grade_id = ${g.grade_id}`;
     });
     await reached(id, 7, u.username);
-    return after(fd, id, 7, outcome === 'PROMOTE' ? `Students who pass ${e.name} will be promoted to the next grade.` : `${e.name} results will be recorded on the student profile only.`);
+    return after(fd, id, 7, outcome === 'PROMOTE' ? `Students who pass ${e.name} will be promoted to the next grade, effective ${pd}, into ${payName}.` : `${e.name} results will be recorded on the student profile only.`);
   });
 }
 

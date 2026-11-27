@@ -265,6 +265,11 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
 
   async function OutcomeStop() {
     const opts = await refOptions('student-grades', u.enterpriseId, exam.exam_date);
+    const years = await sql`select id, name, start_date, end_date from academic_year where enterprise_id = ${u.enterpriseId} order by start_date`;
+    // default: the academic year after the exam's, from its first day (or the exam's own year, from the exam date)
+    const next = years.find((y) => y.start_date > exam.exam_date);
+    const ayDefault = String(exam.promotion_ay_id ?? next?.id ?? exam.academic_year_id);
+    const dateDefault = exam.promotion_date ?? next?.start_date ?? exam.exam_date;
     return (
       <form action={saveExamOutcome.bind(null, id)} className="card space-y-3">
         <Back to={back} />
@@ -277,6 +282,10 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
               <ShowFor select="outcome_code" />
             </Field>
             <Field label="Overall Pass % (optional)" help="Besides passing every subject"><input name="pass_percentage" type="number" step="0.1" min="0" max="100" defaultValue={exam.pass_percentage ?? ''} className="input" /></Field>
+          </div>
+          <div data-show-for-outcome_code="PROMOTE" className="grid gap-3 sm:grid-cols-2">
+            <Field label="Promotion Effective Date *" help="The new grade starts on this date (not before the exam date)"><input type="date" name="promotion_date" defaultValue={dateDefault} min={exam.exam_date} required className="input" /></Field>
+            <Field label="Move to Academic Year *" help="The date must fall within this year"><Select name="promotion_ay_id" options={years.map((y) => ({ value: String(y.id), label: `${y.name} (${fmtDate(y.start_date)} – ${fmtDate(y.end_date)})` }))} value={ayDefault} required /></Field>
           </div>
           <div data-show-for-outcome_code="PROMOTE" className="overflow-x-auto">
             <table className="tbl"><thead><tr><th>Grade</th><th>Promote to</th></tr></thead>

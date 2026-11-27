@@ -18,7 +18,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
   const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_EXAM_CANDIDATE_PRV'], 'READ');
   const { id } = await params;
   const sp = await searchParams;
-  const [exam] = await sql`select e.*, y.name ay_name, (select name from grading_scale g where g.id = e.grading_scale_id) grading_name
+  const [exam] = await sql`select e.*, y.name ay_name, (select name from academic_year p where p.id = e.promotion_ay_id) promotion_ay_name, (select name from grading_scale g where g.id = e.grading_scale_id) grading_name
     from exam e join academic_year y on y.id = e.academic_year_id where e.id = ${id} and e.enterprise_id = ${u.enterpriseId}`;
   if (!exam) notFound();
   const asOf = await getAsOf();
@@ -50,7 +50,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
     exam.fees_cleared_flag === 'Y' && 'Fees cleared', exam.min_months_in_grade !== null && `≥ ${exam.min_months_in_grade} months in grade`,
     exam.min_age !== null && `Age ≥ ${exam.min_age}`, exam.exam_type_code === 'GRADE_EXAM' && 'One grade exam per year',
     exam.grading_name && `Grading: ${exam.grading_name}`,
-    exam.outcome_code === 'PROMOTE' ? `Promotes: ${grades.map((g) => `${g.name} → ${g.target_name ?? '?'}`).join(', ') || 'to the next grade'}` : 'Result recorded on the profile only',
+    exam.outcome_code === 'PROMOTE' ? `Promotes: ${grades.map((g) => `${g.name} → ${g.target_name ?? '?'}`).join(', ') || 'to the next grade'}${exam.promotion_date ? ` · from ${fmtDate(exam.promotion_date)} into ${exam.promotion_ay_name}` : ''}` : 'Result recorded on the profile only',
   ].filter(Boolean);
   const tabs: [string, string][] = [['candidates', `Candidates (${cands.length})`], ['eligible', 'Assign Students'], ['results', 'Marks & Results'], ['subjects', `Subjects (${subjects.length})`]];
 
@@ -176,7 +176,9 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
             <div><h2 className="h2 mb-1">Publish Results</h2><p className="muted">{unpublished.length} result(s) not yet published. They become visible on the student profile and the parent/student portal, and their marks are locked.</p></div>
             {exam.outcome_code === 'PROMOTE' ? <>
               <label className="flex items-center gap-1 text-sm"><input type="checkbox" name="promote" value="Y" defaultChecked /> Promote passed students ({grades.map((g) => `${g.name} → ${g.target_name ?? '?'}`).join(', ') || 'to their next grade'})</label>
-              <label className="text-sm">effective <input type="date" name="promotion_date" defaultValue={exam.exam_date > today ? exam.exam_date : today} className="input inline-block w-40" /></label>
+              {exam.promotion_date
+                ? <span className="text-sm">effective <b>{fmtDate(exam.promotion_date)}</b> into <b>{exam.promotion_ay_name}</b> <span className="text-xs text-slate-500">(set in Exam Setup › Targeted Outcome)</span></span>
+                : <label className="text-sm">effective <input type="date" name="promotion_date" defaultValue={exam.exam_date > today ? exam.exam_date : today} className="input inline-block w-40" /></label>}
             </> : <span className="text-sm">Outcome: results are recorded only – no promotion.</span>}
             <ConfirmButton className="btn btn-primary" message="Publish results?">Publish</ConfirmButton>
           </form>

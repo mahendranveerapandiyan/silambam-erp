@@ -142,7 +142,8 @@ export async function publishResults(examId: string, fd: FormData) {
     const exam = await loadExam(examId, u.enterpriseId);
     if (exam.status_code === 'DRAFT') throw new Error('Finish the exam setup first');
     const o = formObj(fd);
-    const date = o.promotion_date ?? todayISO();
+    const date = exam.promotion_date ?? o.promotion_date ?? todayISO();
+    const toAy = exam.promotion_ay_id ?? null;
     let promoted = 0, published = 0;
     await sql.begin(async (tx) => {
       if (exam.outcome_code === 'PROMOTE' && o.promote === 'Y') {
@@ -155,10 +156,11 @@ export async function publishResults(examId: string, fd: FormData) {
         if (none.length) throw new Error(`${none.length} passed student(s) have no grade to be promoted to – set it in stop 7 (Targeted Outcome) of the exam setup.`);
         for (const c of passed) {
           await dtChange(tx, 'assignment', c.assignment_id, date, 'UPDATE', {
-            student_grade_id: c.target, action_id: action.id, action_reason_code: 'GRADE_EXAM_PASSED', comments: `Passed ${exam.name}`,
+            student_grade_id: c.target, ...(toAy ? { academic_year_id: toAy } : {}), action_id: action.id, action_reason_code: 'GRADE_EXAM_PASSED', comments: `Passed ${exam.name}`,
             ...(action.assignment_status_id ? { assignment_status_id: action.assignment_status_id } : {}),
           }, u.username);
-          await tx`update exam_candidate set promoted_flag = 'Y', promoted_on = ${date}, promoted_from_grade_id = ${c.current_grade_id}, promoted_to_grade_id = ${c.target} where id = ${c.id}`;
+          const [prev] = await tx`select academic_year_id from assignment_f where id = ${c.assignment_id} and ${addDays(date, -1)}::date between effective_start_date and effective_end_date`;
+          await tx`update exam_candidate set promoted_flag = 'Y', promoted_on = ${date}, promoted_from_grade_id = ${c.current_grade_id}, promoted_to_grade_id = ${c.target}, promoted_from_ay_id = ${prev?.academic_year_id ?? null} where id = ${c.id}`;
           promoted++;
         }
       }
@@ -168,7 +170,8 @@ export async function publishResults(examId: string, fd: FormData) {
       published = pub.length;
       await tx`update exam set status_code = 'PUBLISHED', last_updated_by = ${u.username}, last_update_date = now() where id = ${examId}`;
     });
-    return { msg: `${exam.name} results of ${published} student(s) have been published${promoted ? ` · ${promoted} student(s) promoted effective ${date}` : ' and recorded on the student profiles'}.` };
+    const [ayn] = toAy ? await sql`select name from academic_year where id = ${toAy}` : [];
+    return { msg: `${exam.name} results of ${published} student(s) have been published${promoted ? ` · ${promoted} student(s) promoted effective ${date}${ayn ? ` into ${ayn.name}` : ''}` : ' and recorded on the student profiles'}.` };
   });
 }
 
@@ -187,8 +190,8 @@ async function rollBack(tx: Tx, exam: Record<string, any>, cands: Record<string,
       if (!v || String(v.student_grade_id) !== String(c.promoted_to_grade_id)) throw new Error(`${who}'s grade was changed after the promotion – correct it on the assignment instead.`);
       const [prev] = await tx`select 1 from assignment_f where id = ${c.assignment_id} and effective_end_date = ${addDays(c.promoted_on, -1)}`;
       if (prev) await dtDeleteLatest(tx, 'assignment', c.assignment_id);
-      else await dtChange(tx, 'assignment', c.assignment_id, c.promoted_on, 'CORRECT', { student_grade_id: c.promoted_from_grade_id, comments: `Promotion by ${exam.name} rolled back` }, by);
-      await tx`update exam_candidate set promoted_flag = 'N', promoted_on = null, promoted_from_grade_id = null, promoted_to_grade_id = null where id = ${c.id}`;
+      else await dtChange(tx, 'assignment', c.assignment_id, c.promoted_on, 'CORRECT', { student_grade_id: c.promoted_from_grade_id, ...(c.promoted_from_ay_id ? { academic_year_id: c.promoted_from_ay_id } : {}), comments: `Promotion by ${exam.name} rolled back` }, by);
+      await tx`update exam_candidate set promoted_flag = 'N', promoted_on = null, promoted_from_grade_id = null, promoted_to_grade_id = null, promoted_from_ay_id = null where id = ${c.id}`;
     }
     await tx`update exam_candidate set published_flag = 'N' where id = ${c.id}`;
     undone++;
