@@ -29,7 +29,15 @@ export const CATEGORY_FIELDS: { code: string; label: string; kind: 'number' | 'c
   { code: 'BLOOD_GROUP', label: 'Blood Group', kind: 'code', lookup: 'BLOOD_GROUP' },
   { code: 'STATE', label: 'State', kind: 'code', lookup: 'STATE' },
 ];
-export const OPERATORS: [string, string][] = [['EQ', 'is'], ['NE', 'is not'], ['LT', 'below'], ['LE', 'up to'], ['GT', 'above'], ['GE', 'at least'], ['IN', 'is one of']];
+export const OPERATORS: [string, string][] = [['EQ', '= is'], ['NE', '≠ is not'], ['LT', '< below'], ['LE', '<= up to'], ['GT', '> above'], ['GE', '>= at least'], ['BETWEEN', 'between (both included)'], ['IN', 'is one of']];
+/** Words used when a rule is read out, e.g. "Age >= 7", "Age between 7 and 10". */
+const OP_TEXT: Record<string, string> = { EQ: 'is', NE: 'is not', LT: '<', LE: '<=', GT: '>', GE: '>=', BETWEEN: 'between', IN: 'is one of' };
+/** "Age between 7 and 10", "Gender is Female" – nameOf turns codes into names. */
+export function ruleText(r: Rule, nameOf: (field: string, v: string) => string = (_f, v) => v) {
+  const label = CATEGORY_FIELDS.find((f) => f.code === r.field_code)?.label.replace(/ \(.*/, '') ?? r.field_code;
+  const vals = r.value.split(',').map((v) => nameOf(r.field_code, v.trim()));
+  return r.operator === 'BETWEEN' ? `${label} between ${vals[0]} and ${vals[1]}` : `${label} ${OP_TEXT[r.operator] ?? r.operator} ${vals.join(', ')}`;
+}
 
 export type Facts = Record<string, string | number | null>;
 
@@ -69,7 +77,8 @@ export function ruleFails(rule: Rule, facts: Facts, describe: (r: Rule) => strin
   if (f?.kind === 'number') {
     const a = Number(v), b = Number(rule.value);
     ok = rule.operator === 'EQ' ? a === b : rule.operator === 'NE' ? a !== b : rule.operator === 'LT' ? a < b : rule.operator === 'LE' ? a <= b
-      : rule.operator === 'GT' ? a > b : rule.operator === 'GE' ? a >= b : rule.operator === 'IN' ? vals.map(Number).includes(a) : false;
+      : rule.operator === 'GT' ? a > b : rule.operator === 'GE' ? a >= b : rule.operator === 'IN' ? vals.map(Number).includes(a)
+      : rule.operator === 'BETWEEN' ? a >= Number(vals[0]) && a <= Number(vals[1]) : false;
   } else {
     ok = rule.operator === 'NE' ? !vals.includes(String(v)) : vals.includes(String(v));
   }
@@ -166,6 +175,6 @@ export async function ruleDescriber(enterpriseId: string, asOf: string) {
     names[f.code] = new Map(opts.map((o) => [String(o.value), o.label]));
   }
   const nameOf = (field: string, v: string) => names[field]?.get(v) ?? v;
-  const describe = (r: Rule) => `${CATEGORY_FIELDS.find((f) => f.code === r.field_code)?.label.replace(/ \(.*/, '') ?? r.field_code} ${OPERATORS.find((x) => x[0] === r.operator)?.[1] ?? r.operator} ${r.value.split(',').map((v) => nameOf(r.field_code, v.trim())).join(', ')}`;
+  const describe = (r: Rule) => ruleText(r, nameOf);
   return { describe, nameOf };
 }

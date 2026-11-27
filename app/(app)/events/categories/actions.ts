@@ -50,10 +50,17 @@ export async function saveRule(categoryId: string, ruleId: string | null, fd: Fo
     if (!f) throw new Error('Choose a field');
     if (!OPERATORS.some(([k]) => k === o.operator)) throw new Error('Choose a condition');
     const multi = fd.getAll('value_multi').map(String).filter(Boolean);
-    const value = o.operator === 'IN' && multi.length ? multi.join(',') : o.value;
+    let value = o.operator === 'IN' && multi.length ? multi.join(',') : o.value;
+    if (o.operator === 'BETWEEN') {
+      if (f.kind !== 'number') throw new Error(`${f.label} cannot use between`);
+      const a = Number(o.value_from), b = Number(o.value_to);
+      if (o.value_from === null || o.value_to === null || Number.isNaN(a) || Number.isNaN(b)) throw new Error('Enter both numbers, e.g. between 7 and 10');
+      if (a > b) throw new Error(`The first number (${a}) must not be more than the second (${b})`);
+      value = `${a},${b}`;
+    }
     if (!value) throw new Error('Enter the value to compare with');
     if (f.kind === 'number' && value.split(',').some((x) => Number.isNaN(Number(x)))) throw new Error(`${f.label} needs a number`);
-    if (f.kind === 'code' && ['LT', 'LE', 'GT', 'GE'].includes(o.operator!)) throw new Error(`${f.label} can only be compared with is / is not / is one of`);
+    if (f.kind === 'code' && ['LT', 'LE', 'GT', 'GE', 'BETWEEN'].includes(o.operator!)) throw new Error(`${f.label} can only be compared with is / is not / is one of`);
     if (ruleId) await sql`update competition_category_rule set field_code = ${f.code}, operator = ${o.operator}, value = ${value} where id = ${ruleId} and category_id = ${categoryId}`;
     else await sql`insert into competition_category_rule (category_id, field_code, operator, value) values (${categoryId}, ${f.code}, ${o.operator}, ${value})`;
     return { to: `/events/categories?edit=${categoryId}`, msg: `The rule has been ${ruleId ? 'updated' : 'added'} to ${c.name}.` };

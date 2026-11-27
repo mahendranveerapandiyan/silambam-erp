@@ -4,9 +4,9 @@ import { getAsOf } from '@/lib/asof';
 import { sql } from '@/lib/db';
 import { refOptions } from '@/lib/dt';
 import { lookupOptions } from '@/lib/lookups';
-import { CATEGORY_FIELDS, OPERATORS, studentFacts, ruleFails, type Rule } from '@/lib/tournament';
+import { CATEGORY_FIELDS, OPERATORS, studentFacts, ruleFails, ruleText, type Rule } from '@/lib/tournament';
 import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s as one, here } from '@/components/ui';
-import { ConfirmButton } from '@/components/client';
+import { ConfirmButton, ShowFor } from '@/components/client';
 import { MultiPick } from '@/components/MultiPick';
 import { EditableForm } from '@/components/EditMode';
 import { saveCategory, deleteCategory, saveRule } from './actions';
@@ -24,9 +24,7 @@ export default async function Categories({ searchParams }: { searchParams: SP })
     if (f.lookup) options[f.code] = await lookupOptions(f.lookup, asOf);
     if (f.ref) options[f.code] = await refOptions(f.ref, u.enterpriseId, asOf);
   }
-  const opLabel = (k: string) => OPERATORS.find((x) => x[0] === k)?.[1] ?? k;
-  const valueText = (r: Rule) => r.value.split(',').map((v) => options[r.field_code]?.find((o) => o.value === v)?.label ?? v).join(', ');
-  const describe = (r: Rule) => `${CATEGORY_FIELDS.find((f) => f.code === r.field_code)?.label.replace(/ \(.*/, '') ?? r.field_code} ${opLabel(r.operator)} ${valueText(r)}`;
+  const describe = (r: Rule) => ruleText(r, (f, v) => options[f]?.find((o) => o.value === v)?.label ?? v);
   const cats = await sql`select c.* from competition_category c where c.enterprise_id = ${u.enterpriseId} order by c.active_flag desc, c.name`;
   const rules = await sql`select r.* from competition_category_rule r join competition_category c on c.id = r.category_id where c.enterprise_id = ${u.enterpriseId} order by r.id`;
   const rulesOf = (id: string) => rules.filter((r) => String(r.category_id) === String(id)) as unknown as (Rule & { id: string })[];
@@ -68,7 +66,7 @@ export default async function Categories({ searchParams }: { searchParams: SP })
   function Category() {
     const list = rulesOf(cat!.id);
     const field = CATEGORY_FIELDS.find((f) => f.code === one(sp.field)) ?? null;
-    const ops = field?.kind === 'code' ? OPERATORS.filter(([k]) => ['EQ', 'NE', 'IN'].includes(k)) : OPERATORS.filter(([k]) => k !== 'IN');
+    const ops = field?.kind === 'code' ? OPERATORS.filter(([k]) => ['EQ', 'NE', 'IN'].includes(k)).map(([k, l]) => [k, l.replace(/^[=≠] /, '')]) : OPERATORS.filter(([k]) => k !== 'IN');
     const m = matching(cat!.id);
     return (
       <div className="space-y-4">
@@ -101,9 +99,16 @@ export default async function Categories({ searchParams }: { searchParams: SP })
                 <form action={saveRule.bind(null, cat!.id, null)} className="flex flex-wrap items-end gap-2">
                   <Back to={here('/events/categories', { edit: String(cat!.id) })} /><input type="hidden" name="field_code" value={field.code} />
                   <span className="pb-2 font-medium">{field.label}</span>
-                  <Field label="Condition"><select name="operator" className="input">{ops.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+                  <Field label="Condition"><select name="operator" className="input">{ops.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>{field.kind === 'number' && <ShowFor select="operator" />}</Field>
                   {field.kind === 'number'
-                    ? <Field label="Value"><input name="value" type="number" step="0.01" required className="input w-32" placeholder={field.code === 'AGE' ? 'e.g. 7' : ''} /></Field>
+                    ? <>
+                      <div data-show-for-operator="EQ,NE,LT,LE,GT,GE"><Field label="Value"><input name="value" type="number" step="0.01" required className="input w-32" placeholder={field.code === 'AGE' ? 'e.g. 7' : ''} /></Field></div>
+                      <div data-show-for-operator="BETWEEN" className="flex items-end gap-2">
+                        <Field label="From"><input name="value_from" type="number" step="0.01" required className="input w-28" placeholder={field.code === 'AGE' ? 'e.g. 7' : ''} /></Field>
+                        <span className="pb-2">and</span>
+                        <Field label="To"><input name="value_to" type="number" step="0.01" required className="input w-28" placeholder={field.code === 'AGE' ? 'e.g. 10' : ''} /></Field>
+                      </div>
+                    </>
                     : <>
                       <Field label="Value (is / is not)"><Select name="value" options={options[field.code] ?? []} /></Field>
                       <Field label="…or several (is one of)"><MultiPick name="value_multi" options={options[field.code] ?? []} emptyText="None" /></Field>
