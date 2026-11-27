@@ -131,6 +131,8 @@ export default async function EventPage({ params, searchParams }: { params: Prom
             <div><span className="label">Category</span><Select name="category_id" options={cats} empty="Open to all students" /></div>
             <div><span className="label">Evaluation Template</span><Select name="evaluation_template_id" options={temps} empty="Flow default (individual flows)" /></div>
             <div><span className="label">Name</span><input name="name" placeholder="Automatic: game – flow – category" className="input" /></div>
+            <div><span className="label">Perform from (min:sec)</span><input name="perform_min" placeholder="Flow default" className="input" /></div>
+            <div><span className="label">Perform to (min:sec)</span><input name="perform_max" placeholder="Flow default" className="input" /></div>
             <div className="flex items-end"><button className="btn btn-primary w-full">Add Competition</button></div>
           </form>)}
       </div>

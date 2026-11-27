@@ -178,3 +178,24 @@ export async function ruleDescriber(enterpriseId: string, asOf: string) {
   const describe = (r: Rule) => ruleText(r, nameOf);
   return { describe, nameOf };
 }
+
+/* ---------------- performance time ---------------- */
+
+/** "1:45" → 105 seconds; "105" → 105; empty → null. */
+export function parseSeconds(v: string | null | undefined) {
+  if (v === null || v === undefined || String(v).trim() === '') return null;
+  const t = String(v).trim();
+  const m = t.match(/^(\d+):([0-5]?\d)$/);
+  const s = m ? Number(m[1]) * 60 + Number(m[2]) : /^\d+(\.\d+)?$/.test(t) ? Math.round(Number(t)) : NaN;
+  if (Number.isNaN(s)) throw new Error(`"${t}" is not a time – use minutes:seconds, e.g. 1:45`);
+  return s;
+}
+/** 105 → "1:45". */
+export const fmtSeconds = (s: number | null | undefined) => (s === null || s === undefined ? '' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+/** Null when the time is within the window (or no window is set), else why not. */
+export function timeOutside(s: number | null, min: number | null, max: number | null) {
+  if (s === null) return null;
+  if (min !== null && s < min) return `under time (${fmtSeconds(s)} < ${fmtSeconds(min)})`;
+  if (max !== null && s > max) return `over time (${fmtSeconds(s)} > ${fmtSeconds(max)})`;
+  return null;
+}

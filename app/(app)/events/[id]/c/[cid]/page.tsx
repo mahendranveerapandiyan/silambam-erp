@@ -5,7 +5,7 @@ import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
 import { templateSections, ratingChoices } from '@/lib/examSetup';
 import { studentScopeSql } from '@/lib/scope';
-import { categoryRules, studentFacts, ruleFails, flowKindLabel, hasIndividual, hasFight, proposeBye, STAGES, boutState, ruleDescriber, type FlowRules } from '@/lib/tournament';
+import { categoryRules, studentFacts, ruleFails, flowKindLabel, hasIndividual, hasFight, proposeBye, STAGES, boutState, ruleDescriber, fmtSeconds, timeOutside, type FlowRules } from '@/lib/tournament';
 import { fmtDate, todayISO } from '@/lib/util';
 import { PageHeader, Flash, Back, Badge, Empty, Tabs, type SP, s as one, here } from '@/components/ui';
 import { CheckAll, ConfirmButton } from '@/components/client';
@@ -19,7 +19,7 @@ export default async function Competition({ params, searchParams }: { params: Pr
   const { id, cid } = await params;
   const sp = await searchParams;
   const [c] = await sql`select c.*, e.name event_name, e.status_code event_status, e.start_date, e.end_date, e.venue,
-      f.flow_kind, f.name flow_name, f.regular_rounds, f.extra_rounds, f.allow_final_round, f.allow_toss, f.foul_points, f.round_minutes flow_minutes,
+      f.flow_kind, f.name flow_name, coalesce(c.perform_min_seconds, f.perform_min_seconds) tmin, coalesce(c.perform_max_seconds, f.perform_max_seconds) tmax, f.time_penalty, f.regular_rounds, f.extra_rounds, f.allow_final_round, f.allow_toss, f.foul_points, f.round_minutes flow_minutes,
       g.name game_name, k.name category_name, (select name from evaluation_template t where t.id = c.evaluation_template_id) template_name
     from event_competition c join event e on e.id = c.event_id join game_flow f on f.id = c.game_flow_id join game_type g on g.id = f.game_type_id
     left join competition_category k on k.id = c.category_id
@@ -133,15 +133,16 @@ export default async function Competition({ params, searchParams }: { params: Pr
     const V = new Map(vals.map((v) => [`${v.entry_id}_${v.section_id}`, v.value]));
     const locked = !score || c.status_code === 'COMPLETED' || bouts.length > 0;
     const groups = [...new Set(secs.map((s) => s.group_name ?? ''))];
+    const timed = c.tmin != null || c.tmax != null;
     return (
       <div className="space-y-3">
         <form key={cid} action={saveIndividualScores.bind(null, cid)} className="card overflow-x-auto">
           <Back to={back} />
-          <p className="muted mb-2">{c.template_name ?? 'No template'} · total {max}. {c.flow_kind === 'INDIVIDUAL_FIGHT' ? 'No winner is announced – these marks are carried into every fight as the Individual Mark.' : 'The highest mark wins.'}</p>
+          <p className="muted mb-2">{c.template_name ?? 'No template'} · total {max}.{(c.tmin != null || c.tmax != null) && <> Perform between <b>{fmtSeconds(c.tmin) || '0:00'}</b> and <b>{fmtSeconds(c.tmax) || 'no limit'}</b>{Number(c.time_penalty) > 0 ? ` – outside the time deducts ${Number(c.time_penalty)} mark(s)` : ' – times outside are flagged'}.</>} {c.flow_kind === 'INDIVIDUAL_FIGHT' ? 'No winner is announced – these marks are carried into every fight as the Individual Mark.' : 'The highest mark wins.'}</p>
           <table className="tbl">
             <thead>
-              {groups.some(Boolean) && <tr><th />{groups.map((g) => <th key={g} colSpan={secs.filter((s) => (s.group_name ?? '') === g).length} className="text-center">{g || '—'}</th>)}<th /></tr>}
-              <tr><th>Participant</th>{secs.map((s) => <th key={s.id} className="font-normal normal-case">{s.name}<div className="text-[10px]">weight {s.weight_pct} · {s.input_type === 'LOV' ? 'list' : 'enter'} {s.min_rating}–{s.max_rating}</div></th>)}<th>Mark / {max}</th></tr>
+              {groups.some(Boolean) && <tr><th />{groups.map((g) => <th key={g} colSpan={secs.filter((s) => (s.group_name ?? '') === g).length} className="text-center">{g || '—'}</th>)}{timed && <th />}<th /></tr>}
+              <tr><th>Participant</th>{secs.map((s) => <th key={s.id} className="font-normal normal-case">{s.name}<div className="text-[10px]">weight {s.weight_pct} · {s.input_type === 'LOV' ? 'list' : 'enter'} {s.min_rating}–{s.max_rating}</div></th>)}{timed && <th>Time (min:sec)</th>}<th>Mark / {max}</th></tr>
             </thead>
             <tbody>{entries.map((e) => (
               <tr key={e.id}>
@@ -152,7 +153,10 @@ export default async function Competition({ params, searchParams }: { params: Pr
                     ? <select name={nm} defaultValue={v === null || v === undefined ? '' : String(Number(v))} disabled={locked} className="input min-w-28" aria-label={`${e.full_name} ${s.name}`}><option value="">–</option>{ch.map((x) => <option key={x.value} value={x.value}>{x.label}{x.label !== String(x.value) ? ` (${x.value})` : ''}</option>)}</select>
                     : <input name={nm} type="number" step="0.01" min={s.min_rating} max={s.max_rating} defaultValue={v ?? ''} placeholder="0" disabled={locked} className="input w-20" aria-label={`${e.full_name} ${s.name}`} />}</td>;
                 })}
-                <td className="font-semibold">{e.individual_score ?? '—'}</td>
+                {timed && (() => { const out = timeOutside(e.perform_seconds, c.tmin, c.tmax); return (
+                  <td><input name={`t_${e.id}`} defaultValue={fmtSeconds(e.perform_seconds)} placeholder="m:ss" disabled={locked} className={`input w-24 ${out ? 'border-red-400 text-red-700' : ''}`} aria-label={`${e.full_name} time`} />
+                    {out && <div className="text-xs font-semibold text-red-700">{out}</div>}</td>); })()}
+                <td className="font-semibold">{e.individual_score ?? '—'}{e.evaluation_score != null && Number(e.evaluation_score) !== Number(e.individual_score) && <div className="text-xs font-normal text-red-700">{Number(e.evaluation_score)} − {Math.round((Number(e.evaluation_score) - Number(e.individual_score)) * 100) / 100} for time</div>}</td>
               </tr>))}</tbody>
           </table>
           {!entries.length && <Empty />}
@@ -228,8 +232,8 @@ export default async function Competition({ params, searchParams }: { params: Pr
       <div className="card overflow-x-auto">
         <h2 className="h2">{c.status_code === 'COMPLETED' ? 'Final Results' : 'Results'}</h2>
         {placed.length ? (
-          <table className="tbl"><thead><tr><th>Place</th><th>Participant</th><th>Class</th>{ind && <th>Individual Mark</th>}</tr></thead>
-            <tbody>{placed.map((e) => <tr key={e.id}><td className="font-semibold">{PLACE[e.place] ?? `${e.place}th`}</td><td>{e.full_name}<div className="text-xs text-gray-500">{e.assignment_number}</div></td><td>{e.class_name}</td>{ind && <td>{e.individual_score}</td>}</tr>)}</tbody></table>
+          <table className="tbl"><thead><tr><th>Place</th><th>Participant</th><th>Class</th>{ind && <th>Individual Mark</th>}{ind && <th>Time</th>}</tr></thead>
+            <tbody>{placed.map((e) => <tr key={e.id}><td className="font-semibold">{PLACE[e.place] ?? `${e.place}th`}</td><td>{e.full_name}<div className="text-xs text-gray-500">{e.assignment_number}</div></td><td>{e.class_name}</td>{ind && <td>{e.individual_score}</td>}{ind && <td>{fmtSeconds(e.perform_seconds) || '—'}</td>}</tr>)}</tbody></table>
         ) : <Empty>Results appear when the {fight ? 'final is decided' : 'results are announced'}.</Empty>}
         {c.status_code === 'COMPLETED' && <p className="muted mt-2">The top three places are written to the students&apos; profiles (Events).</p>}
         {setup && c.status_code === 'COMPLETED' && <form action={reopenCompetition.bind(null, cid)} className="mt-2"><Back to={back} /><ConfirmButton className="btn btn-sm" message="Reopen the results to correct scores?">Reopen results</ConfirmButton></form>}

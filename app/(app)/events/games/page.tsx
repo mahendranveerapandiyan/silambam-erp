@@ -4,7 +4,7 @@ import { sql } from '@/lib/db';
 import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s as one, here } from '@/components/ui';
 import { ConfirmButton, ShowFor } from '@/components/client';
 import { saveGameType, deleteGameType, saveGameFlow, deleteGameFlow } from './actions';
-import { FLOW_KINDS } from '@/lib/tournament';
+import { FLOW_KINDS, fmtSeconds } from '@/lib/tournament';
 
 /** Events › Game Types & Flows. */
 export default async function Games({ searchParams }: { searchParams: SP }) {
@@ -53,7 +53,7 @@ export default async function Games({ searchParams }: { searchParams: SP }) {
             </div>
             <div className="card overflow-x-auto">
               <h3 className="mb-2 font-semibold">Game Flows</h3>
-              <table className="tbl"><thead><tr><th>Flow</th><th>Type</th><th>Evaluation Template</th><th>Rounds</th><th>Round time</th><th>Tie-break</th><th></th></tr></thead>
+              <table className="tbl"><thead><tr><th>Flow</th><th>Type</th><th>Evaluation Template</th><th>Rounds</th><th>Round time</th><th>Performance time</th><th>Tie-break</th><th></th></tr></thead>
                 <tbody>{flows.map((f) => (
                   <tr key={f.id} className={edit && edit.id === f.id ? 'bg-sky-50' : ''}>
                     <td>{f.name}{f.active_flag === 'N' && <span className="ml-1 text-xs text-slate-400">(inactive)</span>}<div className="text-xs text-slate-500">{f.description}</div></td>
@@ -61,6 +61,8 @@ export default async function Games({ searchParams }: { searchParams: SP }) {
                     <td className="text-sm">{f.flow_kind === 'FIGHT' ? '—' : f.template_name ?? <span className="text-amber-700">choose per competition</span>}</td>
                     <td className="text-sm">{f.flow_kind === 'INDIVIDUAL' ? '—' : `${f.regular_rounds} + ${f.extra_rounds} if tied`}</td>
                     <td className="text-sm">{f.flow_kind === 'INDIVIDUAL' ? '—' : `${Number(f.round_minutes)} min`}</td>
+                    <td className="text-sm">{f.flow_kind === 'FIGHT' || (f.perform_min_seconds == null && f.perform_max_seconds == null) ? '—'
+                      : <>{fmtSeconds(f.perform_min_seconds) || '0:00'} – {fmtSeconds(f.perform_max_seconds) || 'no limit'}{Number(f.time_penalty) > 0 && <div className="text-xs text-slate-500">−{Number(f.time_penalty)} if outside</div>}</>}</td>
                     <td className="text-xs">{f.flow_kind === 'INDIVIDUAL' ? 'highest mark wins' : [f.allow_final_round === 'Y' && 'final round', f.allow_toss === 'Y' && 'toss'].filter(Boolean).join(' or ') || 'none'}</td>
                     <td className="whitespace-nowrap">{write && <div className="flex gap-1"><Link className="btn btn-sm" href={`/events/games?game=${game.id}&flow=${f.id}`}>Edit</Link>
                       <form action={deleteGameFlow.bind(null, game.id, f.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message={`Delete the ${f.name} flow?`}>✕</ConfirmButton></form></div>}</td>
@@ -80,6 +82,11 @@ export default async function Games({ searchParams }: { searchParams: SP }) {
                   <Field label="Active"><select name="active_flag" defaultValue={e.active_flag ?? 'Y'} className="input"><option value="Y">Yes</option><option value="N">No</option></select></Field>
                   <div data-show-for-flow_kind="INDIVIDUAL,INDIVIDUAL_FIGHT" className="lg:col-span-2">
                     <Field label="Default Evaluation Template" help="Sections and criteria the judges score (can be changed per competition)"><Select name="evaluation_template_id" options={templates} value={e.evaluation_template_id ? String(e.evaluation_template_id) : ''} empty="— Choose per competition —" /></Field>
+                  </div>
+                  <div data-show-for-flow_kind="INDIVIDUAL,INDIVIDUAL_FIGHT" className="grid gap-3 sm:grid-cols-3 lg:col-span-4">
+                    <Field label="Perform for at least (min:sec)" help="Empty = no minimum"><input name="perform_min" defaultValue={fmtSeconds(e.perform_min_seconds)} placeholder="e.g. 1:30" className="input" /></Field>
+                    <Field label="…and at most (min:sec)" help="Empty = no maximum"><input name="perform_max" defaultValue={fmtSeconds(e.perform_max_seconds)} placeholder="e.g. 2:00" className="input" /></Field>
+                    <Field label="Marks deducted when outside the time" help="0 = only flagged"><input name="time_penalty" type="number" step="0.25" min="0" defaultValue={e.time_penalty != null ? Number(e.time_penalty) : 0} className="input" /></Field>
                   </div>
                   <div data-show-for-flow_kind="FIGHT,INDIVIDUAL_FIGHT" className="grid gap-3 sm:grid-cols-3 lg:col-span-4">
                     <Field label="Rounds per bout"><input name="regular_rounds" type="number" min="1" defaultValue={e.regular_rounds ?? 2} className="input" /></Field>

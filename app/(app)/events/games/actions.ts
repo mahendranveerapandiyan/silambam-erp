@@ -2,6 +2,7 @@
 import { sql } from '@/lib/db';
 import { requirePriv } from '@/lib/auth';
 import { act, backOf, formObj } from '@/lib/util';
+import { parseSeconds } from '@/lib/tournament';
 
 const PRIV = 'CD_GAME_SETUP_PRV';
 const codeOf = (s: string) => s.toUpperCase().trim().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
@@ -48,6 +49,10 @@ export async function saveGameFlow(gameTypeId: string, id: string | null, fd: Fo
       regular_rounds: n('regular_rounds', 2), extra_rounds: n('extra_rounds', 2), round_minutes: n('round_minutes', 2), foul_points: n('foul_points', 1),
       allow_final_round: o.allow_final_round === 'N' ? 'N' : 'Y', allow_toss: o.allow_toss === 'N' ? 'N' : 'Y', active_flag: o.active_flag === 'N' ? 'N' : 'Y',
     };
+    const tmin = o.flow_kind === 'FIGHT' ? null : parseSeconds(o.perform_min), tmax = o.flow_kind === 'FIGHT' ? null : parseSeconds(o.perform_max);
+    if (tmin !== null && tmax !== null && tmin > tmax) throw new Error('The performance time "from" must not be more than "to"');
+    Object.assign(v, { perform_min_seconds: tmin, perform_max_seconds: tmax, time_penalty: o.flow_kind === 'FIGHT' ? 0 : n('time_penalty', 0) });
+    if (Number((v as Record<string, unknown>).time_penalty) < 0) throw new Error('The time deduction cannot be negative');
     if (v.regular_rounds < 1 || v.extra_rounds < 0 || v.round_minutes <= 0 || v.foul_points < 0) throw new Error('Rounds, minutes and foul marks must be positive numbers');
     const [dup] = await sql`select 1 from game_flow where game_type_id = ${gameTypeId} and code = ${v.code} and id <> ${id ?? 0}`;
     if (dup) throw new Error(`${g.name} already has a flow coded ${v.code}`);

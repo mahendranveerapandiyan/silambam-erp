@@ -6,7 +6,7 @@ import { addDemand } from '@/lib/fees';
 import { assertStudentAccess } from '@/lib/scope';
 import { academicYearOn } from '@/lib/people';
 import { templateSections, partMark } from '@/lib/examSetup';
-import { categoryRules, studentFacts, ruleFails, hasIndividual, hasFight, proposeBye, pairRound, boutState, type FlowRules, ruleDescriber } from '@/lib/tournament';
+import { categoryRules, studentFacts, ruleFails, hasIndividual, hasFight, proposeBye, pairRound, boutState, type FlowRules, ruleDescriber, parseSeconds, timeOutside } from '@/lib/tournament';
 
 const SETUP = 'CD_EVENT_SETUP_PRV';
 const SCORE = 'CD_TOURNAMENT_SCORING_PRV';
@@ -14,6 +14,7 @@ const SCORE = 'CD_TOURNAMENT_SCORING_PRV';
 async function loadComp(u: SessionUser, compId: string) {
   const [c] = await sql`select c.*, e.name event_name, e.status_code event_status, e.start_date, e.fee_amount, e.enterprise_id, e.id event_id,
       f.flow_kind, f.regular_rounds, f.extra_rounds, f.allow_final_round, f.allow_toss, f.foul_points, f.round_minutes flow_minutes, f.name flow_name,
+      coalesce(c.perform_min_seconds, f.perform_min_seconds) tmin, coalesce(c.perform_max_seconds, f.perform_max_seconds) tmax, f.time_penalty,
       (select name from game_type g where g.id = f.game_type_id) game_name
     from event_competition c join event e on e.id = c.event_id join game_flow f on f.id = c.game_flow_id
     where c.id = ${compId} and e.enterprise_id = ${u.enterpriseId}`;
@@ -39,7 +40,10 @@ export async function saveCompetition(eventId: string, compId: string | null, fd
       game_flow_id: f.id, category_id: o.category_id, evaluation_template_id: template,
       name: o.name ?? `${f.game_name} – ${f.name}${cat ? ` – ${cat.name}` : ''}`,
       round_minutes: o.round_minutes ? Number(o.round_minutes) : null,
+      perform_min_seconds: hasIndividual(f.flow_kind) ? parseSeconds(o.perform_min) : null,
+      perform_max_seconds: hasIndividual(f.flow_kind) ? parseSeconds(o.perform_max) : null,
     };
+    if (v.perform_min_seconds !== null && v.perform_max_seconds !== null && v.perform_min_seconds > v.perform_max_seconds) throw new Error('The performance time "from" must not be more than "to"');
     if (compId) {
       const [b] = await sql`select count(*)::int n from event_bout where competition_id = ${compId}`;
       if (b.n) throw new Error('Fixtures have started – the competition can no longer be changed.');
@@ -192,8 +196,12 @@ export async function saveIndividualScores(compId: string, fd: FormData) {
           await tx`insert into event_entry_score (entry_id, section_id, value, entered_by) values (${e.id}, ${s.id}, ${v}, ${u.username})
             on conflict (entry_id, section_id) do update set value = excluded.value, entered_by = excluded.entered_by, entered_at = now()`;
         }
-        const score = partMark({ id: '0', subjectId: '0', name: '', weight: 100, max, pass: 0, templateId: null }, secs, vals, null);
-        await tx`update event_entry set individual_score = ${score} where id = ${e.id}`;
+        const mark = partMark({ id: '0', subjectId: '0', name: '', weight: 100, max, pass: 0, templateId: null }, secs, vals, null);
+        // performance time: outside the window → flagged, and the flow's deduction applied
+        const secsTaken = parseSeconds(o[`t_${e.id}`]);
+        const outside = timeOutside(secsTaken, c.tmin, c.tmax);
+        const score = mark === null ? null : Math.max(0, Math.round((mark - (outside ? Number(c.time_penalty ?? 0) : 0)) * 100) / 100);
+        await tx`update event_entry set evaluation_score = ${mark}, individual_score = ${score}, perform_seconds = ${secsTaken} where id = ${e.id}`;
         n++;
       }
       if (c.status_code === 'REGISTRATION') await tx`update event_competition set status_code = 'SCORING' where id = ${compId}`;
