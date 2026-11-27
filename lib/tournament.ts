@@ -60,7 +60,7 @@ export async function studentFacts(enterpriseId: string, date: string, personIds
 export type Rule = { field_code: string; operator: string; value: string };
 
 /** Null when the student matches the rule, else why not. */
-export function ruleFails(rule: Rule, facts: Facts, describe: (r: Rule) => string): string | null {
+export function ruleFails(rule: Rule, facts: Facts, describe: (r: Rule) => string, nameOf?: (field: string, v: string) => string): string | null {
   const f = CATEGORY_FIELDS.find((x) => x.code === rule.field_code);
   const v = facts[rule.field_code];
   if (v === null || v === undefined || v === '') return `${f?.label.replace(/ \(.*/, '') ?? rule.field_code} not recorded`;
@@ -73,7 +73,7 @@ export function ruleFails(rule: Rule, facts: Facts, describe: (r: Rule) => strin
   } else {
     ok = rule.operator === 'NE' ? !vals.includes(String(v)) : vals.includes(String(v));
   }
-  return ok ? null : `${describe(rule)} (is ${v})`;
+  return ok ? null : `${describe(rule)} (is ${nameOf ? nameOf(rule.field_code, String(v)) : v})`;
 }
 
 /** The rules of a category. */
@@ -118,4 +118,54 @@ export function boutTotals(rounds: Row[], foulPoints: number, redIndividual = 0,
     blue += Number(r.blue_points ?? 0) - Number(r.blue_fouls ?? 0) * foulPoints;
   }
   return { red: Math.round(red * 100) / 100, blue: Math.round(blue * 100) / 100 };
+}
+
+/* ---------------- bout state ---------------- */
+
+export type FlowRules = { regular_rounds: number; extra_rounds: number; allow_final_round: string; allow_toss: string; foul_points: number };
+
+/**
+ * Where a bout stands: rounds to show, running totals and the winner when decided.
+ * Regular rounds are added up; when tied, the extra rounds are played (all rounds count);
+ * still tied: one final round (if allowed), then a toss (if allowed) or the referee decides.
+ */
+export function boutState(rounds: Row[], flow: FlowRules, redIndividual = 0, blueIndividual = 0) {
+  const R = Number(flow.regular_rounds), X = Number(flow.extra_rounds);
+  const done = (n: number) => rounds.filter((r) => Number(r.round_no) <= n && r.red_points !== null && r.blue_points !== null).length === n;
+  const totalsUpTo = (n: number) => boutTotals(rounds.filter((r) => Number(r.round_no) <= n), Number(flow.foul_points), redIndividual, blueIndividual);
+  let shown = R;
+  const res = (winner: 'RED' | 'BLUE' | null, tie = false, extra: Partial<{ tossOpen: boolean; refereeOpen: boolean }> = {}, upto = shown) => {
+    const t = totalsUpTo(upto);
+    return { shown, totals: t, winner, tie, tossOpen: false, refereeOpen: false, ...extra };
+  };
+  if (!done(R)) return res(null);
+  let t = totalsUpTo(R);
+  if (t.red !== t.blue) return res(t.red > t.blue ? 'RED' : 'BLUE', false, {}, R);
+  if (X > 0) {
+    shown = R + X;
+    if (!done(R + X)) return res(null, true);
+    t = totalsUpTo(R + X);
+    if (t.red !== t.blue) return res(t.red > t.blue ? 'RED' : 'BLUE', false, {}, R + X);
+  }
+  if (flow.allow_final_round === 'Y') {
+    shown = R + X + 1;
+    if (!done(R + X + 1)) return res(null, true, { tossOpen: flow.allow_toss === 'Y' });
+    t = totalsUpTo(R + X + 1);
+    if (t.red !== t.blue) return res(t.red > t.blue ? 'RED' : 'BLUE', false, {}, R + X + 1);
+  }
+  return res(null, true, { tossOpen: flow.allow_toss === 'Y', refereeOpen: flow.allow_toss !== 'Y' });
+}
+
+/** "Gender is Female", "Grade is one of Level 1, Level 2" – rule text with names instead of codes. */
+export async function ruleDescriber(enterpriseId: string, asOf: string) {
+  const { lookupOptions } = await import('./lookups');
+  const { refOptions } = await import('./dt');
+  const names: Record<string, Map<string, string>> = {};
+  for (const f of CATEGORY_FIELDS) {
+    const opts = f.lookup ? await lookupOptions(f.lookup, asOf) : f.ref ? await refOptions(f.ref, enterpriseId, asOf) : [];
+    names[f.code] = new Map(opts.map((o) => [String(o.value), o.label]));
+  }
+  const nameOf = (field: string, v: string) => names[field]?.get(v) ?? v;
+  const describe = (r: Rule) => `${CATEGORY_FIELDS.find((f) => f.code === r.field_code)?.label.replace(/ \(.*/, '') ?? r.field_code} ${OPERATORS.find((x) => x[0] === r.operator)?.[1] ?? r.operator} ${r.value.split(',').map((v) => nameOf(r.field_code, v.trim())).join(', ')}`;
+  return { describe, nameOf };
 }

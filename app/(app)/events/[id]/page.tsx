@@ -12,6 +12,9 @@ import { PageHeader, Flash, Back, Badge, Empty, Select, STATUS_COLOR, type SP, s
 import { AutoSubmit, CheckAll } from '@/components/client';
 import { EventForm } from '@/components/EventForm';
 import { saveEvent, addParticipants, updateParticipant } from '../actions';
+import { saveCompetition, deleteCompetition, publishTournament } from '../tournamentActions';
+import { flowKindLabel, hasIndividual } from '@/lib/tournament';
+import { ConfirmButton } from '@/components/client';
 
 export default async function EventPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
   const u = await requirePriv(['CD_EVENT_SETUP_PRV', 'CD_EVENT_PARTICIPANT_PRV'], 'READ');
@@ -43,6 +46,7 @@ export default async function EventPage({ params, searchParams }: { params: Prom
       <PageHeader title={ev.name} subtitle={<>{L('EVENT_TYPE', ev.event_type_code)} · {fmtDate(ev.start_date)}{ev.end_date !== ev.start_date && ` – ${fmtDate(ev.end_date)}`} · {ev.venue} · Fee {Number(ev.fee_amount) ? money(ev.fee_amount) : 'Free'} · <Badge color="blue">{L('EVENT_STATUS', ev.status_code)}</Badge></>}
         actions={<Link href="/events" className="btn">All events</Link>} />
       <Flash sp={sp} />
+      {ev.event_type_code === 'TOURNAMENT' && <Competitions />}
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <div className="card overflow-x-auto">
           <h2 className="h2">Participants ({parts.length})</h2>
@@ -82,4 +86,54 @@ export default async function EventPage({ params, searchParams }: { params: Prom
         <EventForm action={saveEvent.bind(null, id)} ev={ev} back={back} o={{ types: await lookupOptions('EVENT_TYPE', asOf), statuses: await lookupOptions('EVENT_STATUS', asOf), bus: await refOptions('business-units', u.enterpriseId, asOf) }} /></div>}
     </div>
   );
+
+  async function Competitions() {
+    const setup = can(u, 'CD_EVENT_SETUP_PRV', 'WRITE');
+    const comps = await sql`select c.*, f.name flow_name, f.flow_kind, g.name game_name, k.name category_name,
+        (select count(*) from event_entry e where e.competition_id = c.id)::int entries,
+        (select string_agg(trim(concat_ws(' ', pf.first_name, pf.last_name)), ', ' order by e.place) from event_entry e
+           join lateral (select * from person_f x where x.id = e.person_id order by effective_start_date desc limit 1) pf on true where e.competition_id = c.id and e.place = 1) winners
+      from event_competition c join game_flow f on f.id = c.game_flow_id join game_type g on g.id = f.game_type_id left join competition_category k on k.id = c.category_id
+      where c.event_id = ${id} order by c.id`;
+    const flows = (await sql`select f.id, f.name, f.flow_kind, g.name game from game_flow f join game_type g on g.id = f.game_type_id
+      where g.enterprise_id = ${u.enterpriseId} and f.active_flag = 'Y' and g.active_flag = 'Y' order by g.display_seq, f.id`).map((f) => ({ value: String(f.id), label: `${f.game} – ${f.name}` }));
+    const cats = (await sql`select id, name from competition_category where enterprise_id = ${u.enterpriseId} and active_flag = 'Y' order by name`).map((c) => ({ value: String(c.id), label: c.name }));
+    const temps = (await sql`select t.id, t.name, (select coalesce(sum(weight_pct), 0)::float from evaluation_section s where s.template_id = t.id) w from evaluation_template t where t.enterprise_id = ${u.enterpriseId} and t.active_flag = 'Y' order by t.name`)
+      .map((t) => ({ value: String(t.id), label: `${t.name} (total ${t.w})` }));
+    const statusColor: Record<string, string> = { REGISTRATION: 'blue', SCORING: 'amber', FIXTURES: 'purple', COMPLETED: 'green' };
+    const statusText: Record<string, string> = { REGISTRATION: 'Registration', SCORING: 'Evaluating', FIXTURES: 'Fights', COMPLETED: 'Completed' };
+    return (
+      <div className="card mb-4 overflow-x-auto">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div><h2 className="h2 mb-0">Competitions</h2><p className="muted">{ev.status_code === 'OPEN' ? 'Published – staff can register their students.' : 'Not published yet – staff can register students once it is published.'}</p></div>
+          {setup && comps.length > 0 && (
+            <form action={publishTournament.bind(null, id)}><Back to={back} />
+              {ev.status_code === 'OPEN'
+                ? <><input type="hidden" name="open" value="N" /><ConfirmButton className="btn" message="Close registration for this tournament?">Close Registration</ConfirmButton></>
+                : <ConfirmButton className="btn btn-primary" message="Publish the tournament? Staff will be able to register their students.">Publish Tournament</ConfirmButton>}
+            </form>)}
+        </div>
+        <table className="tbl"><thead><tr><th>Competition</th><th>Game / Flow</th><th>Category</th><th>Entries</th><th>Status</th><th>Winner</th><th></th></tr></thead>
+          <tbody>{comps.map((c) => (
+            <tr key={c.id}>
+              <td><Link className="link font-medium" href={`/events/${id}/c/${c.id}`}>{c.name}</Link></td>
+              <td className="text-sm">{c.game_name} · {c.flow_name}<div className="text-xs text-slate-500">{flowKindLabel(c.flow_kind)}</div></td>
+              <td className="text-sm">{c.category_name ?? 'Open to all'}</td><td>{c.entries}</td>
+              <td><Badge color={statusColor[c.status_code]}>{statusText[c.status_code] ?? c.status_code}</Badge></td>
+              <td className="text-sm">{c.winners ?? '—'}</td>
+              <td>{setup && !c.entries && <form action={deleteCompetition.bind(null, id, c.id)}><Back to={back} /><ConfirmButton className="btn btn-sm" message={`Remove ${c.name}?`}>✕</ConfirmButton></form>}</td>
+            </tr>))}</tbody></table>
+        {!comps.length && <Empty>No competitions yet – add a game, flow and category below.</Empty>}
+        {setup && !closed && (
+          <form action={saveCompetition.bind(null, id, null)} className="mt-3 grid gap-2 rounded border border-green-200 bg-green-50/50 p-3 sm:grid-cols-2 lg:grid-cols-5">
+            <Back to={back} />
+            <div><span className="label">Game – Flow *</span><Select name="game_flow_id" options={flows} required /></div>
+            <div><span className="label">Category</span><Select name="category_id" options={cats} empty="Open to all students" /></div>
+            <div><span className="label">Evaluation Template</span><Select name="evaluation_template_id" options={temps} empty="Flow default (individual flows)" /></div>
+            <div><span className="label">Name</span><input name="name" placeholder="Automatic: game – flow – category" className="input" /></div>
+            <div className="flex items-end"><button className="btn btn-primary w-full">Add Competition</button></div>
+          </form>)}
+      </div>
+    );
+  }
 }
