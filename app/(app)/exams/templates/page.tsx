@@ -69,8 +69,8 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
           <option value="ENTRY">User entered</option><option value="LOV">List of values (LOV)</option>
         </select>
         <input name="weight_pct" type="number" step="0.01" min="0.01" defaultValue={s ? Number(s.weight_pct) : ''} placeholder="Weight" required className="input" disabled={!write} aria-label="Weight" />
-        <input name="min_rating" type="number" step="0.5" min="0" defaultValue={s ? Number(s.min_rating) : 0} className="input" disabled={!write} aria-label="Min" />
-        <input name="max_rating" type="number" step="0.5" min="0.5" defaultValue={s ? Number(s.max_rating) : 10} required className="input" disabled={!write} aria-label="Max" />
+        <input name="min_rating" type="number" step="0.01" min="0" defaultValue={s ? Number(s.min_rating) : 0} className="input" disabled={!write} aria-label="Min" />
+        <input name="max_rating" type="number" step="0.01" min="0.01" defaultValue={s ? Number(s.max_rating) : 10} required className="input" disabled={!write} aria-label="Max" />
         <input name="display_seq" type="number" defaultValue={s?.display_seq ?? secs.length + 1} className="input" disabled={!write} aria-label="Order" />
         {write ? <button className="btn btn-sm">{s ? 'Save' : 'Add'}</button> : <span />}
         {write && s ? <ConfirmButton className="btn btn-sm" message={`Delete the ${s.name} section?`} name="_delete" value="1">✕</ConfirmButton> : <span />}
@@ -93,7 +93,7 @@ export default async function EvaluationTemplates({ searchParams }: { searchPara
               <form action={saveSectionValue.bind(null, t!.id, s.id, null)} className="ml-2 inline-flex items-center gap-1">
                 <Back to={back} />
                 <input name="label" placeholder="Label, e.g. Excellent" className="input h-8 w-40" aria-label={`${s.name} value label`} />
-                <input name="value" type="number" step="0.5" min={Number(s.min_rating)} max={Number(s.max_rating)} placeholder="Value" required className="input h-8 w-24" aria-label={`${s.name} value`} />
+                <input name="value" type="number" step="0.01" min={Number(s.min_rating)} max={Number(s.max_rating)} placeholder="Value" required className="input h-8 w-24" aria-label={`${s.name} value`} />
                 <button className="btn btn-sm">+ Add value</button>
               </form>)}
           </div>

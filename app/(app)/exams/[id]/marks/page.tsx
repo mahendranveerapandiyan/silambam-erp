@@ -114,9 +114,9 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
                       const lbl = `${c.full_name} ${p.name} ${s.name}`;
                       return <td key={`${p.id}_${s.id}`}>{ch
                         ? <select name={nm} defaultValue={v === null || v === undefined ? '' : String(Number(v))} disabled={off} className="input min-w-32" aria-label={lbl}><option value="">–</option>{ch.map((x) => <option key={x.value} value={x.value}>{x.label}{x.label !== String(x.value) ? ` (${x.value})` : ''}</option>)}</select>
-                        : <input name={nm} type="number" step="0.5" min={s.min_rating} max={s.max_rating} defaultValue={v ?? ''} disabled={off} className="input w-20" aria-label={lbl} />}</td>;
+                        : <input name={nm} type="number" step="0.01" min={s.min_rating} max={s.max_rating} defaultValue={v ?? ''} disabled={off} className="input w-20" aria-label={lbl} />}</td>;
                     }), ...markCell];
-                    return [<td key={p.id}><input name={`u_${c.id}_${p.id}`} type="number" step="0.5" min="0" max={p.max} defaultValue={um ? um.marks ?? '' : combined ? '' : legacy(c.id)} disabled={off} className="input w-20" aria-label={`${c.full_name} ${p.name} marks`} /></td>, ...markCell];
+                    return [<td key={p.id}><input name={`u_${c.id}_${p.id}`} type="number" step="0.01" min="0" max={p.max} defaultValue={um ? um.marks ?? '' : combined ? '' : legacy(c.id)} disabled={off} className="input w-20" aria-label={`${c.full_name} ${p.name} marks`} /></td>, ...markCell];
                   })}
                   <td><input type="checkbox" name={`ab_${c.id}`} value="Y" defaultChecked={absent} disabled={off} aria-label={`${c.full_name} absent`} /></td>
                   <td className="font-semibold">{m?.marks ?? (absent ? 'AB' : '—')}{m?.grade_rating && <> <Badge color="blue">{m.grade_rating}</Badge></>}</td>

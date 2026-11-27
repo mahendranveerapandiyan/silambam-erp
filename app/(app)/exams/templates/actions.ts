@@ -118,7 +118,7 @@ export async function saveSectionValue(templateId: string, sectionId: string, va
     const [dup] = await sql`select label from evaluation_section_value where section_id = ${sectionId} and value = ${val} and id <> ${valueId ?? 0}`;
     if (dup) throw new Error(`${sec.name} already has the value ${val} (${dup.label})`);
     if (valueId) await sql`update evaluation_section_value set label = ${label}, value = ${val} where id = ${valueId} and section_id = ${sectionId}`;
-    else await sql`insert into evaluation_section_value (section_id, label, value, display_seq) values (${sectionId}, ${label}, ${val}, ${val})`;
+    else await sql`insert into evaluation_section_value (section_id, label, value, display_seq) values (${sectionId}, ${label}, ${val}, ${Math.round(val * 100)})`;
     return { msg: `${label} (${val}) has been ${valueId ? 'updated' : 'added'} to ${sec.name}.` };
   });
 }
