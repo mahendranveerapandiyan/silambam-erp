@@ -421,7 +421,8 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
 
   async function Exams() {
     const rows = await sql`select c.*, e.name, e.exam_date, e.exam_type_code, e.outcome_code, y.name ay_name,
-        (select coalesce(sum(es.max_marks), 0) from exam_subject es where es.exam_id = c.exam_id and (es.grade_id = c.current_grade_id or es.grade_id is null)) max_total,
+        (select coalesce(sum(es.max_marks), 0) from exam_subject es where es.exam_id = c.exam_id and (es.grade_id = c.current_grade_id or es.grade_id is null)
+          and (es.optional_flag = 'N' or exists (select 1 from exam_candidate_subject x where x.candidate_id = c.id and x.exam_subject_id = es.id))) max_total,
         (select name from student_grade_f g where g.id = c.promoted_to_grade_id order by effective_start_date desc limit 1) promoted_to
       from exam_candidate c join exam e on e.id = c.exam_id join academic_year y on y.id = c.academic_year_id where c.person_id = ${personId} order by e.exam_date desc`;
     const canRoll = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');

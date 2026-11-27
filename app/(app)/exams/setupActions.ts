@@ -135,7 +135,11 @@ export async function saveExamSubject(id: string, esId: string | null, fd: FormD
     if (!(max > 0) || Number.isNaN(pass) || pass < 0) throw new Error('Maximum marks must be above 0 and the pass mark 0 or more');
     if (pass > max) throw new Error(`The pass mark (${pass}) cannot exceed the maximum (${max})`);
     const v = { grade_id: o.grade_id, subject_id: o.subject_id, subject_type_code: o.subject_type_code, max_marks: max, pass_marks: pass,
-      combined_flag: combined ? 'Y' : 'N', weight_type: weightType, display_seq: Number(o.display_seq ?? 0) };
+      combined_flag: combined ? 'Y' : 'N', weight_type: weightType, display_seq: Number(o.display_seq ?? 0), optional_flag: o.optional_flag === 'Y' ? 'Y' : 'N' };
+    if (esId && v.optional_flag === 'N') {
+      const [ch] = await sql`select 1 from exam_candidate_subject where exam_subject_id = ${esId} limit 1`;
+      if (ch) throw new Error('Students have already chosen this optional subject – clear their choices before making it compulsory.');
+    }
     const [dup] = await sql`select 1 from exam_subject where exam_id = ${id} and grade_id = ${o.grade_id} and subject_id = ${o.subject_id} and subject_type_code = ${o.subject_type_code} and id <> ${esId ?? 0}`;
     if (esId) {
       // templates already chosen must still fit the new Min / Max marks
@@ -203,8 +207,8 @@ export async function fillExamSubjects(id: string, fd: FormData) {
       for (const g of grades.filter((x) => x !== o.grade_id)) {
         await tx`delete from exam_subject where exam_id = ${id} and grade_id = ${g}`;
         for (const s of src) {
-          const [ns] = await tx`insert into exam_subject (exam_id, grade_id, subject_id, subject_type_code, max_marks, pass_marks, display_seq, combined_flag, weight_type, evaluation_template_id, evaluation_chosen_flag)
-            values (${id}, ${g}, ${s.subject_id}, ${s.subject_type_code}, ${s.max_marks}, ${s.pass_marks}, ${s.display_seq}, ${s.combined_flag}, ${s.weight_type}, ${s.evaluation_template_id}, ${s.evaluation_chosen_flag}) returning id`;
+          const [ns] = await tx`insert into exam_subject (exam_id, grade_id, subject_id, subject_type_code, max_marks, pass_marks, display_seq, combined_flag, weight_type, evaluation_template_id, evaluation_chosen_flag, optional_flag)
+            values (${id}, ${g}, ${s.subject_id}, ${s.subject_type_code}, ${s.max_marks}, ${s.pass_marks}, ${s.display_seq}, ${s.combined_flag}, ${s.weight_type}, ${s.evaluation_template_id}, ${s.evaluation_chosen_flag}, ${s.optional_flag}) returning id`;
           await tx`insert into exam_subject_component (exam_subject_id, subject_id, weight, max_marks, pass_marks, display_seq, evaluation_template_id)
             select ${ns.id}, subject_id, weight, max_marks, pass_marks, display_seq, evaluation_template_id from exam_subject_component where exam_subject_id = ${s.id}`;
           n++;
@@ -224,6 +228,11 @@ export async function finishExamSubjects(id: string, fd: FormData) {
     const have = new Set((await sql`select distinct coalesce(grade_id::text, 'ALL') g from exam_subject where exam_id = ${id}`).map((r) => r.g));
     const none = grades.filter((g) => !have.has('ALL') && !have.has(String(g.grade_id)));
     if (none.length) throw new Error(`Add subjects for ${none.map((g) => g.name).join(', ')} first.`);
+    const bad = await sql`select (select name from student_grade_f f where f.id = eg.grade_id order by effective_start_date desc limit 1) name, eg.optional_count,
+        (select count(*) from exam_subject es where es.exam_id = eg.exam_id and es.grade_id = eg.grade_id and es.optional_flag = 'Y')::int opt
+      from exam_grade eg where eg.exam_id = ${id}`;
+    const wrong = bad.filter((b) => b.optional_count > b.opt);
+    if (wrong.length) throw new Error(wrong.map((b) => `${b.name}: students must choose ${b.optional_count} optional subject(s) but only ${b.opt} are optional`).join('; '));
     await reached(id, 4, u.username);
     return { to: stepUrl(id, 5), msg: `Subjects for ${e.name} are complete.` };
   });
@@ -399,5 +408,24 @@ export async function deleteExam(id: string, fd: FormData) {
       await tx`delete from exam where id = ${id}`;
     });
     return { to: '/exams', msg: `${e.name} exam has been deleted${students ? ` with ${students} assigned student(s) and their marks${cancelled ? `; ${cancelled} unpaid exam fee line(s) cancelled` : ''}` : ''}.` };
+  });
+}
+
+/** Stop 4 – how many optional subjects each student of a grade chooses. */
+export async function saveOptionalCount(id: string, fd: FormData) {
+  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  await act(backOf(fd), async () => {
+    const e = await editable(u, id);
+    const o = formObj(fd);
+    const n = Number(o.optional_count ?? 0);
+    if (!Number.isInteger(n) || n < 0) throw new Error('Enter a whole number of 0 or more');
+    const [c] = await sql`select count(*)::int opt from exam_subject where exam_id = ${id} and grade_id = ${o.grade_id} and optional_flag = 'Y'`;
+    if (n > c.opt) throw new Error(`Only ${c.opt} subject(s) of this grade are optional – mark more subjects as Optional first.`);
+    const [over] = await sql`select count(*)::int n from (select x.candidate_id from exam_candidate_subject x join exam_candidate c on c.id = x.candidate_id
+      where c.exam_id = ${id} and c.current_grade_id = ${o.grade_id} group by x.candidate_id having count(*) > ${n}) t`;
+    if (over.n) throw new Error(`${over.n} student(s) have already chosen more than ${n} optional subject(s) – change their choices first.`);
+    await sql`update exam_grade set optional_count = ${n} where exam_id = ${id} and grade_id = ${o.grade_id}`;
+    const [g] = await sql`select name from student_grade_f where id = ${o.grade_id} order by effective_start_date desc limit 1`;
+    return { msg: n ? `Each ${g?.name ?? ''} student of ${e.name} chooses ${n} optional subject(s).` : `${g?.name ?? ''} students of ${e.name} have no optional subjects to choose.` };
   });
 }

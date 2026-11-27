@@ -14,7 +14,7 @@ import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s as one
 import { ConfirmButton, ShowFor, SubjectDefaults } from '@/components/client';
 import { MultiPick } from '@/components/MultiPick';
 import {
-  saveExamGrades, saveExamEligibility, saveExamSubject, deleteExamSubject, fillExamSubjects, finishExamSubjects,
+  saveExamGrades, saveOptionalCount, saveExamEligibility, saveExamSubject, deleteExamSubject, fillExamSubjects, finishExamSubjects,
   saveExamTemplates, saveExamGrading, saveExamOutcome, saveExamExaminers, deleteExam,
 } from '../../setupActions';
 
@@ -119,12 +119,19 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
         {locked && !readOnly && <div className="card border-amber-300 bg-amber-50 text-sm">Marks have been entered – subjects can no longer be changed.</div>}
         <div className="card overflow-x-auto">
           <h3 className="mb-2 font-semibold">Subjects for {g.name}</h3>
+          {(() => { const opt = list.filter((x) => x.optional_flag === 'Y').length; const n = Number(g.optional_count ?? 0); return (
+            <form action={saveOptionalCount.bind(null, id)} className="mb-3 flex flex-wrap items-end gap-2 rounded border border-sky-200 bg-sky-50/60 p-2 text-sm">
+              <Back to={subBack} /><input type="hidden" name="grade_id" value={g.grade_id} />
+              <label>Each {g.name} student chooses <input name="optional_count" type="number" min="0" max={opt} defaultValue={n} disabled={ro} className="input inline-block w-20" aria-label="Optional subjects to choose" /> of the <b>{opt}</b> optional subject(s)</label>
+              {!ro && <button className="btn btn-sm">Save</button>}
+              <span className="text-xs text-slate-500">Mark subjects as Optional below; students make their choice during the exam days (exam › Subject Choices).</span>
+            </form>); })()}
           <table className="tbl">
-            <thead><tr><th>Subject</th><th>Type</th><th>Max</th><th>Pass (min)</th><th>Made up of</th><th></th></tr></thead>
+            <thead><tr><th>Subject</th><th>Type</th><th>Compulsory / Optional</th><th>Max</th><th>Pass (min)</th><th>Made up of</th><th></th></tr></thead>
             <tbody>{list.map((s) => (
               <tr key={s.id} className={edit && edit.id === s.id ? 'bg-sky-50' : ''}>
                 <td>{s.subject_name}{s.grade_id === null && <div className="text-xs text-slate-500">all grades (older exam)</div>}</td>
-                <td>{L('SUBJECT_TYPE', s.subject_type_code)}</td><td>{Number(s.max_marks)}</td><td>{Number(s.pass_marks)}</td>
+                <td>{L('SUBJECT_TYPE', s.subject_type_code)}</td><td>{s.optional_flag === 'Y' ? <Badge color="purple">Optional</Badge> : <Badge color="gray">Compulsory</Badge>}</td><td>{Number(s.max_marks)}</td><td>{Number(s.pass_marks)}</td>
                 <td className="text-xs">{s.combined_flag === 'Y'
                   ? s.parts.map((p) => <div key={p.id}>{p.name}: {s.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight} %`} · out of {p.max}, pass {p.pass}</div>)
                   : '—'}</td>
@@ -156,6 +163,7 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
               <Field label="Maximum Marks *" help="For weights in marks: the total of the weights"><input name="max_marks" type="number" step="0.5" min="0.5" defaultValue={e.max_marks ? Number(e.max_marks) : 100} required className="input" /></Field>
               <Field label="Minimum (Pass) Marks *"><input name="pass_marks" type="number" step="0.5" min="0" defaultValue={e.pass_marks ? Number(e.pass_marks) : 35} required className="input" /></Field>
               <Field label="Order"><input name="display_seq" type="number" defaultValue={e.display_seq ?? list.length + 1} className="input" /></Field>
+              <Field label="Compulsory / Optional *" help="Optional: only students who choose it sit it"><select name="optional_flag" defaultValue={e.optional_flag ?? 'N'} className="input"><option value="N">Compulsory – every student</option><option value="Y">Optional – chosen by the student</option></select></Field>
               <Field label="Combination of subjects?" className="lg:col-span-2">
                 <select name="combined_flag" defaultValue={e.combined_flag ?? 'N'} className="input"><option value="N">No – a single subject</option><option value="Y">Yes – combines two or more subjects</option></select>
                 <ShowFor select="combined_flag" />

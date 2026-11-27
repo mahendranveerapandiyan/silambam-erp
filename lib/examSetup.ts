@@ -11,7 +11,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 /** Grades that may sit the exam, with the grade passed students move to. */
 export async function examGrades(examId: string, asOf: string) {
   return sql`
-    select eg.grade_id, eg.target_grade_id, g.name, g.sequence_no, g.next_grade_id,
+    select eg.grade_id, eg.target_grade_id, eg.optional_count, g.name, g.sequence_no, g.next_grade_id,
       (select name from student_grade_f t where t.id = coalesce(eg.target_grade_id, g.next_grade_id) order by (${asOf}::date between t.effective_start_date and t.effective_end_date) desc, t.effective_start_date desc limit 1) target_name
     from exam_grade eg
     join lateral (select * from student_grade_f x where x.id = eg.grade_id order by (${asOf}::date between x.effective_start_date and x.effective_end_date) desc, x.effective_start_date desc limit 1) g on true
@@ -126,12 +126,24 @@ export async function applyGrades(tx: typeof sql, examId: string) {
       where candidate_id = ${m.candidate_id} and exam_subject_id = ${m.exam_subject_id}`;
 }
 
+/** The subjects a candidate sits: the grade's compulsory subjects plus the optional ones they chose. */
+export async function candidateSubjects(examId: string, candidate: { id: string | number; current_grade_id: string | number | null }) {
+  const all = await examSubjects(examId, candidate.current_grade_id ? String(candidate.current_grade_id) : null);
+  if (!all.some((x) => x.optional_flag === 'Y')) return all;
+  const chosen = new Set((await sql`select exam_subject_id from exam_candidate_subject where candidate_id = ${candidate.id}`).map((r) => String(r.exam_subject_id)));
+  return all.filter((x) => x.optional_flag !== 'Y' || chosen.has(String(x.id)));
+}
+
 /** Recompute a candidate's total, % and result from the subject marks of their grade. */
 export async function recomputeCandidate(tx: typeof sql, exam: Row, candidateId: string) {
   const [c] = await tx`select * from exam_candidate where id = ${candidateId}`;
-  const subjects = await tx`select * from exam_subject where exam_id = ${exam.id} and (grade_id = ${c.current_grade_id} or grade_id is null)`;
+  // compulsory subjects + the optional subjects this student chose
+  const subjects = await tx`select * from exam_subject es where es.exam_id = ${exam.id} and (es.grade_id = ${c.current_grade_id} or es.grade_id is null)
+    and (es.optional_flag = 'N' or exists (select 1 from exam_candidate_subject x where x.candidate_id = ${candidateId} and x.exam_subject_id = es.id))`;
+  const [g] = await tx`select optional_count from exam_grade where exam_id = ${exam.id} and grade_id = ${c.current_grade_id}`;
+  const chosen = subjects.filter((x) => x.optional_flag === 'Y').length;
   const marks = new Map((await tx`select * from exam_mark where candidate_id = ${candidateId}`).map((m) => [String(m.exam_subject_id), m]));
-  let total = 0, max = 0, allPass = true, anyMark = false, allAbsent = subjects.length > 0, pending = false;
+  let total = 0, max = 0, allPass = true, anyMark = false, allAbsent = subjects.length > 0, pending = chosen < Number(g?.optional_count ?? 0);
   for (const s of subjects) {
     const m = marks.get(String(s.id));
     max += Number(s.max_marks);

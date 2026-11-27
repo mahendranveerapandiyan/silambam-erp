@@ -86,7 +86,9 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
     const bands = await gradingBands(exam.grading_scale_id);
     const examiner = admin || (await sql`select 1 from exam_examiner where exam_id = ${examId} and grade_id = ${gradeId} and person_id = ${u.personId ?? 0}`).length > 0;
     const o = formObj(fd);
-    const cands = await sql`select * from exam_candidate where exam_id = ${examId} and current_grade_id = ${gradeId} and published_flag = 'N'`;
+    const cands = await sql`select * from exam_candidate c where c.exam_id = ${examId} and c.current_grade_id = ${gradeId} and c.published_flag = 'N'
+      ${es.optional_flag === 'Y' ? sql`and exists (select 1 from exam_candidate_subject x where x.candidate_id = c.id and x.exam_subject_id = ${esId})` : sql``}`;
+    if (!cands.length && es.optional_flag === 'Y') throw new Error(`No student has chosen ${es.subject_name} yet – record the choices under Subject Choices first.`);
     if (!cands.length) throw new Error('The results of these students are published – roll them back first to change marks.');
     const rng = (v: string | null | undefined, lo: number, hi: number, what: string) => {
       if (v === null || v === undefined) return null;
@@ -263,5 +265,50 @@ export async function saveExamFees(fd: FormData) {
       }
     });
     return { msg: `${n} exam fee(s) have been updated.` };
+  });
+}
+
+/**
+ * Optional subjects chosen by the students of one grade (during the exam days).
+ * Each student must choose exactly the grade's number of optional subjects (or none yet).
+ * Marks already entered for a subject a student drops are removed.
+ */
+export async function saveSubjectChoices(examId: string, gradeId: string, fd: FormData) {
+  const u = await requirePriv('CD_EXAM_CANDIDATE_PRV', 'WRITE');
+  await act(backOf(fd), async () => {
+    const exam = await loadExam(examId, u.enterpriseId);
+    if (['DRAFT', 'CANCELLED'].includes(exam.status_code)) throw new Error('The exam is not open');
+    const grades = await evaluatorGrades(u, examId);
+    if (grades !== 'ALL' && !grades.has(gradeId)) throw new Error('You are not an examiner for this grade');
+    const [g] = await sql`select optional_count from exam_grade where exam_id = ${examId} and grade_id = ${gradeId}`;
+    const need = Number(g?.optional_count ?? 0);
+    const opt = (await examSubjects(examId, gradeId)).filter((x) => x.optional_flag === 'Y');
+    const optIds = new Set(opt.map((x) => String(x.id)));
+    const cands = await sql`select c.*, (select trim(concat_ws(' ', first_name, last_name)) from person_f x where x.id = c.person_id order by effective_start_date desc limit 1) full_name
+      from exam_candidate c where c.exam_id = ${examId} and c.current_grade_id = ${gradeId} and c.published_flag = 'N'`;
+    const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+    const examiner = admin || (await sql`select 1 from exam_examiner where exam_id = ${examId} and grade_id = ${gradeId} and person_id = ${u.personId ?? 0}`).length > 0;
+    let n = 0, dropped = 0;
+    await sql.begin(async (tx) => {
+      for (const c of cands) {
+        if (!fd.has(`seen_${c.id}`)) continue;
+        if (!examiner) { try { await assertStudentAccess(u, c.person_id, todayISO()); } catch { continue; } }
+        const picked = fd.getAll(`opt_${c.id}`).map(String).filter((x) => optIds.has(x));
+        if (picked.length && picked.length !== need) throw new Error(`${c.full_name} chose ${picked.length} optional subject(s) – choose exactly ${need}.`);
+        const before = (await tx`select exam_subject_id from exam_candidate_subject where candidate_id = ${c.id}`).map((r) => String(r.exam_subject_id));
+        const gone = before.filter((x) => !picked.includes(x));
+        if (gone.length) {
+          const del = await tx`delete from exam_mark where candidate_id = ${c.id} and exam_subject_id in ${tx(gone)} returning 1`;
+          await tx`delete from exam_unit_mark where candidate_id = ${c.id} and exam_subject_id in ${tx(gone)}`;
+          await tx`delete from exam_section_rating where candidate_id = ${c.id} and exam_subject_id in ${tx(gone)}`;
+          dropped += del.length;
+          await tx`delete from exam_candidate_subject where candidate_id = ${c.id} and exam_subject_id in ${tx(gone)}`;
+        }
+        for (const x of picked.filter((p) => !before.includes(p)))
+          await tx`insert into exam_candidate_subject (candidate_id, exam_subject_id, chosen_by) values (${c.id}, ${x}, ${u.username})`;
+        if (gone.length || picked.some((p) => !before.includes(p))) { await recomputeCandidate(tx as unknown as typeof sql, exam, c.id); n++; }
+      }
+    });
+    return { msg: `Subject choices have been saved for ${n} student(s).${dropped ? ` Marks of ${dropped} dropped subject(s) were removed.` : ''}` };
   });
 }

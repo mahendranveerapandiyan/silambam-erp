@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { requirePriv, can } from '@/lib/auth';
 import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
-import { examSubjects, partSections, evaluatorGrades } from '@/lib/examSetup';
+import { candidateSubjects, partSections, evaluatorGrades } from '@/lib/examSetup';
 import { assertStudentAccess } from '@/lib/scope';
 import { fmtDate, todayISO } from '@/lib/util';
 import { PageHeader, Badge, Empty } from '@/components/ui';
@@ -27,7 +27,7 @@ export default async function StudentExamResult({ params }: { params: Promise<{ 
     try { await assertStudentAccess(u, c.person_id, todayISO()); } catch { notFound(); }
   }
   const L = await lk();
-  const subjects = await examSubjects(id, c.current_grade_id);
+  const subjects = await candidateSubjects(id, { id: c.id, current_grade_id: c.current_grade_id });
   const marks = new Map((await sql`select * from exam_mark where candidate_id = ${cid}`).map((m) => [String(m.exam_subject_id), m]));
   const units = new Map((await sql`select * from exam_unit_mark where candidate_id = ${cid}`).map((m) => [`${m.exam_subject_id}_${m.component_id}`, m]));
   const rates = new Map((await sql`select * from exam_section_rating where candidate_id = ${cid}`).map((m) => [`${m.exam_subject_id}_${m.component_id}_${m.section_id}`, m.rating]));
@@ -68,7 +68,7 @@ export default async function StudentExamResult({ params }: { params: Promise<{ 
             });
             return (
               <tr key={s.id}>
-                <td className="font-medium">{s.subject_name}{s.combined_flag === 'Y' && <div className="text-xs text-slate-500">{s.parts.map((p) => p.name).join(' + ')}</div>}</td>
+                <td className="font-medium">{s.subject_name}{s.optional_flag === 'Y' && <span className="ml-1 text-xs font-normal text-purple-700">optional (chosen)</span>}{s.combined_flag === 'Y' && <div className="text-xs text-slate-500">{s.parts.map((p) => p.name).join(' + ')}</div>}</td>
                 <td className="text-xs text-slate-600">{detail}</td>
                 <td>{Number(s.max_marks)}</td><td>{Number(s.pass_marks)}</td>
                 <td className="font-semibold">{absent ? 'AB' : m?.marks ?? '—'}</td>

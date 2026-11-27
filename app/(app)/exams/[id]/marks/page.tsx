@@ -45,6 +45,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
     from exam_candidate c join assignment a on a.id = c.assignment_id
     left join assignment_f af on af.id = a.id and ${today}::date between af.effective_start_date and af.effective_end_date
     where c.exam_id = ${id} and c.current_grade_id = ${grade.grade_id} ${examiner ? sql`` : studentScopeSql(u, today)}
+      ${es?.optional_flag === 'Y' ? sql`and exists (select 1 from exam_candidate_subject x where x.candidate_id = c.id and x.exam_subject_id = ${es.id})` : sql``}
     order by full_name`;
   const locked = exam.status_code === 'CANCELLED' || !(admin || can(u, 'CD_EXAM_CANDIDATE_PRV', 'WRITE'));
   const open = cands.filter((c) => c.published_flag !== 'Y');
@@ -67,14 +68,14 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
         {visible.map((g) => <Link key={g.grade_id} href={pageUrl(g.grade_id)} className={`rounded-full border px-3 py-1 text-sm ${g.grade_id === grade.grade_id ? 'border-sky-600 bg-sky-50 font-semibold text-sky-800' : 'border-slate-300'}`}>{g.name}</Link>)}
       </div>
       <div className="mb-3 flex flex-wrap items-center gap-2"><span className="label mb-0">Subject</span>
-        {subjects.map((s) => <Link key={s.id} href={pageUrl(grade.grade_id, String(s.id))} className={`rounded-full border px-3 py-1 text-sm ${es && s.id === es.id ? 'border-sky-600 bg-sky-50 font-semibold text-sky-800' : 'border-slate-300'}`}>{s.subject_name}</Link>)}
+        {subjects.map((s) => <Link key={s.id} href={pageUrl(grade.grade_id, String(s.id))} className={`rounded-full border px-3 py-1 text-sm ${es && s.id === es.id ? 'border-sky-600 bg-sky-50 font-semibold text-sky-800' : 'border-slate-300'}`}>{s.subject_name}{s.optional_flag === 'Y' && <span className="ml-1 text-xs text-purple-700">optional</span>}</Link>)}
         {!subjects.length && <span className="muted">No subjects for this grade – add them in stop 4 of the exam setup.</span>}
       </div>
       {es && (
         <form key={`${grade.grade_id}-${es.id}`} action={saveSubjectMarks.bind(null, id, String(es.id), grade.grade_id)} className="card overflow-x-auto">
           <Back to={here(`/exams/${id}/marks`, { ...sp, grade: grade.grade_id, subject: String(es.id) })} />
           <p className="muted mb-2">
-            <b>{es.subject_name}</b> · out of {Number(es.max_marks)}, pass {Number(es.pass_marks)}
+            <b>{es.subject_name}</b>{es.optional_flag === 'Y' && <> (optional – only the students who chose it)</>} · out of {Number(es.max_marks)}, pass {Number(es.pass_marks)}
             {es.combined_flag === 'Y' && <> · combines {es.parts.map((p) => `${p.name} (${es.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight} %`}, pass ${p.pass}/${p.max})`).join(' + ')}</>}
             {es.parts.some((p) => secOf(p.id).length) && <> · evaluated by sections – each part's mark is worked out from its template's weights</>}
           </p>
@@ -127,7 +128,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
                 </tr>);
             })}</tbody>
           </table>
-          {!cands.length && <Empty>No students of {grade.name} are assigned{examiner ? '' : ' in your classes'}.</Empty>}
+          {!cands.length && <Empty>{es.optional_flag === 'Y' ? <>No student has chosen {es.subject_name} yet – <Link className="link" href={`/exams/${id}/choices?grade=${grade.grade_id}`}>record the subject choices</Link>.</> : <>No students of {grade.name} are assigned{examiner ? '' : ' in your classes'}.</>}</Empty>}
           {cands.length > 0 && <button className="btn btn-primary mt-3" disabled={locked || !open.length} title={!open.length ? 'Results are published – roll back to change marks' : undefined}>Save {es.subject_name} Marks</button>}
         </form>
       )}

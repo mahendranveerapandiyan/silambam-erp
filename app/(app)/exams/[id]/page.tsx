@@ -121,6 +121,8 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
 
   async function Results() {
     const marks = await sql`select m.* from exam_mark m join exam_candidate c on c.id = m.candidate_id where c.exam_id = ${id}`;
+    const taken = new Set((await sql`select x.candidate_id, x.exam_subject_id from exam_candidate_subject x join exam_candidate c on c.id = x.candidate_id where c.exam_id = ${id}`).map((r) => `${r.candidate_id}_${r.exam_subject_id}`));
+    const hasOptional = grades.some((g) => Number(g.optional_count) > 0);
     const mk = new Map(marks.map((m) => [`${m.candidate_id}_${m.exam_subject_id}`, m]));
     const unpublished = cands.filter((c) => c.published_flag !== 'Y');
     const published = cands.filter((c) => c.published_flag === 'Y');
@@ -134,6 +136,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
         {canEnter && cands.length > 0 && (
           <div className="card flex flex-wrap items-center gap-3">
             <div className="flex-1"><b>Enter marks</b><div className="muted">{unpublished.length ? <>One grade and subject at a time{mine !== 'ALL' ? ' – the grades you examine' : ''}.{published.length > 0 && ` ${published.length} published result(s) are locked.`}</> : 'All results are published – marks are locked. Roll results back to change them.'}</div></div>
+            {hasOptional && <Link href={`/exams/${id}/choices`} className="btn">Subject Choices</Link>}
             {unpublished.length ? <Link href={`/exams/${id}/marks`} className="btn btn-primary">Enter Marks</Link>
               : <span className="btn cursor-not-allowed opacity-50" aria-disabled="true" title="Results are published – roll back to change marks">Enter Marks</span>}
           </div>)}
@@ -144,12 +147,12 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
             return (
               <div key={g} className="card overflow-x-auto">
                 <h3 className="mb-2 font-semibold">{list[0].grade_name ?? 'Grade not set'} <span className="text-sm font-normal text-slate-500">({list.length})</span></h3>
-                <table className="tbl"><thead><tr>{rollback && <th><CheckAll name="cand" /></th>}<th>Student</th><th>Section</th>{subs.map((s) => <th key={s.id}>{s.subject_name}<div className="font-normal normal-case">max {Number(s.max_marks)} / pass {Number(s.pass_marks)}</div></th>)}<th>Total</th><th>%</th>{exam.grading_scale_id && <th>Rating</th>}<th>Result</th><th>Published</th></tr></thead>
+                <table className="tbl"><thead><tr>{rollback && <th><CheckAll name="cand" /></th>}<th>Student</th><th>Section</th>{subs.map((s) => <th key={s.id}>{s.subject_name}<div className="font-normal normal-case">{s.optional_flag === 'Y' && 'optional · '}max {Number(s.max_marks)} / pass {Number(s.pass_marks)}</div></th>)}<th>Total</th><th>%</th>{exam.grading_scale_id && <th>Rating</th>}<th>Result</th><th>Published</th></tr></thead>
                   <tbody>{list.map((c) => (
                     <tr key={c.id}>
                       {rollback && <td><input type="checkbox" name="cand" value={c.id} disabled={c.published_flag !== 'Y'} aria-label={`Select ${c.full_name}`} /></td>}
                       <td>{c.full_name}<div className="text-xs text-gray-500">{c.assignment_number}</div></td><td className="text-xs">{c.section_name ?? '—'}</td>
-                      {subs.map((s) => { const m = mk.get(`${c.id}_${s.id}`); return <td key={s.id} className={m?.pass_flag === 'N' ? 'font-semibold text-red-700' : ''}>{m?.absent_flag === 'Y' ? 'AB' : m?.marks ?? '—'}{m?.grade_rating && <span className="ml-1 text-xs text-sky-700">{m.grade_rating}</span>}</td>; })}
+                      {subs.map((s) => { const m = mk.get(`${c.id}_${s.id}`); if (s.optional_flag === 'Y' && !taken.has(`${c.id}_${s.id}`)) return <td key={s.id} className="text-xs text-slate-400">not taken</td>; return <td key={s.id} className={m?.pass_flag === 'N' ? 'font-semibold text-red-700' : ''}>{m?.absent_flag === 'Y' ? 'AB' : m?.marks ?? '—'}{m?.grade_rating && <span className="ml-1 text-xs text-sky-700">{m.grade_rating}</span>}</td>; })}
                       <td>{c.total_marks ?? '—'}</td><td>{c.percentage ?? '—'}</td>{exam.grading_scale_id && <td>{c.grade_rating ? <Badge color="purple">{c.grade_rating}</Badge> : '—'}</td>}
                       <td><Badge color={STATUS_COLOR[c.result_code]}>{L('EXAM_RESULT', c.result_code)}</Badge>{c.promoted_flag === 'Y' && <Badge color="purple">Promoted</Badge>}</td>
                       <td>{c.published_flag === 'Y' ? <Badge color="green">Published</Badge> : <Badge color="gray">Not yet</Badge>}</td></tr>))}</tbody></table>
