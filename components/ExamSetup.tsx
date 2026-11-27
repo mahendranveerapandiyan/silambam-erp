@@ -3,6 +3,7 @@ import type { SessionUser } from '@/lib/auth';
 import type { Row } from '@/lib/db';
 import { examOptions } from '@/lib/examOptions';
 import { EXAM_STOPS } from '@/lib/examSetup';
+import { inchargeClasses, isExamAdmin } from '@/lib/examAccess';
 import { MirrorInput } from './client';
 import { Field, Select, Back } from './ui';
 import { saveExamDetails } from '@/app/(app)/exams/setupActions';
@@ -37,20 +38,28 @@ export async function DetailsForm({ u, exam, defaultAy, asOf, readOnly }: { u: S
   const o = await examOptions(u.enterpriseId, asOf);
   const e = exam ?? {};
   const ay = e.academic_year_id ?? defaultAy ?? o.years[0]?.value;
+  // class assessments: incharges pick one of their classes and cannot create grade exams
+  const own = !isExamAdmin(u) || e.exam_scope === 'CLASS';
+  const mineCls = own && !isExamAdmin(u) ? await inchargeClasses(u, e.exam_date ?? asOf) : [];
+  const types = own ? o.types.filter((t) => t.value !== 'GRADE_EXAM') : o.types;
+  const className = e.class_id ? o.classes.find((c) => c.value === String(e.class_id))?.label : null;
   return (
     <form action={saveExamDetails.bind(null, exam ? String(exam.id) : null)} className="card">
       <Back to={exam ? `/exams/${exam.id}/setup?step=1` : '/exams/new'} />
       <fieldset disabled={readOnly} className="contents">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Exam Name *"><input name="name" defaultValue={e.name} required className="input" placeholder="e.g. Level 2 Grade Exam – Dec 2026" /></Field>
+          <Field label="Exam Name *"><input name="name" defaultValue={e.name} required className="input" placeholder={own ? "e.g. Kids Batch Weekly Assessment" : "e.g. Level 2 Grade Exam – Dec 2026"} /></Field>
           <Field label="Exam Code" help="Same as the exam name – filled automatically"><MirrorInput source="name" initial={e.code ?? e.name ?? ''} label="Exam Code" /></Field>
-          <Field label="Exam Type *"><Select name="exam_type_code" options={o.types} value={e.exam_type_code ?? 'GRADE_EXAM'} empty={false} /></Field>
+          <Field label="Exam Type *" help={own ? 'Class assessments cannot be grade exams' : undefined}><Select name="exam_type_code" options={types} value={e.exam_type_code ?? (own ? 'ASSESSMENT' : 'GRADE_EXAM')} empty={false} /></Field>
+          {own && (isExamAdmin(u)
+            ? <Field label="Class"><input value={className ?? ''} readOnly className="input bg-slate-50" aria-label="Class" /></Field>
+            : <Field label="Class *" help="One of the classes you are incharge of"><Select name="class_id" options={mineCls.map((c) => ({ value: c.id, label: c.name }))} value={e.class_id ? String(e.class_id) : mineCls.length === 1 ? mineCls[0].id : ''} required /></Field>)}
           <Field label="Academic Year *"><Select name="academic_year_id" options={o.years} value={ay} required /></Field>
           <Field label="Exam Date *"><input type="date" name="exam_date" defaultValue={e.exam_date} required className="input" /></Field>
           {exam && exam.status_code !== 'DRAFT' && <Field label="Status"><Select name="status_code" options={o.statuses.filter((s) => s.value !== 'DRAFT')} value={e.status_code} empty={false} /></Field>}
           <Field label="Description" className="sm:col-span-2 lg:col-span-3"><textarea name="description" defaultValue={e.description ?? ''} rows={2} className="input" /></Field>
         </div>
-        <p className="muted mt-2">Grade Exams allow one per student per academic year. The exam type also sets the default outcome (stop 6).</p>
+        <p className="muted mt-2">{own ? 'A class assessment covers the students of one class and records their results only – no grade changes.' : 'Grade Exams allow one per student per academic year. The exam type also sets the default outcome (stop 7).'}</p>
       </fieldset>
       {!readOnly && <Buttons first={!exam} />}
     </form>

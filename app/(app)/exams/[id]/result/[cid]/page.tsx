@@ -39,7 +39,7 @@ export default async function StudentExamResult({ params }: { params: Promise<{ 
     <div className="max-w-5xl">
       <PageHeader title={`${c.full_name} – ${c.exam_name}`}
         subtitle={<>Student No. <b>{c.assignment_number}</b> · {c.grade_name} · {L('EXAM_TYPE', c.exam_type_code)} · {c.ay_name} · {fmtDate(c.exam_date)}</>}
-        actions={<><Link href={`/students/${c.person_id}?tab=exams`} className="btn">Back to student</Link>{can(u, 'CD_EXAM_SETUP_PRV') && <Link href={`/exams/${id}?tab=results`} className="btn">Whole exam</Link>}</>} />
+        actions={<><Link href={`/students/${c.person_id}?tab=exams`} className="btn">Back to student</Link><Link href={`/exams/${id}?tab=results`} className="btn">Whole exam</Link></>} />
 
       <div className="mb-4 grid gap-3 sm:grid-cols-5">
         <div className="card"><div className="label">Total Marks</div><div className="text-2xl font-semibold">{maxTotal}</div></div>

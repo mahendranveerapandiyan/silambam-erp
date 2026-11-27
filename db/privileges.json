@@ -617,5 +617,14 @@
   "module": "Exams",
   "defaults": {},
   "seq": 466
+ },
+ {
+  "code": "CD_CLASS_ASSESSMENT_PRV",
+  "name": "Exams – create and publish class assessments (own classes, no grade changes)",
+  "module": "Exams",
+  "defaults": {
+   "INCHARGE": "W"
+  },
+  "seq": 475
  }
 ]

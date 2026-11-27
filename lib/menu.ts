@@ -77,7 +77,7 @@ export const MENU: MenuGroup[] = [
     label: 'Exams',
     items: [
       { label: 'Exams', href: '/exams', priv: 'CD_EXAM_SETUP_PRV|CD_EXAM_CANDIDATE_PRV' },
-      { label: 'Create Exam', href: '/exams/new', priv: 'CD_EXAM_SETUP_PRV' },
+      { label: 'Create Exam', href: '/exams/new', priv: 'CD_EXAM_SETUP_PRV|CD_CLASS_ASSESSMENT_PRV' },
       { label: 'Evaluation Templates', href: '/exams/templates', priv: 'CD_EVALUATION_TEMPLATE_PRV' },
       { label: 'Grading Ranges', href: '/exams/grading', priv: 'CD_GRADING_RANGE_PRV' },
       { label: 'Exam Fees', href: '/exams/fees', priv: 'CD_EXAM_FEE_PRV' },

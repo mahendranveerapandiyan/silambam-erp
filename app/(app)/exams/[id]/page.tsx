@@ -13,6 +13,7 @@ import { CheckAll, ConfirmButton, ShowFor } from '@/components/client';
 import { assignCandidates, removeCandidate, publishResults, rollbackResults } from '../actions';
 import { deleteExam } from '../setupActions';
 import { examGrades, examSubjects, evaluatorGrades } from '@/lib/examSetup';
+import { canManageExam } from '@/lib/examAccess';
 
 export default async function ExamPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
   const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_EXAM_CANDIDATE_PRV'], 'READ');
@@ -26,6 +27,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
   const tab = typeof sp.tab === 'string' ? sp.tab : 'candidates';
   const back = here(`/exams/${id}`, sp);
   const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+  const manage = await canManageExam(u, exam);   // administrators, or the incharge of a class assessment's class
   const canMarks = can(u, 'CD_EXAM_CANDIDATE_PRV', 'WRITE') || admin;
   if (exam.status_code === 'DRAFT') redirect(`/exams/${id}/setup?step=${Math.min(8, Number(exam.setup_step) + 1)}`);
   const grades = await examGrades(id, exam.exam_date);
@@ -57,8 +59,8 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
   return (
     <div className="max-w-7xl">
       <PageHeader title={exam.name}
-        subtitle={<>{L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
-        actions={<>{can(u, 'CD_EXAM_SETUP_PRV') && <Link href={`/exams/${id}/setup?step=1`} className="btn">{admin && !closed ? '✎ Exam Setup' : 'Exam Setup'}</Link>}<Link href="/exams" className="btn">All exams</Link></>} />
+        subtitle={<>{exam.exam_scope === 'CLASS' && <><Badge color="purple">Class assessment</Badge> · </>}{L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
+        actions={<>{(can(u, 'CD_EXAM_SETUP_PRV') || manage) && <Link href={`/exams/${id}/setup?step=1`} className="btn">{manage && !closed ? '✎ Exam Setup' : 'Exam Setup'}</Link>}<Link href="/exams" className="btn">All exams</Link></>} />
       <Flash sp={sp} />
       {rules.length > 0 && <div className="mb-3 flex flex-wrap gap-2 text-xs">{rules.map((r) => <Badge key={r as string} color="gray">{r}</Badge>)}</div>}
       <Tabs tabs={tabs} active={tab} base={`/exams/${id}`} />
@@ -66,7 +68,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
       {tab === 'eligible' && <Eligible />}
       {tab === 'results' && <Results />}
       {tab === 'subjects' && <Subjects />}
-      {admin && exam.status_code !== 'PUBLISHED' && !cands.some((c) => c.published_flag === 'Y') && (
+      {manage && exam.status_code !== 'PUBLISHED' && !cands.some((c) => c.published_flag === 'Y') && (
         <form action={deleteExam.bind(null, id)} className="mt-6"><Back to={back} />
           <ConfirmButton className="btn btn-danger btn-sm" message={`Delete the exam ${exam.name}${cands.length ? ` with its ${cands.length} assigned student(s) and their marks? Unpaid exam fees are cancelled` : ''}? This cannot be undone.`}>Delete exam</ConfirmButton>
           <span className="muted ml-2">Possible until results are published.</span></form>)}
@@ -130,7 +132,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
     const byGrade = new Map<string, typeof cands>();
     for (const c of cands) { const k = String(c.current_grade_id ?? ''); if (!byGrade.has(k)) byGrade.set(k, [] as unknown as typeof cands); byGrade.get(k)!.push(c); }
     const sections = [...new Map(published.filter((c) => c.section_id).map((c) => [String(c.section_id), c.section_name as string])).entries()];
-    const rollback = admin && published.length > 0;
+    const rollback = manage && published.length > 0;
     return (
       <div className="space-y-4">
         {canEnter && cands.length > 0 && (
@@ -173,7 +175,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
             </div>)}
         </form>
         {!cands.length && <div className="card"><Empty>No candidates yet.</Empty></div>}
-        {admin && unpublished.length > 0 && (
+        {manage && unpublished.length > 0 && (
           <form action={publishResults.bind(null, id)} className="card flex flex-wrap items-end gap-3">
             <Back to={back} />
             <div><h2 className="h2 mb-1">Publish Results</h2><p className="muted">{unpublished.length} result(s) not yet published. They become visible on the student profile and the parent/student portal, and their marks are locked.</p></div>
@@ -199,7 +201,7 @@ export default async function ExamPage({ params, searchParams }: { params: Promi
               <td>{L('SUBJECT_TYPE', s.subject_type_code)}</td><td>{Number(s.max_marks)}</td><td>{Number(s.pass_marks)}</td>
               <td className="text-xs">{s.combined_flag === 'Y' ? s.parts.map((p) => `${p.name} ${s.weight_type === 'MARK' ? `${p.weight} marks` : `${p.weight}%`} (pass ${p.pass}/${p.max})`).join(' + ') : '—'}</td></tr>))}</tbody></table>
         {!subjects.length && <Empty />}
-        {admin && !closed && <Link className="btn btn-sm mt-2" href={`/exams/${id}/setup?step=4`}>Change subjects (stop 4)</Link>}
+        {manage && !closed && <Link className="btn btn-sm mt-2" href={`/exams/${id}/setup?step=4`}>Change subjects (stop 4)</Link>}
       </div>
     );
   }

@@ -6,7 +6,7 @@ import { sql } from '@/lib/db';
 import { assignmentBase, assignmentFor, personDetail, deletionBlockers, managerOf, type PersonKind } from '@/lib/people';
 import { datedRefOptions, nameOn } from '@/lib/dt';
 import { lk, lookupOptions } from '@/lib/lookups';
-import { fmtDate, fmtDateTime, money, ageOn } from '@/lib/util';
+import { fmtDate, fmtDateTime, money, ageOn, todayISO } from '@/lib/util';
 import { totals } from '@/lib/fees';
 import { PageHeader, Flash, Field, Badge, Back, Tabs, Empty, Select, STATUS_COLOR, here } from '../ui';
 import { ConfirmButton } from '../client';
@@ -14,6 +14,7 @@ import { PhotoInput } from '../PhotoInput';
 import { EditableForm, EditScope } from '../EditMode';
 import { deleteIncharge } from '@/app/(app)/staff/actions';
 import { rollbackCandidate } from '@/app/(app)/exams/actions';
+import { inchargeClasses } from '@/lib/examAccess';
 import { PersonFields } from './PersonFields';
 import { updatePerson, uploadPhoto, regenerateQr, saveContact, undoAssignment, changeStartDate, deletePerson, saveIdentifier, saveAor } from '@/app/(app)/people/actions';
 import { identifiersOf, personEmployerCountry } from '@/lib/identifiers';
@@ -420,12 +421,13 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
   }
 
   async function Exams() {
-    const rows = await sql`select c.*, e.name, e.exam_date, e.exam_type_code, e.outcome_code, y.name ay_name,
+    const rows = await sql`select c.*, e.name, e.exam_date, e.exam_type_code, e.outcome_code, e.exam_scope, e.class_id exam_class_id, y.name ay_name,
         (select coalesce(sum(es.max_marks), 0) from exam_subject es where es.exam_id = c.exam_id and (es.grade_id = c.current_grade_id or es.grade_id is null)
           and (es.optional_flag = 'N' or exists (select 1 from exam_candidate_subject x where x.candidate_id = c.id and x.exam_subject_id = es.id))) max_total,
         (select name from student_grade_f g where g.id = c.promoted_to_grade_id order by effective_start_date desc limit 1) promoted_to
       from exam_candidate c join exam e on e.id = c.exam_id join academic_year y on y.id = c.academic_year_id where c.person_id = ${personId} order by e.exam_date desc`;
-    const canRoll = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+    const myCls = can(u, 'CD_CLASS_ASSESSMENT_PRV', 'WRITE') ? new Set((await inchargeClasses(u, todayISO())).map((c) => c.id)) : new Set<string>();
+    const rollOk = (r: Record<string, any>) => can(u, 'CD_EXAM_SETUP_PRV', 'WRITE') || (r.exam_scope === 'CLASS' && myCls.has(String(r.exam_class_id)));
     const result = (r: (typeof rows)[number]) => r.result_code === 'PASS' ? <Badge color="green">Pass</Badge> : r.result_code === 'FAIL' ? <Badge color="red">Failed</Badge> : <Badge color={STATUS_COLOR[r.result_code]}>{L('EXAM_RESULT', r.result_code)}</Badge>;
     return (
       <div className="card overflow-x-auto"><table className="tbl"><thead><tr><th>Date</th><th>Exam</th><th>Type</th><th>Academic Year</th><th>Total Marks</th><th>Obtained Marks</th><th>Grade Rating</th><th>Result</th><th>Published</th><th></th></tr></thead>
@@ -436,7 +438,7 @@ export async function PersonView({ u, kind, personId, asOf, sp }: { u: SessionUs
             <td>{r.grade_rating ? <Badge color="blue">{r.grade_rating}</Badge> : '—'}</td>
             <td>{result(r)}{r.promoted_flag === 'Y' && <div><Badge color="purple">Promoted{r.promoted_to ? ` to ${r.promoted_to}` : ''}</Badge></div>}</td>
             <td>{r.published_flag === 'Y' ? <Badge color="green">Published</Badge> : <Badge color="gray">Not yet</Badge>}</td>
-            <td>{canRoll && r.published_flag === 'Y' && (
+            <td>{rollOk(r) && r.published_flag === 'Y' && (
               <form action={rollbackCandidate.bind(null, r.exam_id, r.id)}><Back to={back} />
                 <ConfirmButton className="btn btn-sm" message={`Roll back the ${r.name} result of ${p.full_name}? The marks can then be changed${r.promoted_flag === 'Y' ? ' and the promotion is reversed' : ''}.`}>Roll back</ConfirmButton></form>)}</td>
           </tr>))}</tbody></table>

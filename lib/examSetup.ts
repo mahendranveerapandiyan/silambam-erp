@@ -1,6 +1,7 @@
 import 'server-only';
 import { sql, type Row } from './db';
 import { can, type SessionUser } from './auth';
+import { canManageExam } from './examAccess';
 
 /** The 7 stops of the exam setup. */
 export const EXAM_STOPS = ['Exam Details', 'Grade Eligibility', 'Student Eligibility', 'Subjects', 'Evaluation Template', 'Grading Range', 'Targeted Outcome', 'Examiners'] as const;
@@ -163,6 +164,8 @@ export async function recomputeCandidate(tx: typeof sql, exam: Row, candidateId:
 /** Grades the user evaluates in this exam (examiner), or 'ALL' for exam administrators / when no examiners are set for a grade. */
 export async function evaluatorGrades(u: SessionUser, examId: string): Promise<'ALL' | Set<string>> {
   if (can(u, 'CD_EXAM_SETUP_PRV', 'WRITE')) return 'ALL';
+  const [ex] = await sql`select * from exam where id = ${examId}`;
+  if (ex && ex.exam_scope === 'CLASS' && (await canManageExam(u, ex))) return 'ALL';   // the class's own assessment
   const rows = await sql`select grade_id, person_id from exam_examiner where exam_id = ${examId}`;
   const all = await sql`select grade_id from exam_grade where exam_id = ${examId}`;
   const withExaminers = new Set(rows.map((r) => String(r.grade_id)));

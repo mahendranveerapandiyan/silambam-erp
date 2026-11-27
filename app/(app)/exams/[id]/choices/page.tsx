@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requirePriv, can } from '@/lib/auth';
+import { canManageExam } from '@/lib/examAccess';
 import { sql } from '@/lib/db';
 import { examGrades, examSubjects, evaluatorGrades } from '@/lib/examSetup';
 import { studentScopeSql } from '@/lib/scope';
@@ -16,7 +17,7 @@ export default async function SubjectChoices({ params, searchParams }: { params:
   const sp = await searchParams;
   const [exam] = await sql`select e.*, y.name ay_name from exam e join academic_year y on y.id = e.academic_year_id where e.id = ${id} and e.enterprise_id = ${u.enterpriseId}`;
   if (!exam) notFound();
-  const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+  const admin = await canManageExam(u, exam);
   const mine = await evaluatorGrades(u, id);
   const grades = (await examGrades(id, exam.exam_date)).filter((g) => Number(g.optional_count) > 0 && (mine === 'ALL' || mine.has(String(g.grade_id))));
   const header = (

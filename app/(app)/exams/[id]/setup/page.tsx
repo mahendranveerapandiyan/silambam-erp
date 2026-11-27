@@ -9,6 +9,7 @@ import { examOptions } from '@/lib/examOptions';
 import { activeStaffPeriods } from '@/lib/people';
 import { EXAM_STOPS, LAST_STOP, examGrades, examSubjects, templateSections, marksEntered, gradingBands, templateWeight, templateMismatch } from '@/lib/examSetup';
 import { Stepper, DetailsForm, Buttons } from '@/components/ExamSetup';
+import { canManageExam } from '@/lib/examAccess';
 import { fmtDate } from '@/lib/util';
 import { PageHeader, Flash, Field, Select, Back, Badge, Empty, type SP, s as one, here } from '@/components/ui';
 import { ConfirmButton, ShowFor, SubjectDefaults } from '@/components/client';
@@ -19,17 +20,20 @@ import {
 } from '../../setupActions';
 
 export default async function ExamSetup({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: SP }) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'READ');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'READ');
   const { id } = await params;
   const sp = await searchParams;
   const [exam] = await sql`select e.*, y.name ay_name from exam e join academic_year y on y.id = e.academic_year_id where e.id = ${id} and e.enterprise_id = ${u.enterpriseId}`;
   if (!exam) notFound();
+  const manage = await canManageExam(u, exam);
+  if (!manage && !can(u, 'CD_EXAM_SETUP_PRV')) notFound();
+  const classScope = exam.exam_scope === 'CLASS';
   const asOf = await getAsOf();
   const L = await lk();
   const reachedStep = Number(exam.setup_step ?? LAST_STOP);
   const step = Math.min(Math.max(Number(one(sp.step) ?? 1) || 1, 1), Math.min(LAST_STOP, reachedStep + 1));
   const closed = ['PUBLISHED', 'CANCELLED'].includes(exam.status_code);
-  const readOnly = closed || !can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+  const readOnly = closed || !manage;
   const back = here(`/exams/${id}/setup`, { ...sp, step: String(step) });
   const grades = await examGrades(id, exam.exam_date);
   const locked = await marksEntered(id);
@@ -37,7 +41,7 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
   return (
     <div className="max-w-6xl">
       <PageHeader title={`${exam.name}`}
-        subtitle={<>{L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'DRAFT' ? 'amber' : exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
+        subtitle={<>{classScope && <><Badge color="purple">Class assessment</Badge> · </>}{L('EXAM_TYPE', exam.exam_type_code)} · {exam.ay_name} · {fmtDate(exam.exam_date)} · <Badge color={exam.status_code === 'DRAFT' ? 'amber' : exam.status_code === 'PUBLISHED' ? 'green' : 'blue'}>{L('EXAM_STATUS', exam.status_code)}</Badge></>}
         actions={<>{exam.status_code !== 'DRAFT' && <Link href={`/exams/${id}`} className="btn">Open exam</Link>}<Link href="/exams" className="btn">All exams</Link></>} />
       <Flash sp={sp} />
       <Stepper examId={id} step={step} reached={reachedStep} />
@@ -51,7 +55,7 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
       {step === 6 && <GradingStop />}
       {step === 7 && <OutcomeStop />}
       {step === 8 && <ExaminerStop />}
-      {exam.status_code !== 'PUBLISHED' && can(u, 'CD_EXAM_SETUP_PRV', 'WRITE') && (
+      {exam.status_code !== 'PUBLISHED' && manage && (
         <form action={deleteExam.bind(null, id)} className="mt-6"><Back to={back} />
           <ConfirmButton className="btn btn-danger btn-sm" message={`Delete the exam ${exam.name}${exam.status_code === 'DRAFT' ? ' (draft)' : ' with its assigned students and marks? Unpaid exam fees are cancelled'}? This cannot be undone.`}>{exam.status_code === 'DRAFT' ? 'Delete draft' : 'Delete exam'}</ConfirmButton></form>
       )}
@@ -83,8 +87,12 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
             <Field label="Minimum Months in Grade"><input name="min_months_in_grade" type="number" min="0" defaultValue={exam.min_months_in_grade ?? ''} className="input" /></Field>
             <Field label="Minimum Age (years)" help="On the exam date"><input name="min_age" type="number" min="0" defaultValue={exam.min_age ?? ''} className="input" /></Field>
             <Field label="Fees Must Be Cleared"><select name="fees_cleared_flag" defaultValue={exam.fees_cleared_flag ?? 'N'} className="input"><option value="N">No</option><option value="Y">Yes</option></select></Field>
-            <Field label="Only Business Unit (optional)"><Select name="business_unit_id" options={o.bus} value={exam.business_unit_id} empty="All business units" /></Field>
-            <Field label="Only Class (optional)"><Select name="class_id" options={o.classes} value={exam.class_id} empty="All classes" /></Field>
+            {classScope
+              ? <Field label="Class"><input value={o.classes.find((c) => c.value === String(exam.class_id))?.label ?? ''} readOnly className="input bg-slate-50" aria-label="Class" /></Field>
+              : <>
+                <Field label="Only Business Unit (optional)"><Select name="business_unit_id" options={o.bus} value={exam.business_unit_id} empty="All business units" /></Field>
+                <Field label="Only Class (optional)"><Select name="class_id" options={o.classes} value={exam.class_id} empty="All classes" /></Field>
+              </>}
           </div>
         </fieldset>
         {!readOnly && <Buttons />}
@@ -285,7 +293,7 @@ export default async function ExamSetup({ params, searchParams }: { params: Prom
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="When a student passes *">
               <select name="outcome_code" defaultValue={exam.outcome_code ?? 'RECORD'} className="input">
-                <option value="PROMOTE">Promote to the next grade (on publishing)</option><option value="RECORD">Only record the result on the student profile</option>
+                {!classScope && <option value="PROMOTE">Promote to the next grade (on publishing)</option>}<option value="RECORD">Only record the result on the student profile</option>
               </select>
               <ShowFor select="outcome_code" />
             </Field>

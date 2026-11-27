@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requirePriv, can } from '@/lib/auth';
+import { canManageExam } from '@/lib/examAccess';
 import { sql } from '@/lib/db';
 import { lk } from '@/lib/lookups';
 import { examGrades, examSubjects, partSections, evaluatorGrades, ratingChoices, type Section } from '@/lib/examSetup';
@@ -17,7 +18,7 @@ export default async function ExamMarks({ params, searchParams }: { params: Prom
   const [exam] = await sql`select e.*, y.name ay_name from exam e join academic_year y on y.id = e.academic_year_id where e.id = ${id} and e.enterprise_id = ${u.enterpriseId}`;
   if (!exam) notFound();
   const L = await lk();
-  const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+  const admin = await canManageExam(u, exam);
   const mine = await evaluatorGrades(u, id);
   // grades of the exam (older exams: the grades of their candidates)
   let grades: { grade_id: string; name: string }[] = (await examGrades(id, exam.exam_date)).map((g) => ({ grade_id: String(g.grade_id), name: g.name }));

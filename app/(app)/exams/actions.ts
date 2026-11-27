@@ -8,6 +8,7 @@ import { addDemand, cancelDemandIfUnpaid } from '@/lib/fees';
 import { dtChange, dtDeleteLatest } from '@/lib/dt';
 import { actionByType } from '@/lib/people';
 import { assertStudentAccess } from '@/lib/scope';
+import { canManageExam, assertManageExam } from '@/lib/examAccess';
 
 const num = (v: string | null | undefined) => (v === null || v === undefined || v === '' ? null : Number(v));
 
@@ -75,7 +76,7 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
   const u = await requirePriv('CD_EXAM_CANDIDATE_PRV', 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
-    const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+    const admin = await canManageExam(u, exam);
     if (exam.status_code === 'DRAFT') throw new Error('Finish the exam setup first');
     if (exam.status_code === 'CANCELLED') throw new Error('The exam is cancelled');
     const grades = await evaluatorGrades(u, examId);
@@ -139,16 +140,17 @@ export async function saveSubjectMarks(examId: string, esId: string, gradeId: st
 
 /** Publish results; when the exam promotes, passed students move to their grade's target grade. */
 export async function publishResults(examId: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
+    await assertManageExam(u, exam);
     if (exam.status_code === 'DRAFT') throw new Error('Finish the exam setup first');
     const o = formObj(fd);
     const date = exam.promotion_date ?? o.promotion_date ?? todayISO();
     const toAy = exam.promotion_ay_id ?? null;
     let promoted = 0, published = 0;
     await sql.begin(async (tx) => {
-      if (exam.outcome_code === 'PROMOTE' && o.promote === 'Y') {
+      if (exam.outcome_code === 'PROMOTE' && o.promote === 'Y' && exam.exam_scope !== 'CLASS') {
         const action = await actionByType(u.enterpriseId, 'STUDENT', 'PROMOTION', date);
         if (!action) throw new Error('No Promotion action is configured for students');
         const passed = await tx`select c.*, coalesce(eg.target_grade_id, (select next_grade_id from student_grade_f g where g.id = c.current_grade_id order by effective_start_date desc limit 1)) target
@@ -212,9 +214,10 @@ const candSql = (examId: string) => sql`select c.*, a.assignment_number, af.sect
 
 /** Roll back published results: all students, the selected students, or one section. */
 export async function rollbackResults(examId: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
+    await assertManageExam(u, exam);
     const o = formObj(fd);
     let list: Record<string, any>[] = await candSql(examId);
     if (o.scope === 'SELECTED') {
@@ -234,9 +237,10 @@ export async function rollbackResults(examId: string, fd: FormData) {
 
 /** Roll back one student's published result (from the student profile). */
 export async function rollbackCandidate(examId: string, candidateId: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const exam = await loadExam(examId, u.enterpriseId);
+    await assertManageExam(u, exam);
     const list = (await candSql(examId)).filter((c) => String(c.id) === candidateId);
     if (!list.length) throw new Error('This result is not published');
     await sql.begin((tx) => rollBack(tx, exam, list, u.username));
@@ -286,7 +290,7 @@ export async function saveSubjectChoices(examId: string, gradeId: string, fd: Fo
     const optIds = new Set(opt.map((x) => String(x.id)));
     const cands = await sql`select c.*, (select trim(concat_ws(' ', first_name, last_name)) from person_f x where x.id = c.person_id order by effective_start_date desc limit 1) full_name
       from exam_candidate c where c.exam_id = ${examId} and c.current_grade_id = ${gradeId} and c.published_flag = 'N'`;
-    const admin = can(u, 'CD_EXAM_SETUP_PRV', 'WRITE');
+    const admin = await canManageExam(u, exam);
     const examiner = admin || (await sql`select 1 from exam_examiner where exam_id = ${examId} and grade_id = ${gradeId} and person_id = ${u.personId ?? 0}`).length > 0;
     let n = 0, dropped = 0;
     await sql.begin(async (tx) => {

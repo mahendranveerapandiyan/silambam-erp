@@ -1,6 +1,7 @@
 'use server';
 import { sql, type Row } from '@/lib/db';
 import { requirePriv, type SessionUser } from '@/lib/auth';
+import { assertManageExam, inchargeClasses, isExamAdmin } from '@/lib/examAccess';
 import { act, backOf, formObj } from '@/lib/util';
 import { cancelDemandIfUnpaid } from '@/lib/fees';
 import { marksEntered, templateSections, templateMismatch, examSubjects as subjectsOf, examGrades, examSubjects, applyGrades } from '@/lib/examSetup';
@@ -11,6 +12,7 @@ const stepUrl = (id: string, step: number, extra = '') => `/exams/${id}/setup?st
 async function editable(u: SessionUser, id: string) {
   const [e] = await sql`select * from exam where id = ${id} and enterprise_id = ${u.enterpriseId}`;
   if (!e) throw new Error('Exam not found');
+  await assertManageExam(u, e);
   if (['PUBLISHED', 'CANCELLED'].includes(e.status_code)) throw new Error(`${e.name} is ${e.status_code === 'PUBLISHED' ? 'published' : 'cancelled'} – its setup can no longer be changed.`);
   return e;
 }
@@ -24,7 +26,7 @@ async function noMarks(e: Row, what: string) {
 
 /** Stop 1 – Exam Details (a new exam starts as a Draft). */
 export async function saveExamDetails(id: string | null, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd, '/exams/new'), async () => {
     const o = formObj(fd);
     if (!o.name || !o.exam_type_code || !o.academic_year_id || !o.exam_date) throw new Error('Exam name, type, academic year and date are required');
@@ -32,6 +34,16 @@ export async function saveExamDetails(id: string | null, fd: FormData) {
     if (!ay) throw new Error('Academic year not found');
     if (o.exam_date < ay.start_date || o.exam_date > ay.end_date) throw new Error(`The exam date must fall within ${ay.name}`);
     // the exam code is the exam name, unique within the academic year
+    // class assessments (incharges): their own class, never a grade exam
+    const own = !isExamAdmin(u);
+    let classId: string | null = null;
+    if (own) {
+      if (o.exam_type_code === 'GRADE_EXAM') throw new Error('Grade exams change students\' grades – only exam administrators can create them. Choose Assessment.');
+      const mineCls = await inchargeClasses(u, o.exam_date);
+      if (!mineCls.length) throw new Error(`You are not incharge of any class on ${o.exam_date}.`);
+      if (!o.class_id || !mineCls.some((c) => c.id === o.class_id)) throw new Error(`Choose one of your classes: ${mineCls.map((c) => c.name).join(', ')}.`);
+      classId = o.class_id;
+    }
     const v = { name: o.name, code: o.name, exam_type_code: o.exam_type_code, academic_year_id: o.academic_year_id, exam_date: o.exam_date, description: o.description };
     const [dup] = await sql`select 1 from exam where enterprise_id = ${u.enterpriseId} and academic_year_id = ${o.academic_year_id} and lower(code) = lower(${o.name}) and id <> ${id ?? 0}`;
     if (dup) throw new Error(`An exam named ${o.name} already exists in ${ay.name} – the exam name is also its code, so choose a different name.`);
@@ -42,7 +54,11 @@ export async function saveExamDetails(id: string | null, fd: FormData) {
         const [c] = await sql`select count(*)::int n from exam_candidate where exam_id = ${id}`;
         if (c.n) throw new Error(`${c.n} student(s) are already assigned – the academic year can no longer be changed.`);
       }
-      await sql`update exam set ${sql({ ...v, status_code: status, last_updated_by: u.username, last_update_date: new Date() })} where id = ${id}`;
+      if (e.exam_scope === 'CLASS' && classId && String(classId) !== String(e.class_id)) {
+        const [c] = await sql`select count(*)::int n from exam_candidate where exam_id = ${id}`;
+        if (c.n) throw new Error('Students are already assigned – the class can no longer be changed.');
+      }
+      await sql`update exam set ${sql({ ...v, ...(e.exam_scope === 'CLASS' && classId ? { class_id: classId } : {}), status_code: status, last_updated_by: u.username, last_update_date: new Date() })} where id = ${id}`;
       await reached(id, 1, u.username);
       return after(fd, id, 1, `${o.name} exam has been updated.`);
     }
@@ -50,16 +66,17 @@ export async function saveExamDetails(id: string | null, fd: FormData) {
       const [r] = await tx`insert into exam ${sql({
         ...v, enterprise_id: u.enterpriseId, status_code: 'DRAFT', setup_step: 1, fees_cleared_flag: 'N',
         outcome_code: o.exam_type_code === 'GRADE_EXAM' ? 'PROMOTE' : 'RECORD', created_by: u.username,
+        ...(own ? { exam_scope: 'CLASS', class_id: classId } : {}),
       })} returning id`;
       return String(r.id);
     });
-    return { to: stepUrl(newId, 2), msg: `${o.name} exam has been created as a draft. Next: choose the grades that may sit it.` };
+    return { to: stepUrl(newId, 2), msg: `${o.name} ${own ? 'class assessment' : 'exam'} has been created as a draft. Next: choose the grades that may sit it.` };
   });
 }
 
 /** Stop 2 – Grade Eligibility. */
 export async function saveExamGrades(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     const ids = [...new Set(fd.getAll('grades').map(String).filter(Boolean))];
@@ -86,7 +103,7 @@ export async function saveExamGrades(id: string, fd: FormData) {
 
 /** Stop 3 – Student Eligibility. */
 export async function saveExamEligibility(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     const o = formObj(fd);
@@ -94,6 +111,7 @@ export async function saveExamEligibility(id: string, fd: FormData) {
       min_attendance_pct: num(o.min_attendance_pct), min_months_in_grade: num(o.min_months_in_grade), min_age: num(o.min_age),
       fees_cleared_flag: o.fees_cleared_flag === 'Y' ? 'Y' : 'N', business_unit_id: o.business_unit_id, class_id: o.class_id,
     };
+    if (e.exam_scope === 'CLASS') { v.business_unit_id = e.business_unit_id; v.class_id = e.class_id; }
     if (v.min_attendance_pct !== null && (v.min_attendance_pct < 0 || v.min_attendance_pct > 100)) throw new Error('Minimum attendance must be between 0 and 100 %');
     if ((v.min_months_in_grade ?? 0) < 0 || (v.min_age ?? 0) < 0) throw new Error('Months and age cannot be negative');
     await sql`update exam set ${sql(v)} where id = ${id}`;
@@ -104,7 +122,7 @@ export async function saveExamEligibility(id: string, fd: FormData) {
 
 /** Stop 4 – add or change one subject of a grade (a single subject, or a combination of subjects with weights). */
 export async function saveExamSubject(id: string, esId: string | null, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     await noMarks(e, 'its subjects');
@@ -170,7 +188,7 @@ export async function saveExamSubject(id: string, esId: string | null, fd: FormD
 }
 
 export async function deleteExamSubject(id: string, esId: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     await noMarks(e, 'its subjects');
@@ -181,7 +199,7 @@ export async function deleteExamSubject(id: string, esId: string, fd: FormData) 
 
 /** Stop 4 – add every active subject (with its default marks) to a grade, or copy one grade's subjects to the others. */
 export async function fillExamSubjects(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     await noMarks(e, 'its subjects');
@@ -221,7 +239,7 @@ export async function fillExamSubjects(id: string, fd: FormData) {
 
 /** Stop 4 – done: every grade needs at least one subject. */
 export async function finishExamSubjects(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     const grades = await examGrades(id, e.exam_date);
@@ -240,7 +258,7 @@ export async function finishExamSubjects(id: string, fd: FormData) {
 
 /** Stop 5 – the evaluation template of each subject of each grade (each part of a combined subject has its own), or direct marks. */
 export async function saveExamTemplates(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     const o = formObj(fd);
@@ -294,7 +312,7 @@ export async function saveExamTemplates(id: string, fd: FormData) {
 
 /** Stop 6 – Grading Range: the rating for each range of marks (optional). */
 export async function saveExamGrading(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     const g = formObj(fd).grading_scale_id;
@@ -317,10 +335,11 @@ export async function saveExamGrading(id: string, fd: FormData) {
 
 /** Stop 7 – Targeted Outcome. */
 export async function saveExamOutcome(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     const o = formObj(fd);
+    if (e.exam_scope === 'CLASS' && o.outcome_code === 'PROMOTE') throw new Error('Class assessments only record results – they cannot promote students to another grade.');
     const outcome = o.outcome_code === 'PROMOTE' ? 'PROMOTE' : 'RECORD';
     const pp = num(o.pass_percentage);
     if (pp !== null && (pp < 0 || pp > 100)) throw new Error('The overall pass % must be between 0 and 100');
@@ -352,7 +371,7 @@ export async function saveExamOutcome(id: string, fd: FormData) {
 
 /** Stop 8 – Examiners per grade; finishing the setup schedules a draft exam. */
 export async function saveExamExaminers(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     const grades = await examGrades(id, e.exam_date);
@@ -387,10 +406,11 @@ export async function saveExamExaminers(id: string, fd: FormData) {
  * and unpaid exam fees go with it. Refused once a result is published or an exam fee is paid.
  */
 export async function deleteExam(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd, '/exams'), async () => {
     const [e] = await sql`select * from exam where id = ${id} and enterprise_id = ${u.enterpriseId}`;
     if (!e) throw new Error('Exam not found');
+    await assertManageExam(u, e);
     const [p] = await sql`select count(*)::int n from exam_candidate where exam_id = ${id} and published_flag = 'Y'`;
     if (e.status_code === 'PUBLISHED' || p.n)
       throw new Error(`${e.name} has ${p.n || 'its'} published result(s) – roll the results back first (Marks & Results › Roll Back), then delete.`);
@@ -413,7 +433,7 @@ export async function deleteExam(id: string, fd: FormData) {
 
 /** Stop 4 – how many optional subjects each student of a grade chooses. */
 export async function saveOptionalCount(id: string, fd: FormData) {
-  const u = await requirePriv('CD_EXAM_SETUP_PRV', 'WRITE');
+  const u = await requirePriv(['CD_EXAM_SETUP_PRV', 'CD_CLASS_ASSESSMENT_PRV'], 'WRITE');
   await act(backOf(fd), async () => {
     const e = await editable(u, id);
     const o = formObj(fd);
